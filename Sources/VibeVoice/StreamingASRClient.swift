@@ -288,6 +288,9 @@ actor OverlappingWindowStreamingASRClient: StreamingASRClient {
             return
         } catch let error as TranscriptionError {
             if case .emptyText = error { return }
+            if case let .server(status, _) = error, status == 401 || status == 403 {
+                onEvent(.error("转写需要 API Key：请在设置 → 语音识别中填写后重试"))
+            }
         } catch {
             return
         }

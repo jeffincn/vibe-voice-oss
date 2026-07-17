@@ -295,19 +295,37 @@ final class AppSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        endpoint = defaults.string(forKey: Key.endpoint)
-            ?? "http://127.0.0.1:8000/v1/audio/transcriptions"
-        model = defaults.string(forKey: Key.model)
-            ?? "mlx-community/Qwen3-ASR-0.6B-4bit"
-        language = defaults.string(forKey: Key.language) ?? "zh"
-        prompt = defaults.string(forKey: Key.prompt) ?? "local ASR, macOS"
+        endpoint = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.endpoint,
+            fallback: "http://127.0.0.1:8000/v1/audio/transcriptions"
+        )
+        model = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.model,
+            fallback: "mlx-community/Qwen3-ASR-0.6B-4bit"
+        )
+        language = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.language,
+            fallback: "zh"
+        )
+        prompt = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.prompt,
+            fallback: "local ASR, macOS"
+        )
         let resolvedASRKey = KeychainStore.loadOrMigrate(
             account: .asrAPIKey,
             defaults: defaults,
             legacyKey: Key.apiKey
         )
         apiKey = resolvedASRKey
-        inputDeviceUID = defaults.string(forKey: Key.inputDeviceUID) ?? ""
+        inputDeviceUID = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.inputDeviceUID,
+            fallback: ""
+        )
         launchAtLogin = defaults.bool(forKey: Key.launchAtLogin)
         let storedTarget = defaults.string(forKey: Key.targetLanguageID) ?? TargetLanguage.none.id
         let migratedFromPromptOption = storedTarget == "prompt"
@@ -317,7 +335,11 @@ final class AppSettings: ObservableObject {
             defaults.set(resolvedTarget.id, forKey: Key.targetLanguageID)
         }
         translationModel = TranslationClient.sanitizeModelName(
-            defaults.string(forKey: Key.translationModel) ?? ""
+            KeychainStore.coalesceString(
+                defaults: defaults,
+                key: Key.translationModel,
+                fallback: ""
+            )
         )
         structuredOutputEnabled = defaults.bool(forKey: Key.structuredOutputEnabled)
         // Default OFF when key never set.
@@ -331,8 +353,11 @@ final class AppSettings: ObservableObject {
         structureIntensityRaw = StructureIntensity(rawValue: storedIntensity)?.rawValue ?? StructureIntensity.auto.rawValue
         let storedStreaming = defaults.string(forKey: Key.streamingMode) ?? StreamingMode.duplexStreaming.rawValue
         streamingModeRaw = StreamingMode(rawValue: storedStreaming)?.rawValue ?? StreamingMode.duplexStreaming.rawValue
-        streamingWSURL = defaults.string(forKey: Key.streamingWSURL)
-            ?? "ws://127.0.0.1:8000/v1/audio/stream"
+        streamingWSURL = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.streamingWSURL,
+            fallback: "ws://127.0.0.1:8000/v1/audio/stream"
+        )
         let storedHotKey = defaults.string(forKey: Key.recordingHotKeyID) ?? RecordingHotKey.defaultID
         recordingHotKeyID = RecordingHotKey.resolve(id: storedHotKey).id
         let storedPromptTarget = defaults.string(forKey: Key.promptTargetID) ?? PromptTargetKind.codingCodex.rawValue
@@ -346,27 +371,40 @@ final class AppSettings: ObservableObject {
                 defaults.set(true, forKey: Key.promptOptimizeEnabled)
             }
         }
-        // LLM endpoint: derive from ASR once when unset.
-        let asrEndpoint = defaults.string(forKey: Key.endpoint)
-            ?? "http://127.0.0.1:8000/v1/audio/transcriptions"
+        // LLM endpoint: prefer saved / legacy, else derive from ASR once when unset.
+        let asrEndpointForLLM = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.endpoint,
+            fallback: "http://127.0.0.1:8000/v1/audio/transcriptions",
+            persistLegacy: false
+        )
         if let stored = defaults.string(forKey: Key.llmEndpoint), !stored.isEmpty {
             llmEndpoint = stored
         } else {
-            let derived = Self.deriveChatCompletionsEndpoint(from: asrEndpoint)
-            llmEndpoint = derived
-            defaults.set(derived, forKey: Key.llmEndpoint)
+            let legacyLLM = KeychainStore.coalesceString(
+                defaults: defaults,
+                key: Key.llmEndpoint,
+                fallback: ""
+            )
+            if !legacyLLM.isEmpty {
+                llmEndpoint = legacyLLM
+            } else {
+                let derived = Self.deriveChatCompletionsEndpoint(from: asrEndpointForLLM)
+                llmEndpoint = derived
+                defaults.set(derived, forKey: Key.llmEndpoint)
+            }
         }
-        // LLM key: Keychain first; migrate legacy UserDefaults; else copy ASR key once.
-        if let fromKeychain = KeychainStore.get(.llmAPIKey) {
-            llmApiKey = fromKeychain
-            defaults.removeObject(forKey: Key.llmApiKey)
-        } else if let legacy = defaults.string(forKey: Key.llmApiKey) {
-            llmApiKey = legacy
-            KeychainStore.set(legacy, account: .llmAPIKey)
-            defaults.removeObject(forKey: Key.llmApiKey)
-        } else {
+        // LLM key: Keychain / legacy prefs, else copy ASR key once.
+        let resolvedLLMKey = KeychainStore.loadOrMigrate(
+            account: .llmAPIKey,
+            defaults: defaults,
+            legacyKey: Key.llmApiKey
+        )
+        if resolvedLLMKey.isEmpty, !resolvedASRKey.isEmpty {
             llmApiKey = resolvedASRKey
             KeychainStore.set(resolvedASRKey, account: .llmAPIKey)
+        } else {
+            llmApiKey = resolvedLLMKey
         }
         let storedTranscode = defaults.string(forKey: Key.transcodeProfileID)
             ?? TranscodeProfile.asr16kMono.rawValue

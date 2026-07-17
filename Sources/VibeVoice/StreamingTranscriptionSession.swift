@@ -152,8 +152,10 @@ final class StreamingTranscriptionSession {
         case let .final(text):
             accumulator.applyFinal(text)
             notePartial()
-        case .error:
-            break
+        case let .error(message):
+            if accumulator.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                accumulator.applyPartial(message)
+            }
         case .done:
             break
         }

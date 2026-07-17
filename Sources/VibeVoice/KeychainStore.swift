@@ -4,6 +4,8 @@ import Security
 /// Stores secrets in the macOS Keychain. Never write API keys to UserDefaults.
 enum KeychainStore {
     static let service = "app.vibevoice.macos"
+    /// Preference domain used by the pre-open-source local build.
+    static let legacyPreferenceDomain = "local.vibe.voice-input"
 
     enum Account: String {
         case asrAPIKey = "asr.apiKey"
@@ -25,7 +27,8 @@ enum KeychainStore {
               let value = String(data: data, encoding: .utf8) else {
             return nil
         }
-        return value
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     @discardableResult
@@ -65,7 +68,7 @@ enum KeychainStore {
         return status == errSecSuccess || status == errSecItemNotFound
     }
 
-    /// Load from Keychain, or migrate once from UserDefaults plaintext and scrub it.
+    /// Load from Keychain, or migrate once from this app's UserDefaults / legacy local build prefs.
     static func loadOrMigrate(
         account: Account,
         defaults: UserDefaults,
@@ -74,13 +77,52 @@ enum KeychainStore {
         if let stored = get(account) {
             return stored
         }
-        let legacy = defaults.string(forKey: legacyKey) ?? ""
-        if !legacy.isEmpty {
-            set(legacy, account: account)
-        } else {
-            set("", account: account)
+
+        let fromDefaults = defaults.string(forKey: legacyKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let fromLegacyApp = preferenceValue(domain: legacyPreferenceDomain, key: legacyKey)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolved = !fromDefaults.isEmpty ? fromDefaults : fromLegacyApp
+
+        set(resolved, account: account)
+        if !fromDefaults.isEmpty {
+            defaults.removeObject(forKey: legacyKey)
         }
-        defaults.removeObject(forKey: legacyKey)
-        return legacy
+        return resolved
+    }
+
+    private static func preferenceValue(domain: String, key: String) -> String {
+        guard let raw = CFPreferencesCopyAppValue(key as CFString, domain as CFString) else {
+            return ""
+        }
+        if let string = raw as? String {
+            return string
+        }
+        if let number = raw as? NSNumber {
+            return number.stringValue
+        }
+        return ""
+    }
+
+    /// Non-secret string from this app's defaults, else the pre-OSS local build prefs, else `fallback`.
+    static func coalesceString(
+        defaults: UserDefaults,
+        key: String,
+        fallback: String,
+        persistLegacy: Bool = true
+    ) -> String {
+        if let local = defaults.string(forKey: key)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !local.isEmpty {
+            return local
+        }
+        let legacy = preferenceValue(domain: legacyPreferenceDomain, key: key)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !legacy.isEmpty {
+            if persistLegacy {
+                defaults.set(legacy, forKey: key)
+            }
+            return legacy
+        }
+        return fallback
     }
 }
