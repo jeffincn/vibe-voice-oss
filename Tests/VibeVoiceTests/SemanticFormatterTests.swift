@@ -149,4 +149,18 @@ final class SemanticFormatterTests: XCTestCase {
             "## 标题\n\n- 一项"
         )
     }
+
+    func testStripLanguageMetaLinesRemovesLeakedDirectives() {
+        let raw = """
+        [要求的输出语言：简体中文]
+
+        明天三点开会。
+
+        输出语言：Simplified Chinese
+        """
+        XCTAssertEqual(
+            SemanticFormatterClient.stripLanguageMetaLines(raw),
+            "明天三点开会。"
+        )
+    }
 }

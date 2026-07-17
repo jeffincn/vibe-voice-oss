@@ -366,6 +366,8 @@ enum SemanticFormatter {
         - 不要解释你做了哪些修改。
         - 只输出整理完成的正文。
         - 使用 Markdown，但不要输出 Markdown 代码块。
+        - 绝对不要在正文中写出任何元指令、提示词或语言要求标签
+          （例如「输出语言」「要求的输出语言」「REQUIRED OUTPUT LANGUAGE」及带方括号的同类说明）。
         """
 
         let languageBlock: String
@@ -373,13 +375,13 @@ enum SemanticFormatter {
            !directive.isEmpty {
             languageBlock = """
 
-            输出语言（最高优先级，必须遵守）：
+            输出语言（最高优先级，必须遵守；仅作内部约束，禁止写入正文）：
             \(directive)
             """
         } else {
             languageBlock = """
 
-            输出语言：与原始转写保持同一语言；不要擅自翻译。
+            输出语言（仅作内部约束，禁止写入正文）：与原始转写保持同一语言；不要擅自翻译。
             """
         }
 
@@ -660,9 +662,29 @@ struct SemanticFormatterClient: Sendable {
 
         let raw = message.content ?? ""
         let cleaned = TranslationClient.sanitizeModelOutput(raw)
-        let stripped = Self.stripWrappingCodeFence(cleaned)
+        let stripped = Self.stripLanguageMetaLines(Self.stripWrappingCodeFence(cleaned))
         guard !stripped.isEmpty else { throw SemanticFormatterError.emptyText }
         return stripped
+    }
+
+    /// Drop leaked prompt meta such as `[要求的输出语言：简体中文]`.
+    static func stripLanguageMetaLines(_ text: String) -> String {
+        let patterns = [
+            #"^\s*\[?\s*要求的?输出语言\s*[:：].*$"#,
+            #"^\s*\[?\s*输出语言\s*[:：].*$"#,
+            #"^\s*\[?\s*REQUIRED\s+OUTPUT\s+LANGUAGE\s*[:：].*$"#,
+            #"^\s*输出语言（最高优先级.*$"#,
+            #"^\s*You MUST write the entire output in .*$"#,
+        ]
+        var lines = text.components(separatedBy: .newlines)
+        lines.removeAll { line in
+            patterns.contains { pattern in
+                line.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+            }
+        }
+        return lines
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Drop accidental ```markdown fences while keeping inner body.

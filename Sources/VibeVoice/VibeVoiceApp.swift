@@ -235,7 +235,7 @@ private struct MenuPanel: View {
                 }
                 .buttonStyle(MenuFooterButtonStyle())
 
-                Text(AppVersion.fullLabel)
+                Text("Vibe Voice OSS · \(AppVersion.fullLabel)")
                     .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(AppChrome.sidebarIdle)
                     .padding(.horizontal, 10)
@@ -249,7 +249,7 @@ private struct MenuPanel: View {
                 Button {
                     NSApplication.shared.terminate(nil)
                 } label: {
-                    Text("退出 Vibe Voice")
+                    Text("退出 Vibe Voice OSS")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(AppChrome.danger)
                         .frame(maxWidth: .infinity, alignment: .leading)

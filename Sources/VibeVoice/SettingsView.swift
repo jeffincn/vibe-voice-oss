@@ -73,7 +73,7 @@ private struct SettingsForm: View {
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(AppChrome.ink)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Vibe Voice")
+                    Text("Vibe Voice OSS")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(AppChrome.ink)
                     Text(AppVersion.fullLabel)
