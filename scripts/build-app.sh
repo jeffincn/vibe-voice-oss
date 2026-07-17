@@ -2,10 +2,11 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-APP="$ROOT/dist/Vibe Voice.app"
+APP_NAME="${VIBE_VOICE_APP_NAME:-Vibe Voice OSS}"
+APP="$ROOT/dist/${APP_NAME}.app"
 IDENTITY="${CODESIGN_IDENTITY:-}"
 STAGING_DIR=$(mktemp -d)
-STAGED_APP="$STAGING_DIR/Vibe Voice.app"
+STAGED_APP="$STAGING_DIR/${APP_NAME}.app"
 trap 'rm -rf "$STAGING_DIR"' EXIT
 
 cd "$ROOT"
@@ -37,8 +38,8 @@ rm -rf "$APP"
 mkdir -p "${APP:h}"
 ditto "$STAGED_APP" "$APP"
 
-# Keep Launch-at-Login /Applications copy in sync — otherwise menu bar keeps the old UI.
-APPLICATIONS_APP="/Applications/Vibe Voice.app"
+# Install under a distinct Applications name so the daily local build is not overwritten.
+APPLICATIONS_APP="/Applications/${APP_NAME}.app"
 if [[ -d "$APPLICATIONS_APP" || -L "$APPLICATIONS_APP" ]]; then
     rm -rf "$APPLICATIONS_APP"
 fi

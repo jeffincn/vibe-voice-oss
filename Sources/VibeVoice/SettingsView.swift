@@ -72,9 +72,14 @@ private struct SettingsForm: View {
                 Image(systemName: "waveform.circle.fill")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(AppChrome.ink)
-                Text("Vibe Voice")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(AppChrome.ink)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Vibe Voice")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AppChrome.ink)
+                    Text(AppVersion.fullLabel)
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(AppChrome.muted)
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 22)

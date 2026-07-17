@@ -21,9 +21,10 @@ Licensed under the [MIT License](LICENSE).
 ```bash
 chmod +x scripts/build-app.sh
 ./scripts/build-app.sh
-open "dist/Vibe Voice.app"
+open "dist/Vibe Voice OSS.app"
 ```
 
+The build installs as **Vibe Voice OSS** (bundle id `app.vibevoice.macos`, version **0.3.0**) so it does not overwrite a separate daily build named `Vibe Voice.app`.
 First launch needs Microphone and Accessibility permissions.
 
 The build script prefers an Apple Development identity from your keychain so Accessibility grants survive rebuilds; without one it falls back to ad-hoc signing.

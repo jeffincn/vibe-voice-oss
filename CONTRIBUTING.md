@@ -10,7 +10,7 @@ Requirements: macOS 14+, Apple Silicon, Xcode 16+.
 swift test
 swift build
 ./scripts/build-app.sh
-open "dist/Vibe Voice.app"
+open "dist/Vibe Voice OSS.app"
 ```
 
 You also need a local OpenAI-compatible ASR server (for example oMLX) listening on the endpoint configured in Settings. Defaults point at `http://127.0.0.1:8000`.

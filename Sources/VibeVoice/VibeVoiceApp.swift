@@ -235,6 +235,13 @@ private struct MenuPanel: View {
                 }
                 .buttonStyle(MenuFooterButtonStyle())
 
+                Text(AppVersion.fullLabel)
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(AppChrome.sidebarIdle)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 2)
+                    .padding(.bottom, 4)
+
                 Divider()
                     .overlay(AppChrome.hairline)
                     .padding(.vertical, 4)
