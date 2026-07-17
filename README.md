@@ -24,7 +24,7 @@ chmod +x scripts/build-app.sh
 open "dist/Vibe Voice OSS.app"
 ```
 
-The build installs as **Vibe Voice OSS** (bundle id `app.vibevoice.oss.macos`, version **0.3.0**) into both `dist/` and `/Applications`.
+The build installs as **Vibe Voice OSS** (bundle id `app.vibevoice.oss.macos`, version **0.4.0**) into both `dist/` and `/Applications`.
 First launch needs Microphone and Accessibility permissions.
 
 The build script prefers an Apple Development identity from your keychain so Accessibility grants survive rebuilds; without one it falls back to ad-hoc signing.

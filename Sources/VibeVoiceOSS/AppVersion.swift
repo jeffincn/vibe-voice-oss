@@ -11,9 +11,9 @@ enum AppVersion {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
     }
 
-    /// Short label for menus, e.g. `v0.3.0`.
+    /// Short label for menus, e.g. `v0.4.0`.
     static var shortLabel: String { "v\(marketing)" }
 
-    /// Full label, e.g. `v0.3.0 (3)`.
+    /// Full label, e.g. `v0.4.0 (1)`.
     static var fullLabel: String { "v\(marketing) (\(build))" }
 }
