@@ -2,10 +2,10 @@
 import AppKit
 import Foundation
 
-let outputURL = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "Resources/VibeVoice.icns")
+let outputURL = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "Resources/VibeVoiceOSS.icns")
 let fileManager = FileManager.default
 let iconsetURL = fileManager.temporaryDirectory
-    .appendingPathComponent("VibeVoice-\(UUID().uuidString).iconset")
+    .appendingPathComponent("VibeVoiceOSS-\(UUID().uuidString).iconset")
 try fileManager.createDirectory(at: iconsetURL, withIntermediateDirectories: true)
 defer { try? fileManager.removeItem(at: iconsetURL) }
 
@@ -58,7 +58,7 @@ for (filename, pixels) in variants {
         NSColor(calibratedRed: 0.96, green: 0.96, blue: 0.93, alpha: 1)
     ]))
 
-    if let symbol = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Vibe Voice")?
+    if let symbol = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Vibe Voice OSS")?
         .withSymbolConfiguration(symbolConfiguration) {
         let side = CGFloat(pixels) * 0.52
         let symbolRect = NSRect(

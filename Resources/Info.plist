@@ -5,11 +5,11 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleExecutable</key>
-    <string>VibeVoice</string>
+    <string>VibeVoiceOSS</string>
     <key>CFBundleIdentifier</key>
-    <string>app.vibevoice.macos</string>
+    <string>app.vibevoice.oss.macos</string>
     <key>CFBundleIconFile</key>
-    <string>VibeVoice</string>
+    <string>VibeVoiceOSS</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -19,12 +19,12 @@
     <key>CFBundleShortVersionString</key>
     <string>0.3.0</string>
     <key>CFBundleVersion</key>
-    <string>4</string>
+    <string>5</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Vibe Voice 需要麦克风权限，以便将语音发送到你在设置中配置的转写服务。</string>
+    <string>Vibe Voice OSS 需要麦克风权限，以便将语音发送到你在设置中配置的转写服务。</string>
 </dict>
 </plist>

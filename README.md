@@ -1,4 +1,4 @@
-# Vibe Voice
+# Vibe Voice OSS
 
 Local-first macOS menu-bar voice input. Press a hotkey to record, stop to transcribe through an OpenAI-compatible ASR server (for example [oMLX](https://github.com/ml-explore/mlx) / compatible gateways), optionally run local chat completions for translation or cleanup, then insert text at the caret.
 
@@ -21,10 +21,10 @@ Licensed under the [MIT License](LICENSE).
 ```bash
 chmod +x scripts/build-app.sh
 ./scripts/build-app.sh
-open "dist/Vibe Voice.app"
+open "dist/Vibe Voice OSS.app"
 ```
 
-The build installs as **Vibe Voice** (bundle id `app.vibevoice.macos`, version **0.3.0**) into both `dist/` and `/Applications`.
+The build installs as **Vibe Voice OSS** (bundle id `app.vibevoice.oss.macos`, version **0.3.0**) into both `dist/` and `/Applications`.
 First launch needs Microphone and Accessibility permissions.
 
 The build script prefers an Apple Development identity from your keychain so Accessibility grants survive rebuilds; without one it falls back to ad-hoc signing.
@@ -65,7 +65,7 @@ Prefer testing the `.app` from `scripts/build-app.sh` so microphone usage string
 Optional HUD preview:
 
 ```bash
-cd tools/fluid-voice && pnpm install && pnpm dev
+cd tools/fluid-voice-oss && pnpm install && pnpm dev
 ```
 
 More detail: [docs/architecture.md](docs/architecture.md), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md).

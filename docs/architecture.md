@@ -1,6 +1,6 @@
 # Architecture
 
-Vibe Voice is a macOS menu-bar dictation client. It records from a chosen microphone, sends audio to a user-configured OpenAI-compatible ASR endpoint, optionally runs chat/completions for translation / structure / prompt compile, then inserts text into the previously focused app.
+Vibe Voice OSS is a macOS menu-bar dictation client. It records from a chosen microphone, sends audio to a user-configured OpenAI-compatible ASR endpoint, optionally runs chat/completions for translation / structure / prompt compile, then inserts text into the previously focused app.
 
 ```text
 Hotkey / menu
@@ -13,7 +13,7 @@ Hotkey / menu
 
 ## Configuration flow
 
-Settings live in `AppSettings`. Non-secret preferences use `UserDefaults`. API keys use `KeychainStore` (`app.vibevoice.macos`).
+Settings live in `AppSettings`. Non-secret preferences use `UserDefaults`. API keys use `KeychainStore` (`app.vibevoice.oss.macos`).
 
 Clients receive configuration structs:
 
@@ -23,4 +23,4 @@ Clients receive configuration structs:
 
 ## Bundled UI preview
 
-`tools/fluid-voice` is a Vite/React preview of the particle HUD. It is not required to build or run the macOS app.
+`tools/fluid-voice-oss` is a Vite/React preview of the particle HUD. It is not required to build or run the macOS app.

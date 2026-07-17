@@ -2,7 +2,9 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-APP_NAME="${VIBE_VOICE_APP_NAME:-Vibe Voice}"
+APP_NAME="${VIBE_VOICE_APP_NAME:-Vibe Voice OSS}"
+EXECUTABLE_NAME="VibeVoiceOSS"
+ICON_NAME="VibeVoiceOSS"
 APP="$ROOT/dist/${APP_NAME}.app"
 IDENTITY="${CODESIGN_IDENTITY:-}"
 STAGING_DIR=$(mktemp -d)
@@ -11,12 +13,12 @@ trap 'rm -rf "$STAGING_DIR"' EXIT
 
 cd "$ROOT"
 swift build -c release
-swift "$ROOT/scripts/generate-icon.swift" "$ROOT/Resources/VibeVoice.icns"
+swift "$ROOT/scripts/generate-icon.swift" "$ROOT/Resources/${ICON_NAME}.icns"
 
 mkdir -p "$STAGED_APP/Contents/MacOS" "$STAGED_APP/Contents/Resources"
-cp "$ROOT/.build/release/VibeVoice" "$STAGED_APP/Contents/MacOS/VibeVoice"
+cp "$ROOT/.build/release/${EXECUTABLE_NAME}" "$STAGED_APP/Contents/MacOS/${EXECUTABLE_NAME}"
 cp "$ROOT/Resources/Info.plist" "$STAGED_APP/Contents/Info.plist"
-cp "$ROOT/Resources/VibeVoice.icns" "$STAGED_APP/Contents/Resources/VibeVoice.icns"
+cp "$ROOT/Resources/${ICON_NAME}.icns" "$STAGED_APP/Contents/Resources/${ICON_NAME}.icns"
 
 xattr -cr "$STAGED_APP"
 if [[ -z "$IDENTITY" ]]; then

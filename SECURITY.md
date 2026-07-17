@@ -10,7 +10,7 @@ Please report security issues privately (for example via GitHub Security Advisor
 
 ## Secrets and local data
 
-- ASR and LLM API keys are stored in the macOS Keychain under service `app.vibevoice.macos`.
+- ASR and LLM API keys are stored in the macOS Keychain under service `app.vibevoice.oss.macos`.
 - Do not commit `.env`, keychain dumps, preference plists, audio samples, or signing certificates.
 - Endpoints are user-configurable. Audio and transcripts are sent only to the URLs configured in Settings.
 

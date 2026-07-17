@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "VibeVoice",
+    name: "VibeVoiceOSS",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "VibeVoice", targets: ["VibeVoice"])
+        .executable(name: "VibeVoiceOSS", targets: ["VibeVoiceOSS"])
     ],
     targets: [
         .executableTarget(
-            name: "VibeVoice",
-            path: "Sources/VibeVoice"
+            name: "VibeVoiceOSS",
+            path: "Sources/VibeVoiceOSS"
         ),
         .testTarget(
-            name: "VibeVoiceTests",
-            dependencies: ["VibeVoice"]
+            name: "VibeVoiceOSSTests",
+            dependencies: ["VibeVoiceOSS"]
         )
     ]
 )
