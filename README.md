@@ -1,18 +1,22 @@
 # Vibe Voice
 
-一个完全本地的 macOS 菜单栏语音输入工具：按一次 `Command + R` 开始录音，再按一次结束并调用 oMLX 的 ASR 模型转写，最后将文字插入录音开始时的光标位置。
+Local-first macOS menu-bar voice input. Press a hotkey to record, stop to transcribe through an OpenAI-compatible ASR server (for example [oMLX](https://github.com/ml-explore/mlx) / compatible gateways), optionally run local chat completions for translation or cleanup, then insert text at the caret.
 
-应用图标与菜单栏统一使用 `waveform` 波形符号；构建脚本会自动生成完整尺寸的 macOS `.icns` 图标。
+Licensed under the [MIT License](LICENSE).
 
-## 使用前准备
+## Requirements
 
-1. 安装并启动 oMLX，默认地址为 `http://127.0.0.1:8000`。
-2. 在 oMLX 中下载并加载 Qwen3-ASR 模型，例如 `mlx-community/Qwen3-ASR-0.6B-4bit`。
-3. 确认 `GET http://127.0.0.1:8000/v1/models` 能返回模型列表。
+- macOS 14+
+- Apple Silicon
+- Xcode 16+
+- A local (or otherwise trusted) OpenAI-compatible ASR endpoint
 
-## 构建和运行
+## Quick start
 
-需要 macOS 14+、Apple Silicon 和 Xcode 16+。
+1. Start your ASR server. Default assumption: `http://127.0.0.1:8000`.
+2. Load an ASR model the client can name, for example `mlx-community/Qwen3-ASR-0.6B-4bit`.
+3. Confirm `GET http://127.0.0.1:8000/v1/models` responds.
+4. Build and run:
 
 ```bash
 chmod +x scripts/build-app.sh
@@ -20,39 +24,47 @@ chmod +x scripts/build-app.sh
 open "dist/Vibe Voice.app"
 ```
 
-构建脚本会优先使用钥匙串中的 Apple Development 证书，以保持辅助功能授权在重新构建后仍然有效；没有开发证书时才会退回临时签名。
+First launch needs Microphone and Accessibility permissions.
 
-第一次运行需授予：
+The build script prefers an Apple Development identity from your keychain so Accessibility grants survive rebuilds; without one it falls back to ad-hoc signing.
 
-- 麦克风权限：用于录音；
-- 辅助功能权限：用于定位当前输入框并向光标位置插入文字。
+## Settings
 
-应用常驻菜单栏。打开“设置”可在 `Qwen3-ASR-1.7B-8bit` 与 `VibeVoice-ASR-4bit` 之间切换，也可修改接口地址、语言、API Key 和专有词提示。
+Open Settings from the menu bar to configure:
 
-设置页提供“登录时自动启动”开关，使用 macOS 官方 `SMAppService` 注册，可在“系统设置 → 通用 → 登录项”中管理。
+- ASR HTTP endpoint, optional API key, model name, language, hotspot prompt
+- Streaming mode and WebSocket URL
+- Separate LLM endpoint / key / model for translation, structured cleanup, and prompt compile
+- Input device, hotkeys, launch-at-login
 
-录音期间，当前屏幕底部中央会在完全透明的窗口上显示由 120 个独立粒子构成的 Siri 光球与宽幅左右对称声纹，不绘制任何胶囊背景或边框。每个粒子使用固定随机种子生成不同的半径、速度、相位、颜色和尺寸；声音会驱动粒子扩散与扰动，但静音时保持悬停。再次按下快捷键后，它会切换为缓慢旋流的转写状态，完成输入后自动消失。浮窗不会取得键盘焦点。
+API keys are stored in the macOS Keychain. See [docs/configuration.md](docs/configuration.md) and [docs/privacy.md](docs/privacy.md).
 
-应用会对较安静但有效的录音做有限自动增益；如果当前输入设备完全没有信号，会在发送到 oMLX 前直接提示具体麦克风名称。设置页可以明确选择某个录音设备，使用 Core Audio 设备 UID 区分同名蓝牙设备；选择“跟随系统默认”时，每次录音都会重新读取 macOS 当前默认输入。
+**Data flow:** audio and text go only to the URLs you configure. Defaults target localhost. If you enter a remote URL, that host receives the request payloads.
 
-## 开发
+## Workflow
+
+```text
+Hotkey → capture microphone → hotkey again → 16 kHz mono WAV
+→ POST /v1/audio/transcriptions (or streaming path)
+→ optional LLM post-process
+→ insert into the focused app
+```
+
+Insertion prefers Accessibility APIs; some Electron/Chromium editors fall back to a real paste event. Successful transcripts can always be copied from the menu.
+
+## Development
 
 ```bash
 swift test
 swift build
 ```
 
-直接运行 `.build/debug/VibeVoice` 不包含麦克风用途说明，建议日常测试始终通过 `scripts/build-app.sh` 生成 `.app` 后运行。
+Prefer testing the `.app` from `scripts/build-app.sh` so microphone usage strings are present.
 
-## 工作流
+Optional HUD preview:
 
-```text
-按一次 ⌘R → 采集麦克风 → 再按一次 ⌘R → 16 kHz 单声道 WAV
-→ POST /v1/audio/transcriptions → 返回原应用 → 插入当前光标
+```bash
+cd tools/fluid-voice && pnpm install && pnpm dev
 ```
 
-程序优先通过辅助功能 API 直接写入焦点文本框；遇到不支持该接口的应用时自动使用 `Command + V`，并在输入后恢复原剪贴板。所有音频只发送到设置中的 oMLX 地址，程序不会连接云端服务，也不会将临时录音写入磁盘。
-
-Cursor、Codex、ChatGPT、VS Code 和 Chromium 类编辑器会优先使用真实粘贴事件，避免其编辑器内部状态与辅助功能文本不同步。识别成功后菜单中始终提供“复制识别文字”按钮，即使自动输入失败也不会丢失结果。
-
-单次转写具有 30 秒硬超时，超过后客户端会取消 HTTP 请求并关闭状态浮窗；转写期间也可在菜单中点击“取消转写”立即恢复。
+More detail: [docs/architecture.md](docs/architecture.md), [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md).

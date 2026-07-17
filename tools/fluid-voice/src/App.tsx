@@ -28,7 +28,7 @@ export default function App() {
 
   return (
     <main className={embedded ? "embedded" : ""}>
-      <section className="stage" aria-label="Siri style fluid animation preview">
+      <section className="stage" aria-label="Voice fluid animation preview">
         <VoiceFluid state={state} microphone={microphone} className="voice-fluid" />
       </section>
       {!embedded && <nav className="controls" aria-label="Animation states">

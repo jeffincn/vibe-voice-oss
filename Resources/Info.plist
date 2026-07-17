@@ -7,7 +7,7 @@
     <key>CFBundleExecutable</key>
     <string>VibeVoice</string>
     <key>CFBundleIdentifier</key>
-    <string>local.vibe.voice-input</string>
+    <string>app.vibevoice.macos</string>
     <key>CFBundleIconFile</key>
     <string>VibeVoice</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -25,6 +25,6 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Vibe Voice 需要录音并将语音发送到本机 oMLX 服务进行转写。</string>
+    <string>Vibe Voice 需要麦克风权限，以便将语音发送到你在设置中配置的转写服务。</string>
 </dict>
 </plist>

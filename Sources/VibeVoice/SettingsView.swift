@@ -329,6 +329,9 @@ private struct SettingsForm: View {
                 }
             }
 
+            caption("模型名请填写 oMLX / 兼容服务端已加载的 chat 模型；可留空后按需填写。")
+            caption("API Key 保存在本机钥匙串，不会写入明文偏好设置。")
+
             settingsCard {
                 Toggle("使用结构化输出", isOn: $settings.structuredOutputEnabled)
                     .toggleStyle(.switch)

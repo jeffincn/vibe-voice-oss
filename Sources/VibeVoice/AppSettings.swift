@@ -213,7 +213,9 @@ final class AppSettings: ObservableObject {
     @Published var model: String { didSet { save(model, for: Key.model) } }
     @Published var language: String { didSet { save(language, for: Key.language) } }
     @Published var prompt: String { didSet { save(prompt, for: Key.prompt) } }
-    @Published var apiKey: String { didSet { save(apiKey, for: Key.apiKey) } }
+    @Published var apiKey: String {
+        didSet { KeychainStore.set(apiKey, account: .asrAPIKey) }
+    }
     @Published var inputDeviceUID: String { didSet { save(inputDeviceUID, for: Key.inputDeviceUID) } }
     @Published var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: Key.launchAtLogin) } }
     @Published var targetLanguageID: String { didSet { save(targetLanguageID, for: Key.targetLanguageID) } }
@@ -253,7 +255,9 @@ final class AppSettings: ObservableObject {
         didSet { save(recordingHotKeyID, for: Key.recordingHotKeyID) }
     }
     @Published var llmEndpoint: String { didSet { save(llmEndpoint, for: Key.llmEndpoint) } }
-    @Published var llmApiKey: String { didSet { save(llmApiKey, for: Key.llmApiKey) } }
+    @Published var llmApiKey: String {
+        didSet { KeychainStore.set(llmApiKey, account: .llmAPIKey) }
+    }
     @Published var transcodeProfileID: String {
         didSet { save(transcodeProfileID, for: Key.transcodeProfileID) }
     }
@@ -296,8 +300,13 @@ final class AppSettings: ObservableObject {
         model = defaults.string(forKey: Key.model)
             ?? "mlx-community/Qwen3-ASR-0.6B-4bit"
         language = defaults.string(forKey: Key.language) ?? "zh"
-        prompt = defaults.string(forKey: Key.prompt) ?? "Qwen3-ASR，oMLX，Swift，macOS"
-        apiKey = defaults.string(forKey: Key.apiKey) ?? ""
+        prompt = defaults.string(forKey: Key.prompt) ?? "local ASR, macOS"
+        let resolvedASRKey = KeychainStore.loadOrMigrate(
+            account: .asrAPIKey,
+            defaults: defaults,
+            legacyKey: Key.apiKey
+        )
+        apiKey = resolvedASRKey
         inputDeviceUID = defaults.string(forKey: Key.inputDeviceUID) ?? ""
         launchAtLogin = defaults.bool(forKey: Key.launchAtLogin)
         let storedTarget = defaults.string(forKey: Key.targetLanguageID) ?? TargetLanguage.none.id
@@ -308,7 +317,7 @@ final class AppSettings: ObservableObject {
             defaults.set(resolvedTarget.id, forKey: Key.targetLanguageID)
         }
         translationModel = TranslationClient.sanitizeModelName(
-            defaults.string(forKey: Key.translationModel) ?? "gemma-4-26b-a4b-it-nvfp4"
+            defaults.string(forKey: Key.translationModel) ?? ""
         )
         structuredOutputEnabled = defaults.bool(forKey: Key.structuredOutputEnabled)
         // Default OFF when key never set.
@@ -337,8 +346,7 @@ final class AppSettings: ObservableObject {
                 defaults.set(true, forKey: Key.promptOptimizeEnabled)
             }
         }
-        // LLM endpoint / key: fall back to ASR once for migration.
-        let migratedASRKey = defaults.string(forKey: Key.apiKey) ?? ""
+        // LLM endpoint: derive from ASR once when unset.
         let asrEndpoint = defaults.string(forKey: Key.endpoint)
             ?? "http://127.0.0.1:8000/v1/audio/transcriptions"
         if let stored = defaults.string(forKey: Key.llmEndpoint), !stored.isEmpty {
@@ -348,11 +356,17 @@ final class AppSettings: ObservableObject {
             llmEndpoint = derived
             defaults.set(derived, forKey: Key.llmEndpoint)
         }
-        if let stored = defaults.string(forKey: Key.llmApiKey) {
-            llmApiKey = stored
+        // LLM key: Keychain first; migrate legacy UserDefaults; else copy ASR key once.
+        if let fromKeychain = KeychainStore.get(.llmAPIKey) {
+            llmApiKey = fromKeychain
+            defaults.removeObject(forKey: Key.llmApiKey)
+        } else if let legacy = defaults.string(forKey: Key.llmApiKey) {
+            llmApiKey = legacy
+            KeychainStore.set(legacy, account: .llmAPIKey)
+            defaults.removeObject(forKey: Key.llmApiKey)
         } else {
-            llmApiKey = migratedASRKey
-            defaults.set(migratedASRKey, forKey: Key.llmApiKey)
+            llmApiKey = resolvedASRKey
+            KeychainStore.set(resolvedASRKey, account: .llmAPIKey)
         }
         let storedTranscode = defaults.string(forKey: Key.transcodeProfileID)
             ?? TranscodeProfile.asr16kMono.rawValue
