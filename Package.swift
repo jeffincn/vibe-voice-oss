@@ -8,8 +8,14 @@ let package = Package(
         .executable(name: "VibeVoiceOSS", targets: ["VibeVoiceOSS"])
     ],
     targets: [
+        .target(
+            name: "ObjCExceptionCatcher",
+            path: "Sources/ObjCExceptionCatcher",
+            publicHeadersPath: "include"
+        ),
         .executableTarget(
             name: "VibeVoiceOSS",
+            dependencies: ["ObjCExceptionCatcher"],
             path: "Sources/VibeVoiceOSS"
         ),
         .testTarget(
