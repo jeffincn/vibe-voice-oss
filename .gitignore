@@ -1,0 +1,10 @@
+.build/
+dist/
+**/node_modules/
+**/.DS_Store
+*.xcuserstate
+*.tsbuildinfo
+.env
+.env.*
+.swiftpm/xcode/xcuserdata/
+.swiftpm/config/registries.json
