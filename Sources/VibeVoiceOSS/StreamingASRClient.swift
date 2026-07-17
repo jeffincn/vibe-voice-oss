@@ -327,7 +327,38 @@ actor OverlappingWindowStreamingASRClient: StreamingASRClient {
             streamResults: false,
             onEvent: nil
         )
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.looksLikePromptHallucination(trimmed, prompt: configuration.prompt) {
+            return ""
+        }
+        return trimmed
+    }
+
+    /// ASR models often echo the hotspot `prompt` during silence / noise.
+    private static func looksLikePromptHallucination(_ text: String, prompt: String) -> Bool {
+        let compactText = compactASRToken(text)
+        guard !compactText.isEmpty else { return true }
+        let compactPrompt = compactASRToken(prompt)
+        if !compactPrompt.isEmpty {
+            let stripped = compactText.replacingOccurrences(of: compactPrompt, with: "")
+            if stripped.isEmpty { return true }
+        }
+        // Known placeholder echoes even when the stored prompt was already cleared.
+        let junkRoots = ["localasrmacos", "asrmacos", "qwen3asromlxswiftmacos"]
+        for root in junkRoots {
+            let stripped = compactText.replacingOccurrences(of: root, with: "")
+            if stripped.isEmpty { return true }
+        }
+        return false
+    }
+
+    private static func compactASRToken(_ raw: String) -> String {
+        raw.lowercased()
+            .replacingOccurrences(of: "，", with: ",")
+            .unicodeScalars
+            .filter { CharacterSet.alphanumerics.contains($0) }
+            .map(String.init)
+            .joined()
     }
 
     private func wavFromPCM16(_ pcm: Data) -> Data {

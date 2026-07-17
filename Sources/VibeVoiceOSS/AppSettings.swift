@@ -310,11 +310,15 @@ final class AppSettings: ObservableObject {
             key: Key.language,
             fallback: "zh"
         )
-        prompt = KeychainStore.coalesceString(
-            defaults: defaults,
-            key: Key.prompt,
-            fallback: "local ASR, macOS"
+        let resolvedPrompt = Self.sanitizedASRPrompt(
+            KeychainStore.coalesceString(
+                defaults: defaults,
+                key: Key.prompt,
+                fallback: ""
+            )
         )
+        prompt = resolvedPrompt
+        defaults.set(resolvedPrompt, forKey: Key.prompt)
         let resolvedASRKey = KeychainStore.loadOrMigrate(
             account: .asrAPIKey,
             defaults: defaults,
@@ -576,5 +580,33 @@ final class AppSettings: ObservableObject {
             components?.path = "/v1/chat/completions"
         }
         return components?.string ?? "http://127.0.0.1:8000/v1/chat/completions"
+    }
+
+    /// Drop known placeholder prompts that ASR models tend to echo during silence.
+    static func sanitizedASRPrompt(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        let normalized = trimmed
+            .lowercased()
+            .replacingOccurrences(of: "，", with: ",")
+            .replacingOccurrences(of: " ", with: "")
+        let junk: Set<String> = [
+            "localasr,macos",
+            "asr,macos",
+            "localasr,macos.",
+            "asr,macos.",
+            "qwen3-asr,omlx,swift,macos",
+            "qwen3-asr，omlx，swift，macos",
+        ]
+        if junk.contains(normalized) { return "" }
+        // Also drop if the whole prompt is only those tokens repeated.
+        let stripped = normalized
+            .replacingOccurrences(of: "localasr,", with: "")
+            .replacingOccurrences(of: "asr,", with: "")
+            .replacingOccurrences(of: "macos", with: "")
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: ",", with: "")
+        if stripped.isEmpty { return "" }
+        return trimmed
     }
 }

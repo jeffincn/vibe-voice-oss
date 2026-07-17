@@ -197,6 +197,13 @@ final class AppState: ObservableObject {
         launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
         if settings.launchAtLogin && !launchAtLoginEnabled {
             Task { @MainActor in self.setLaunchAtLogin(true) }
+        } else if settings.launchAtLogin && launchAtLoginEnabled {
+            // Re-register so Login Items show the current CFBundleDisplayName after renames.
+            Task { @MainActor in
+                try? SMAppService.mainApp.unregister()
+                try? SMAppService.mainApp.register()
+                self.launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
+            }
         }
     }
 
@@ -440,12 +447,25 @@ final class AppState: ObservableObject {
                 )
                 // If the model ignored the target language, force one stricter retry.
                 if !snapshot.targetLanguage.outputLooksCompatible(translation) {
-                    translation = try await translator.translate(
-                        text: """
-                        [REQUIRED OUTPUT LANGUAGE: \(snapshot.targetLanguage.promptName)]
-                        \(working)
+                    var retryConfig = snapshot.translationConfiguration
+                    // Strengthen directive in configuration only — never prepend meta tags to user text.
+                    retryConfig = TranslationConfiguration(
+                        endpoint: snapshot.translationConfiguration.endpoint,
+                        model: snapshot.translationConfiguration.model,
+                        targetLanguage: snapshot.translationConfiguration.targetLanguage,
+                        styleHint: """
+                        \(snapshot.translationConfiguration.styleHint)
+
+                        CRITICAL: Write the entire translation in \(snapshot.targetLanguage.promptName) only.
+                        Do not mention the required language in the output body.
                         """,
-                        configuration: snapshot.translationConfiguration
+                        apiKey: snapshot.translationConfiguration.apiKey,
+                        task: snapshot.translationConfiguration.task,
+                        promptTarget: snapshot.translationConfiguration.promptTarget
+                    )
+                    translation = try await translator.translate(
+                        text: working,
+                        configuration: retryConfig
                     )
                 }
                 if !snapshot.targetLanguage.outputLooksCompatible(translation) {
