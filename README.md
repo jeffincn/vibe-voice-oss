@@ -23,8 +23,10 @@ open "dist/Vibe Voice OSS.app"
 
 By default the app uses **Integrated ASR** with WhisperKit. Use **Prepare Model** in Settings to download or repair the selected local ASR model. Qwen3-ASR is available through `mlx-swift-asr` and defaults to the Hugging Face repo `mlx-community/Qwen3-ASR-0.6B-6bit`; you can also point it at an existing local MLX model directory. You can switch the ASR mode to an OpenAI-compatible API endpoint in Settings.
 
-The build installs as **Vibe Voice OSS** (bundle id `app.vibevoice.oss.macos`, version **0.5.2**) into both `dist/` and `/Applications`.
+The build installs as **Vibe Voice OSS** (bundle id `app.vibevoice.oss.macos`, version **0.5.0**) into both `dist/` and `/Applications`.
 First launch needs Microphone and Accessibility permissions.
+
+See the [0.5.0 Change Note](docs/change-note-0.5.0.md) for upgrade guidance and a complete summary of changes since 0.4.
 
 The build script prefers an Apple Development identity from your keychain so Accessibility grants survive rebuilds; without one it falls back to ad-hoc signing.
 
