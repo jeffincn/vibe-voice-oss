@@ -19,6 +19,12 @@ struct VibeVoiceOSSApp: App {
         }
         .defaultSize(width: 560, height: 460)
 
+        Window("Token 用量统计", id: "token-usage-report") {
+            TokenUsageReportView()
+                .environmentObject(appState)
+        }
+        .defaultSize(width: 560, height: 460)
+
         Settings {
             SettingsView()
                 .environmentObject(appState)
@@ -45,7 +51,7 @@ private struct MenuPanel: View {
 
     private var isBusyCancelable: Bool {
         switch appState.phase {
-        case .finalizing, .transcribing, .structuring, .translating, .optimizing:
+        case .finalizing, .transcribing, .structuring, .translating, .optimizing, .routing:
             true
         default:
             false
@@ -56,6 +62,7 @@ private struct MenuPanel: View {
         if isBusyCancelable {
             switch appState.phase {
             case .optimizing: return "取消优化"
+            case .routing: return "取消路由"
             case .structuring: return "取消整理"
             case .translating: return "取消翻译"
             case .finalizing: return "取消收敛"
@@ -94,6 +101,7 @@ private struct MenuPanel: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                 }
+                .disabled(!settings.llmFeaturesAvailable)
 
                 Toggle(isOn: $settings.promptOptimizeEnabled) {
                     Label("Prompt 优化", systemImage: "sparkles")
@@ -101,8 +109,9 @@ private struct MenuPanel: View {
                         .foregroundStyle(AppChrome.ink)
                 }
                 .toggleStyle(.switch)
+                .disabled(!settings.llmFeaturesAvailable)
 
-                if settings.promptOptimizeEnabled {
+                if settings.promptOptimizeEnabled && settings.llmFeaturesAvailable {
                     menuPickerRow("目标 Agent", systemImage: "cpu") {
                         Picker("", selection: $settings.promptTargetID) {
                             ForEach(PromptTargetKind.allCases) { target in
@@ -125,8 +134,9 @@ private struct MenuPanel: View {
                             .foregroundStyle(AppChrome.ink)
                     }
                     .toggleStyle(.switch)
+                    .disabled(!settings.llmFeaturesAvailable)
 
-                    if settings.structuredOutputEnabled {
+                    if settings.structuredOutputEnabled && settings.llmFeaturesAvailable {
                         Toggle(isOn: $settings.structuredEmojiEnabled) {
                             Label("使用 Emoji", systemImage: "face.smiling")
                                 .font(.system(size: 13, weight: .medium))
@@ -146,6 +156,11 @@ private struct MenuPanel: View {
                             .labelsHidden()
                             .pickerStyle(.menu)
                         }
+                    }
+                    if !settings.llmFeaturesAvailable {
+                        Text("LLM API 模式未配置，仅输出 ASR 原文")
+                            .font(.system(size: 11))
+                            .foregroundStyle(AppChrome.muted)
                     }
                 }
                 .padding(.top, 8)
@@ -213,6 +228,22 @@ private struct MenuPanel: View {
                 }
                 .buttonStyle(MenuFooterButtonStyle())
                 .help("查看各阶段耗时，并可导出 CSV / HTML")
+
+                Button {
+                    openWindow(id: "token-usage-report")
+                    NSApplication.shared.activate()
+                } label: {
+                    HStack {
+                        Label("Token 用量", systemImage: "number.circle")
+                            .font(.system(size: 13, weight: .medium))
+                        Spacer(minLength: 8)
+                        Text(appState.tokenUsage.total.totalTokens.formatted())
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(AppChrome.muted)
+                    }
+                }
+                .buttonStyle(MenuFooterButtonStyle())
+                .help("查看语音转写与 LLM 后处理接口返回的实际 Usage")
 
                 Button {
                     appState.copyLastTranscript()

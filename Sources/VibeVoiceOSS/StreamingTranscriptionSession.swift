@@ -17,16 +17,19 @@ final class StreamingTranscriptionSession {
     private var windowClient: OverlappingWindowStreamingASRClient?
     private let onUpdate: (TranscriptAccumulator) -> Void
     private let onFirstPartial: () -> Void
+    private let onUsage: (TokenUsage) -> Void
     private var sawPartial = false
     private var pendingPCM: [Data] = []
     private var pcmDrainTask: Task<Void, Never>?
 
     init(
         onUpdate: @escaping (TranscriptAccumulator) -> Void,
-        onFirstPartial: @escaping () -> Void = {}
+        onFirstPartial: @escaping () -> Void = {},
+        onUsage: @escaping (TokenUsage) -> Void = { _ in }
     ) {
         self.onUpdate = onUpdate
         self.onFirstPartial = onFirstPartial
+        self.onUsage = onUsage
     }
 
     func open(
@@ -73,6 +76,35 @@ final class StreamingTranscriptionSession {
 
         let window = OverlappingWindowStreamingASRClient(
             configuration: configuration,
+            onEvent: handler
+        )
+        await window.start()
+        windowClient = window
+        client = window
+        backend = .overlappingWindow
+    }
+
+    /// Open a local-only streaming session for integrated ASR (no WebSocket).
+    /// Uses wider windows and slower polling since local inference is heavier.
+    func openLocal(configuration: TranscriptionConfiguration) async {
+        closeClients()
+        accumulator.reset()
+        sawPartial = false
+        pendingPCM.removeAll(keepingCapacity: false)
+        isOpen = true
+        onUpdate(accumulator)
+
+        let handler: StreamingASRPartialHandler = { [weak self] event in
+            Task { @MainActor in
+                self?.handle(event)
+            }
+        }
+
+        let window = OverlappingWindowStreamingASRClient(
+            configuration: configuration,
+            liveWindowSeconds: 6.0,
+            liveKeepSeconds: 2.5,
+            pollMs: 2500,
             onEvent: handler
         )
         await window.start()
@@ -156,6 +188,8 @@ final class StreamingTranscriptionSession {
             if accumulator.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 accumulator.applyPartial(message)
             }
+        case let .usage(usage):
+            onUsage(usage)
         case .done:
             break
         }

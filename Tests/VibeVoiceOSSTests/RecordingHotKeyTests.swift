@@ -9,6 +9,7 @@ final class RecordingHotKeyTests: XCTestCase {
             XCTAssertFalse(mode.chordLabel.isEmpty)
         }
         XCTAssertEqual(RecordingOutputMode.conversation.chordLabel, "⌘⇧R")
+        XCTAssertEqual(RecordingOutputMode.english.chordLabel, "⌘⇧E")
         XCTAssertEqual(RecordingOutputMode.structured.chordLabel, "⌘⇧F")
         XCTAssertEqual(RecordingOutputMode.prompt.chordLabel, "⌘⇧T")
     }
@@ -19,6 +20,7 @@ final class RecordingHotKeyTests: XCTestCase {
         XCTAssertEqual(RecordingOutputMode.resolve(carbonHotKeyID: 1), .conversation)
         XCTAssertEqual(RecordingOutputMode.resolve(carbonHotKeyID: 2), .structured)
         XCTAssertEqual(RecordingOutputMode.resolve(carbonHotKeyID: 3), .prompt)
+        XCTAssertEqual(RecordingOutputMode.resolve(carbonHotKeyID: 4), .english)
         XCTAssertNil(RecordingOutputMode.resolve(carbonHotKeyID: 99))
     }
 

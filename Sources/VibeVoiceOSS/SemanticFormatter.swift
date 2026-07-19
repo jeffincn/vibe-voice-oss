@@ -44,6 +44,7 @@ struct SemanticFormatterConfiguration: Sendable {
     let model: String
     let apiKey: String
     let mode: StructureMode
+    var customSystemPrompt: String = ""
     /// When set, structured cleanup must emit this language (e.g. Simplified Chinese).
     var outputLanguageDirective: String? = nil
     /// Decorative emoji in structured / ultra / rewrite layouts. Default off.
@@ -55,7 +56,7 @@ enum SemanticFormatterError: LocalizedError {
     case server(status: Int, message: String)
     case invalidResponse
     case emptyText
-    case timedOut
+    case timedOut(seconds: Int)
 
     var errorDescription: String? {
         switch self {
@@ -63,7 +64,8 @@ enum SemanticFormatterError: LocalizedError {
         case let .server(status, message): "整理模型返回 HTTP \(status)：\(message)"
         case .invalidResponse: "整理模型返回了无法解析的响应。"
         case .emptyText: "整理完成，但返回文本为空。"
-        case .timedOut: "结构化整理超过 60 秒，已自动中断。"
+        case let .timedOut(seconds):
+            "结构化整理超过 \(seconds) 秒，已自动中断。请检查百炼模型限流、上下文长度或缩短输入后重试。"
         }
     }
 }
@@ -524,16 +526,17 @@ enum SemanticFormatter {
         transcript: String,
         mode: StructureMode,
         outputLanguageDirective: String? = nil,
-        useEmoji: Bool = false
+        useEmoji: Bool = false,
+        customSystemPrompt: String = ""
     ) -> [[String: String]] {
         var messages: [[String: String]] = [
             [
                 "role": "system",
-                "content": systemPrompt(
+                "content": TranslationClient.withCustomSystemPrompt(systemPrompt(
                     for: mode,
                     outputLanguageDirective: outputLanguageDirective,
                     useEmoji: useEmoji
-                )
+                ), custom: customSystemPrompt)
             ]
         ]
 
@@ -552,16 +555,12 @@ enum SemanticFormatter {
             "role": "user",
             "content": userPrompt(transcript: transcript, mode: mode, useEmoji: useEmoji)
         ])
-        messages.append([
-            "role": "assistant",
-            "content": "<think>\n</think>\n"
-        ])
-
         return messages
     }
 }
 
 struct SemanticFormatterClient: Sendable {
+    private static let requestTimeoutSeconds = 180
     private struct ChatResponse: Decodable {
         struct Choice: Decodable {
             struct Message: Decodable {
@@ -578,14 +577,18 @@ struct SemanticFormatterClient: Sendable {
         let choices: [Choice]
     }
 
-    func format(text: String, configuration: SemanticFormatterConfiguration) async throws -> String {
+    func format(
+        text: String,
+        configuration: SemanticFormatterConfiguration,
+        onUsage: (@Sendable (TokenUsage) -> Void)? = nil
+    ) async throws -> String {
         try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask {
-                try await performFormat(text: text, configuration: configuration)
+                try await performFormat(text: text, configuration: configuration, onUsage: onUsage)
             }
             group.addTask {
-                try await Task.sleep(for: .seconds(60))
-                throw SemanticFormatterError.timedOut
+                try await Task.sleep(for: .seconds(Self.requestTimeoutSeconds))
+                throw SemanticFormatterError.timedOut(seconds: Self.requestTimeoutSeconds)
             }
 
             defer { group.cancelAll() }
@@ -598,7 +601,8 @@ struct SemanticFormatterClient: Sendable {
 
     private func performFormat(
         text: String,
-        configuration: SemanticFormatterConfiguration
+        configuration: SemanticFormatterConfiguration,
+        onUsage: (@Sendable (TokenUsage) -> Void)?
     ) async throws -> String {
         guard let url = URL(string: configuration.endpoint) else {
             throw SemanticFormatterError.invalidEndpoint
@@ -606,7 +610,7 @@ struct SemanticFormatterClient: Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 60
+        request.timeoutInterval = TimeInterval(Self.requestTimeoutSeconds)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
@@ -642,7 +646,8 @@ struct SemanticFormatterClient: Sendable {
                 transcript: text,
                 mode: configuration.mode,
                 outputLanguageDirective: configuration.outputLanguageDirective,
-                useEmoji: configuration.useEmoji
+                useEmoji: configuration.useEmoji,
+                customSystemPrompt: configuration.customSystemPrompt
             )
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
@@ -658,6 +663,10 @@ struct SemanticFormatterClient: Sendable {
         guard let chat = try? JSONDecoder().decode(ChatResponse.self, from: data),
               let message = chat.choices.first?.message else {
             throw SemanticFormatterError.invalidResponse
+        }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let usage = TokenUsage.parse(object["usage"]) {
+            onUsage?(usage)
         }
 
         let raw = message.content ?? ""

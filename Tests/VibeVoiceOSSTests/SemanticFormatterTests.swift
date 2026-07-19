@@ -132,8 +132,18 @@ final class SemanticFormatterTests: XCTestCase {
 
     func testCleanFormattingMessagesSkipFewShots() {
         let messages = SemanticFormatter.formattingMessages(transcript: "你好", mode: .clean)
-        // system + user + think prefill only
-        XCTAssertEqual(messages.count, 3)
+        // Bailian-compatible system + user; no trailing assistant prefill.
+        XCTAssertEqual(messages.count, 2)
+    }
+
+    func testCustomSystemPromptIsAppendedToFormatterSystemMessage() {
+        let messages = SemanticFormatter.formattingMessages(
+            transcript: "你好",
+            mode: .clean,
+            customSystemPrompt: "保持我的个人语气"
+        )
+        XCTAssertTrue(messages[0]["content"]?.contains("保持我的个人语气") == true)
+        XCTAssertEqual(messages.last?["role"], "user")
     }
 
     func testStripWrappingCodeFence() {

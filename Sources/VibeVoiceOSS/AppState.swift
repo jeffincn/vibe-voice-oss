@@ -12,6 +12,7 @@ final class AppState: ObservableObject {
         case structuring
         case translating
         case optimizing
+        case routing
         case success(String)
         case failed(String)
 
@@ -24,6 +25,7 @@ final class AppState: ObservableObject {
             case .structuring: "正在整理内容…"
             case .translating: "正在翻译…"
             case .optimizing: "正在编译 Prompt…"
+            case .routing: "智能路由处理中…"
             case let .success(text): text
             case let .failed(message): message
             }
@@ -55,14 +57,14 @@ final class AppState: ObservableObject {
             switch self {
             case .idle, .success: "waveform"
             case .recording: "record.circle.fill"
-            case .finalizing, .transcribing, .structuring, .translating, .optimizing: "ellipsis.circle"
+            case .finalizing, .transcribing, .structuring, .translating, .optimizing, .routing: "ellipsis.circle"
             case .failed: "exclamationmark.triangle"
             }
         }
 
         var isBusy: Bool {
             switch self {
-            case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing: true
+            case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing, .routing: true
             default: false
             }
         }
@@ -76,6 +78,7 @@ final class AppState: ObservableObject {
             case .structuring: "整理中"
             case .translating: "翻译中"
             case .optimizing: "输出 Prompt"
+            case .routing: "智能路由"
             case .success: "完成"
             case .failed: "失败"
             case .idle: ""
@@ -85,6 +88,7 @@ final class AppState: ObservableObject {
         /// Whether this phase can show a nested engine / target sub-status.
         var showsHUDSecondary: Bool {
             if case .optimizing = self { return true }
+            if case .routing = self { return true }
             return false
         }
 
@@ -96,6 +100,7 @@ final class AppState: ObservableObject {
     /// Nested HUD line for Prompt compile — e.g. Codex / Claude Code.
     var hudSecondary: String? {
         guard phase.showsHUDSecondary else { return nil }
+        if case .routing = phase { return "自定义 System Prompt" }
         return settings.promptTarget.label
     }
 
@@ -113,6 +118,7 @@ final class AppState: ObservableObject {
     @Published private(set) var lastCapabilities = OMLXCapabilities.unknown
     let settings = AppSettings()
     let stageTiming = StageTimingStore()
+    let tokenUsage = TokenUsageStore()
 
     var inputDeviceName: String { recorder.deviceName(for: settings.inputDeviceUID) }
 
@@ -148,8 +154,10 @@ final class AppState: ObservableObject {
         let structuredOutputEnabled: Bool
         let structuredEmojiEnabled: Bool
         let structureIntensity: StructureIntensity
+        let smartRouteEnabled: Bool
         let translationConfiguration: TranslationConfiguration
         let promptOptimizeConfiguration: TranslationConfiguration
+        let smartRouteConfiguration: TranslationConfiguration
         let chatEndpoint: String
         let languageModel: String
         let apiKey: String
@@ -221,7 +229,7 @@ final class AppState: ObservableObject {
         defer { isStartingRecording = false }
 
         switch phase {
-        case .finalizing, .transcribing, .structuring, .translating, .optimizing:
+        case .finalizing, .transcribing, .structuring, .translating, .optimizing, .routing:
             // Latest-only: drop in-flight inference and any expired snapshot.
             processingGeneration += 1
             transcriptionTask?.cancel()
@@ -246,10 +254,14 @@ final class AppState: ObservableObject {
             let promptLabel: String?
             switch outputMode {
             case .prompt:
-                promptLabel = settings.promptTarget.label
+                promptLabel = settings.llmFeaturesAvailable ? settings.promptTarget.label : nil
+            case .smartRoute:
+                promptLabel = nil
             case .none:
-                promptLabel = settings.promptOptimizeEnabled ? settings.promptTarget.label : nil
-            case .conversation, .structured:
+                promptLabel = settings.llmFeaturesAvailable && settings.promptOptimizeEnabled
+                    ? settings.promptTarget.label
+                    : nil
+            case .conversation, .english, .structured:
                 promptLabel = nil
             }
             stageTiming.beginSession(promptTarget: promptLabel)
@@ -273,16 +285,28 @@ final class AppState: ObservableObject {
                 },
                 onFirstPartial: { [weak self] in
                     self?.stageTiming.markFirstPartial()
+                },
+                onUsage: { [weak self] usage in
+                    guard let self else { return }
+                    self.tokenUsage.record(
+                        usage,
+                        stage: .transcription,
+                        model: self.settings.configuration.model
+                    )
                 }
             )
             streamingSession = session
-            let wsURL = settings.streamingMode == .duplexStreaming
-                ? URL(string: settings.streamingWSURL)
-                : nil
-            await session.open(
-                configuration: settings.configuration,
-                streamingWSURL: wsURL
-            )
+            if settings.asrBackend == .api {
+                let wsURL = settings.streamingMode == .duplexStreaming
+                    ? URL(string: settings.streamingWSURL)
+                    : nil
+                await session.open(
+                    configuration: settings.configuration,
+                    streamingWSURL: wsURL
+                )
+            } else {
+                await session.openLocal(configuration: settings.configuration)
+            }
         } catch {
             recorder.cancel()
             sessionOutputMode = nil
@@ -300,38 +324,57 @@ final class AppState: ObservableObject {
             processingGeneration += 1
             let mode = settings.streamingMode
             let outputMode = sessionOutputMode
+            let llmEnabled = settings.llmFeaturesAvailable
             let structured: Bool
             let prompt: Bool
+            let smart: Bool
             switch outputMode {
             case .conversation:
                 structured = false
                 prompt = false
-            case .structured:
-                structured = true
+                smart = false
+            case .english:
+                structured = false
                 prompt = false
+                smart = false
+            case .structured:
+                structured = llmEnabled
+                prompt = false
+                smart = false
             case .prompt:
                 structured = false
-                prompt = true
+                prompt = llmEnabled
+                smart = false
+            case .smartRoute:
+                structured = false
+                prompt = false
+                smart = llmEnabled
             case .none:
-                structured = settings.structuredOutputEnabled
-                prompt = settings.promptOptimizeEnabled
+                structured = llmEnabled && settings.structuredOutputEnabled
+                prompt = llmEnabled && settings.promptOptimizeEnabled
+                smart = false
             }
+            let streamingMode = settings.asrBackend == .api ? mode : .batch
             let snapshot = ProcessingSnapshot(
                 wav: wav,
                 transcript: nil,
                 generation: processingGeneration,
                 configuration: settings.configuration,
-                targetLanguage: settings.targetLanguage,
+                targetLanguage: outputMode == .english
+                    ? TargetLanguage.resolve(id: "en")
+                    : settings.effectiveTargetLanguage,
                 promptOptimizeEnabled: prompt,
                 structuredOutputEnabled: structured,
                 structuredEmojiEnabled: settings.structuredEmojiEnabled,
                 structureIntensity: settings.structureIntensity,
+                smartRouteEnabled: smart,
                 translationConfiguration: settings.translationConfiguration,
                 promptOptimizeConfiguration: settings.promptOptimizeConfiguration,
+                smartRouteConfiguration: settings.smartRouteConfiguration,
                 chatEndpoint: settings.llmEndpoint,
                 languageModel: settings.translationModel,
                 apiKey: settings.llmApiKey,
-                streamingMode: mode,
+                streamingMode: streamingMode,
                 outputMode: outputMode
             )
             transcriptionTask?.cancel()
@@ -363,7 +406,11 @@ final class AppState: ObservableObject {
                     streamingSession = nil
                 } else if let wav = snapshot.wav {
                     // Session failed to open — fall back to batch on the captured WAV.
-                    transcript = try await client.transcribe(wav: wav, configuration: snapshot.configuration)
+                    transcript = try await client.transcribe(
+                        wav: wav,
+                        configuration: snapshot.configuration,
+                        onUsage: usageRecorder(stage: .transcription, model: snapshot.configuration.model)
+                    )
                 } else {
                     throw TranscriptionError.invalidResponse
                 }
@@ -384,7 +431,8 @@ final class AppState: ObservableObject {
                         Task { @MainActor in
                             self?.handleTranscriptionEvent(event, generation: snapshot.generation)
                         }
-                    }
+                    },
+                    onUsage: usageRecorder(stage: .transcription, model: snapshot.configuration.model)
                 )
                 publishFinalTranscript(transcript)
 
@@ -394,17 +442,37 @@ final class AppState: ObservableObject {
                 stageTiming.enter(.transcribing)
                 phase = .transcribing
                 guard let wav = snapshot.wav else { throw TranscriptionError.invalidResponse }
-                transcript = try await client.transcribe(wav: wav, configuration: snapshot.configuration)
+                transcript = try await client.transcribe(
+                    wav: wav,
+                    configuration: snapshot.configuration,
+                    onUsage: usageRecorder(stage: .transcription, model: snapshot.configuration.model)
+                )
                 publishFinalTranscript(transcript)
             }
 
             try Task.checkCancellation()
             guard snapshot.generation == processingGeneration else { return }
 
-            // Pipeline: ASR → (optional structure) → (prompt optimize XOR translate)
+            // Pipeline: ASR → smart route | (optional structure) → (prompt optimize XOR translate)
+            var working = transcript
+            var output = working
+
+            if snapshot.smartRouteEnabled {
+                stageTiming.enter(.optimizing, detail: "智能路由")
+                phase = .routing
+                output = try await translator.translate(
+                    text: transcript,
+                    configuration: snapshot.smartRouteConfiguration,
+                    onUsage: usageRecorder(
+                        stage: .promptOptimization,
+                        model: snapshot.smartRouteConfiguration.model
+                    )
+                )
+                try Task.checkCancellation()
+                guard snapshot.generation == processingGeneration else { return }
+            } else {
             // Hotkey modes set structured/prompt flags on the snapshot; when both settings
             // toggles are on without a hotkey, skip structure while compiling (IR owns cleanup).
-            var working = transcript
             let runStructure = snapshot.structuredOutputEnabled
                 && !snapshot.promptOptimizeEnabled
             if runStructure {
@@ -423,49 +491,73 @@ final class AppState: ObservableObject {
                         : nil,
                     useEmoji: snapshot.structuredEmojiEnabled
                 )
-                working = try await formatter.format(text: transcript, configuration: formatConfig)
+                working = try await formatter.format(
+                    text: transcript,
+                    configuration: formatConfig,
+                    onUsage: usageRecorder(stage: .structuring, model: formatConfig.model)
+                )
                 try Task.checkCancellation()
                 guard snapshot.generation == processingGeneration else { return }
             }
 
-            var output = working
+            output = working
             if snapshot.promptOptimizeEnabled {
                 stageTiming.enter(.optimizing, detail: snapshot.promptOptimizeConfiguration.promptTarget.label)
                 phase = .optimizing
                 output = try await translator.translate(
                     text: working,
-                    configuration: snapshot.promptOptimizeConfiguration
+                    configuration: snapshot.promptOptimizeConfiguration,
+                    onUsage: usageRecorder(
+                        stage: .promptOptimization,
+                        model: snapshot.promptOptimizeConfiguration.model
+                    )
                 )
                 try Task.checkCancellation()
                 guard snapshot.generation == processingGeneration else { return }
             } else if snapshot.targetLanguage.translates {
                 stageTiming.enter(.translating)
                 phase = .translating
+                let baseTranslationConfig = snapshot.translationConfiguration
+                let activeTranslationConfig = TranslationConfiguration(
+                    endpoint: baseTranslationConfig.endpoint,
+                    model: baseTranslationConfig.model,
+                    targetLanguage: snapshot.targetLanguage.promptName,
+                    styleHint: snapshot.targetLanguage.styleHint,
+                    customSystemPrompt: baseTranslationConfig.customSystemPrompt,
+                    apiKey: baseTranslationConfig.apiKey,
+                    task: .translate,
+                    promptTarget: baseTranslationConfig.promptTarget
+                )
                 var translation = try await translator.translate(
                     text: working,
-                    configuration: snapshot.translationConfiguration
+                    configuration: activeTranslationConfig,
+                    onUsage: usageRecorder(
+                        stage: .translation, model: activeTranslationConfig.model
+                    )
                 )
                 // If the model ignored the target language, force one stricter retry.
                 if !snapshot.targetLanguage.outputLooksCompatible(translation) {
-                    var retryConfig = snapshot.translationConfiguration
+                    var retryConfig = activeTranslationConfig
                     // Strengthen directive in configuration only — never prepend meta tags to user text.
                     retryConfig = TranslationConfiguration(
-                        endpoint: snapshot.translationConfiguration.endpoint,
-                        model: snapshot.translationConfiguration.model,
-                        targetLanguage: snapshot.translationConfiguration.targetLanguage,
+                        endpoint: activeTranslationConfig.endpoint,
+                        model: activeTranslationConfig.model,
+                        targetLanguage: activeTranslationConfig.targetLanguage,
                         styleHint: """
-                        \(snapshot.translationConfiguration.styleHint)
+                        \(activeTranslationConfig.styleHint)
 
                         CRITICAL: Write the entire translation in \(snapshot.targetLanguage.promptName) only.
                         Do not mention the required language in the output body.
                         """,
-                        apiKey: snapshot.translationConfiguration.apiKey,
-                        task: snapshot.translationConfiguration.task,
-                        promptTarget: snapshot.translationConfiguration.promptTarget
+                        customSystemPrompt: activeTranslationConfig.customSystemPrompt,
+                        apiKey: activeTranslationConfig.apiKey,
+                        task: activeTranslationConfig.task,
+                        promptTarget: activeTranslationConfig.promptTarget
                     )
                     translation = try await translator.translate(
                         text: working,
-                        configuration: retryConfig
+                        configuration: retryConfig,
+                        onUsage: usageRecorder(stage: .translation, model: retryConfig.model)
                     )
                 }
                 if !snapshot.targetLanguage.outputLooksCompatible(translation) {
@@ -478,6 +570,7 @@ final class AppState: ObservableObject {
                     translation: translation
                 )
             }
+            } // end of non-smartRoute else block
 
             guard snapshot.generation == processingGeneration else { return }
             lastTranscript = output
@@ -490,14 +583,14 @@ final class AppState: ObservableObject {
                 stageTiming.finishSession(outcome: .success)
                 phase = .success(output)
                 NSSound(named: "Pop")?.play()
-                // Keep HUD visible briefly so "完成" status is readable.
                 try? await Task.sleep(for: .milliseconds(450))
             } catch {
                 stageTiming.finishSession(
                     outcome: .failed,
                     message: "处理成功，但无法写入当前输入框"
                 )
-                phase = .failed("处理成功，但无法写入当前输入框。内容已复制，请手动粘贴。")
+                let detail = error.localizedDescription
+                phase = .failed("处理成功，但无法写入：\(detail)内容已复制，请手动粘贴。")
                 try? await Task.sleep(for: .milliseconds(650))
             }
             recordingHUD.hide()
@@ -519,6 +612,17 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func usageRecorder(
+        stage: UsageStage,
+        model: String
+    ) -> @Sendable (TokenUsage) -> Void {
+        { [weak self] usage in
+            Task { @MainActor in
+                self?.tokenUsage.record(usage, stage: stage, model: model)
+            }
+        }
+    }
+
     private func handleTranscriptionEvent(_ event: StreamingASREvent, generation: Int) {
         guard generation == processingGeneration else { return }
         switch event {
@@ -531,7 +635,7 @@ final class AppState: ObservableObject {
             publishThrottledPartial(stable: text, unstable: "")
         case let .final(text):
             publishFinalTranscript(text)
-        case .error, .done:
+        case .usage, .error, .done:
             break
         }
     }
@@ -567,8 +671,25 @@ final class AppState: ObservableObject {
 
     func testConnection() {
         let configuration = settings.configuration
-        connectionMessage = "正在连接 ASR…"
-        capabilityMessage = "正在探测 Streaming 能力…"
+        if configuration.backend == .integrated {
+            connectionMessage = "正在检查本地 ASR…"
+            capabilityMessage = "本地原生 ASR：首次使用可能需要下载或加载模型。"
+            Task {
+                do {
+                    try await client.checkServer(configuration: configuration)
+                    connectionMessage = "本地 ASR 已就绪"
+                } catch {
+                    connectionMessage = "本地 ASR 检查失败：\(error.localizedDescription)"
+                }
+                let caps = await OMLXCapabilityProbe.probe(configuration: configuration)
+                lastCapabilities = caps
+                capabilityMessage = caps.summary
+            }
+            return
+        }
+
+        connectionMessage = "正在连接 ASR API…"
+        capabilityMessage = "正在探测 API Streaming 能力…"
         Task {
             do {
                 try await client.checkServer(configuration: configuration)
@@ -582,8 +703,107 @@ final class AppState: ObservableObject {
         }
     }
 
+    func prepareLocalASRModel() {
+        let configuration = settings.configuration
+        guard configuration.backend == .integrated else {
+            connectionMessage = "API 模式不需要下载本地 ASR 模型"
+            return
+        }
+        let guidance = NativeASRClient.downloadGuidance(configuration: configuration)
+        connectionMessage = "正在准备本地 ASR 模型…"
+        capabilityMessage = localASRPreparationMessage(configuration: configuration, guidance: guidance)
+        Task {
+            do {
+                let result = try await NativeASRClient.shared.prepareRuntime(
+                    configuration: configuration,
+                    onProgress: { [weak self] message in
+                        Task { @MainActor in
+                            self?.capabilityMessage = message
+                        }
+                    }
+                )
+                if let path = result.modelPath,
+                   configuration.integratedEngine == .qwen3MLX {
+                    settings.integratedASRModelPath = path
+                }
+                connectionMessage = result.message
+                let caps = await OMLXCapabilityProbe.probe(configuration: settings.configuration)
+                lastCapabilities = caps
+                capabilityMessage = caps.summary
+            } catch {
+                connectionMessage = "准备本地 ASR 失败：\(error.localizedDescription)"
+                capabilityMessage = localASRFailureHelp(error: error, guidance: guidance)
+            }
+        }
+    }
+
+    private func localASRPreparationMessage(
+        configuration: TranscriptionConfiguration,
+        guidance: NativeASRDownloadGuidance
+    ) -> String {
+        var lines = [
+            localASRModelSummary(configuration),
+            guidance.detail,
+            "手动下载命令：\(guidance.manualCommand)"
+        ]
+        if let hf = hfCLIPath() {
+            lines.append("已检测到 hf CLI：\(hf)")
+        } else {
+            lines.append("未检测到 hf CLI；内置下载器仍会尝试下载。需要手动处理时，请先安装：python3 -m pip install --user -U huggingface_hub hf-xet")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func localASRModelSummary(_ configuration: TranscriptionConfiguration) -> String {
+        switch configuration.integratedEngine {
+        case .qwen3MLX:
+            let path = configuration.integratedModelPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            return path.isEmpty
+                ? "当前本地 ASR：Qwen3-ASR · \(configuration.qwenModelRepo)"
+                : "当前本地 ASR：Qwen3-ASR · \(configuration.qwenModelRepo) · \(path)"
+        case .whisperMLX:
+            let model = AppSettings.normalizeWhisperKitModel(configuration.whisperKitModel)
+            return "当前本地 ASR：WhisperKit · \(model.isEmpty ? "tiny" : model)"
+        }
+    }
+
+    private func localASRFailureHelp(error: Error, guidance: NativeASRDownloadGuidance) -> String {
+        let text = error.localizedDescription.lowercased()
+        var lines: [String] = []
+        if text.contains("401") || text.contains("403") || text.contains("unauthorized") || text.contains("forbidden") || text.contains("gated") {
+            lines.append("看起来需要 Hugging Face 授权。请在终端执行：hf auth login")
+        }
+        if text.contains("model load failed") || text.contains("failed to load") || text.contains("runtime init failed") {
+            lines.append("模型文件存在但运行时加载失败。请先点「准备模型」修复缓存；如果仍失败，切换到 WhisperKit tiny 或重新下载 Qwen3-ASR 6bit。")
+        }
+        lines.append("也可以手动下载后再回到本页检查。")
+        lines.append("命令：\(guidance.manualCommand)")
+        if hfCLIPath() == nil {
+            lines.append("如果提示找不到 hf，请先执行：python3 -m pip install --user -U huggingface_hub hf-xet")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func hfCLIPath() -> String? {
+        let candidates = [
+            "\(NSHomeDirectory())/Library/Python/3.9/bin/hf",
+            "\(NSHomeDirectory())/.local/bin/hf",
+            "/opt/homebrew/bin/hf",
+            "/usr/local/bin/hf"
+        ]
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
     /// Probe translation / Prompt LLM endpoint and confirm the configured model is listed.
     func testLanguageModelConnection() {
+        guard settings.llmBackend == .api else {
+            connectionMessage = "翻译/整理/Prompt 编译已关闭"
+            return
+        }
+        guard settings.llmFeaturesAvailable else {
+            connectionMessage = "请先配置 LLM API 地址和模型名"
+            return
+        }
         let configuration = settings.translationConfiguration
         connectionMessage = "正在连接翻译模型…"
         Task {
@@ -601,18 +821,24 @@ final class AppState: ObservableObject {
         let asrConfig = settings.configuration
         let llmConfig = settings.translationConfiguration
         connectionMessage = "正在测试连接…"
-        capabilityMessage = "正在探测 Streaming 能力…"
+        capabilityMessage = asrConfig.backend == .integrated
+            ? "正在检查本地原生 ASR…"
+            : "正在探测 API Streaming 能力…"
         Task {
             var parts: [String] = []
             do {
                 try await client.checkServer(configuration: asrConfig)
-                parts.append("ASR 正常")
+                parts.append(asrConfig.backend == .integrated ? "本地 ASR 正常" : "ASR API 正常")
             } catch {
                 parts.append("ASR 失败：\(error.localizedDescription)")
             }
             do {
-                let detail = try await translator.checkServer(configuration: llmConfig)
-                parts.append(detail)
+                if settings.llmFeaturesAvailable {
+                    let detail = try await translator.checkServer(configuration: llmConfig)
+                    parts.append(detail)
+                } else {
+                    parts.append("LLM 后处理未启用")
+                }
             } catch {
                 parts.append("翻译失败：\(error.localizedDescription)")
             }
@@ -639,10 +865,14 @@ final class AppState: ObservableObject {
         let source = lastTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !source.isEmpty else { return }
         switch phase {
-        case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing:
+        case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing, .routing:
             return
         default:
             break
+        }
+        guard settings.llmFeaturesAvailable else {
+            connectionMessage = "请先在翻译与整理中启用并配置 LLM API 模式"
+            return
         }
 
         processingGeneration += 1
@@ -676,7 +906,8 @@ final class AppState: ObservableObject {
                         outcome: .failed,
                         message: "整理成功，但无法写入当前输入框"
                     )
-                    phase = .failed("整理成功，但无法写入当前输入框。内容已复制，请手动粘贴。")
+                    let detail = error.localizedDescription
+                    phase = .failed("整理成功，但无法写入：\(detail)内容已复制，请手动粘贴。")
                     try? await Task.sleep(for: .milliseconds(650))
                 }
                 recordingHUD.hide()
@@ -715,7 +946,7 @@ final class AppState: ObservableObject {
             }
             phase = .idle
             recordingHUD.hide()
-        case .finalizing, .transcribing, .structuring, .translating, .optimizing:
+        case .finalizing, .transcribing, .structuring, .translating, .optimizing, .routing:
             cancelTranscription()
         default:
             break
@@ -727,7 +958,8 @@ final class AppState: ObservableObject {
             || phase == .transcribing
             || phase == .structuring
             || phase == .translating
-            || phase == .optimizing else { return }
+            || phase == .optimizing
+            || phase == .routing else { return }
         processingGeneration += 1
         transcriptionTask?.cancel()
         transcriptionTask = nil
@@ -762,7 +994,10 @@ final class AppState: ObservableObject {
     }
 
     func requestPermissions() {
-        _ = PasteService.requestAccessibilityIfNeeded()
+        let trusted = PasteService.requestAccessibilityIfNeeded(prompt: true)
+        capabilityMessage = trusted
+            ? "辅助使用权限已授权，可以自动写入当前输入框。"
+            : "已打开辅助使用授权提示；授权前会只复制到剪贴板，不会反复弹窗。"
         Task { @MainActor in
             guard !isStartingRecording, phase != .recording else { return }
             isStartingRecording = true

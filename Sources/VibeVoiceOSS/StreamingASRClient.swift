@@ -117,6 +117,7 @@ actor WebSocketStreamingASRClient: StreamingASRClient {
               let type = json["type"] as? String else {
             return
         }
+        if let usage = TokenUsage.parse(json["usage"]) { onEvent(.usage(usage)) }
         let payload = (json["text"] as? String) ?? ""
         switch type {
         case "partial":
@@ -206,7 +207,9 @@ actor OverlappingWindowStreamingASRClient: StreamingASRClient {
             committedBytes = max(0, committedBytes - drop)
         }
         dirty = true
-        await pumpIfNeeded()
+        // Decode on the configured polling cadence. Starting inference for every
+        // ~20 ms PCM frame keeps local Whisper permanently busy on tiny windows
+        // and prevents useful partial captions from reaching the HUD.
     }
 
     func finish() async throws -> String {
@@ -220,7 +223,8 @@ actor OverlappingWindowStreamingASRClient: StreamingASRClient {
             wav: wav,
             configuration: configuration,
             streamResults: false,
-            onEvent: nil
+            onEvent: nil,
+            onUsage: { [onEvent] usage in onEvent(.usage(usage)) }
         )
         latestLive = text
         onEvent(.final(text))
@@ -325,7 +329,8 @@ actor OverlappingWindowStreamingASRClient: StreamingASRClient {
             wav: wav,
             configuration: configuration,
             streamResults: false,
-            onEvent: nil
+            onEvent: nil,
+            onUsage: { [onEvent] usage in onEvent(.usage(usage)) }
         )
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if Self.looksLikePromptHallucination(trimmed, prompt: configuration.prompt) {

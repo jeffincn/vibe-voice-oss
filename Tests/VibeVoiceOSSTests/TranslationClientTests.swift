@@ -53,4 +53,12 @@ final class TranslationClientTests: XCTestCase {
             "http://127.0.0.1:1234/v1/models"
         )
     }
+
+    func testCustomSystemPromptIsAppended() {
+        let result = TranslationClient.withCustomSystemPrompt(
+            "Base instructions", custom: "Use my writing style"
+        )
+        XCTAssertTrue(result.contains("Base instructions"))
+        XCTAssertTrue(result.contains("Use my writing style"))
+    }
 }

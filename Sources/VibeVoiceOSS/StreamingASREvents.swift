@@ -5,6 +5,7 @@ enum StreamingASREvent: Equatable, Sendable {
     case stable(String)
     case final(String)
     case error(String)
+    case usage(TokenUsage)
     case done
 }
 

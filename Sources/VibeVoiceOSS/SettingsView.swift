@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -170,7 +171,9 @@ private struct SettingsForm: View {
                 NSApplication.shared.activate()
             }
         case .recognition:
-            pillButton("测试 ASR") { appState.testConnection() }
+            pillButton(settings.asrBackend == .integrated ? "检查本地 ASR" : "测试 ASR") {
+                appState.testConnection()
+            }
         case .translation:
             pillButton("测试翻译模型") { appState.testLanguageModelConnection() }
         case .shortcuts:
@@ -237,33 +240,90 @@ private struct SettingsForm: View {
     private var recognitionSection: some View {
         settingsStack {
             settingsCard {
-                field("API 地址", text: $settings.endpoint)
-                secureField("API Key（未启用可留空）", text: $settings.apiKey)
-                field("模型名", text: $settings.model)
-                field("识别语言", text: $settings.language)
-            }
-
-            caption("模型名请与 oMLX / 远端已加载的 ASR 名称一致，可直接手输。")
-            caption("录音时会像字幕一样实时显示识别文字（重叠窗伪流式）。下方模式只影响停录后的最终收敛方式。")
-
-            settingsCard {
-                pickerRow("识别模式") {
+                pickerRow("ASR 模式") {
                     Picker("", selection: Binding(
-                        get: { settings.streamingMode },
-                        set: { settings.streamingMode = $0 }
+                        get: { settings.asrBackend },
+                        set: { settings.asrBackend = $0 }
                     )) {
-                        ForEach(StreamingMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
+                        ForEach(ASRBackend.allCases) { backend in
+                            Text(backend.label).tag(backend)
                         }
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
                 }
-                caption(settings.streamingMode.caption)
-                if settings.streamingMode == .duplexStreaming {
-                    field("双工 WebSocket", text: $settings.streamingWSURL)
-                    caption("连不上时自动降级为重叠窗伪流式（仍走本机转写接口）。")
+                caption(settings.asrBackend.caption)
+                if settings.asrBackend == .integrated {
+                    pickerRow("本地引擎") {
+                        Picker("", selection: Binding(
+                            get: { settings.integratedASREngine },
+                            set: { settings.integratedASREngine = $0 }
+                        )) {
+                            ForEach(IntegratedASREngine.allCases) { engine in
+                                Text(engine.label).tag(engine)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                    }
+                    caption(settings.integratedASREngine.caption)
+                    if settings.integratedASREngine == .qwen3MLX {
+                        field("Qwen 模型 Repo", text: $settings.qwenModelRepo)
+                        caption("默认 mlx-community/Qwen3-ASR-0.6B-6bit；也可改成 mlx-community/Qwen3-ASR-0.6B-4bit / 8bit。")
+                        directoryField("Qwen 模型目录", text: $settings.integratedASRModelPath)
+                        caption(settings.integratedASRModelPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? "当前模型：Qwen3-ASR · \(settings.qwenModelRepo)"
+                            : "当前模型：Qwen3-ASR · \(settings.qwenModelRepo) · \(settings.integratedASRModelPath)")
+                        caption("点「准备模型」会自动下载并填写目录；手动目录需包含 config.json、model.safetensors 以及 tokenizer 文件。")
+                    } else {
+                        field("WhisperKit 模型", text: $settings.whisperKitModel)
+                        caption("当前模型：WhisperKit · \(settings.whisperKitModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "tiny" : settings.whisperKitModel)")
+                        caption("例如 tiny 或 large-v3-v20240930_626MB；点「准备模型」会下载缺失文件并修复不完整缓存。")
+                    }
+                } else {
+                    field("API 地址", text: $settings.endpoint)
+                    secureField("API Key（未启用可留空）", text: $settings.apiKey)
+                    field("模型名", text: $settings.model)
                 }
+                field("识别语言", text: $settings.language)
+                caption("常用：zh=中文，yue=粤语，en=English，auto=自动检测；Qwen3-ASR 会自动映射成模型需要的语言提示。")
+            }
+
+            if settings.asrBackend == .api {
+                caption("模型名请与 oMLX / 远端已加载的 ASR 名称一致，可直接手输。")
+                caption("录音时会像字幕一样实时显示识别文字（重叠窗伪流式）。下方模式只影响停录后的最终收敛方式。")
+
+                settingsCard {
+                    pickerRow("识别模式") {
+                        Picker("", selection: Binding(
+                            get: { settings.streamingMode },
+                            set: { settings.streamingMode = $0 }
+                        )) {
+                            ForEach(StreamingMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                    }
+                    caption(settings.streamingMode.caption)
+                    if settings.streamingMode == .duplexStreaming {
+                        field("双工 WebSocket", text: $settings.streamingWSURL)
+                        caption("连不上时自动降级为重叠窗伪流式（仍走本机转写接口）。")
+                    }
+                }
+            } else {
+                caption("集成模式停录后直接在本机转写；实时字幕和 WebSocket 仅在 API 模式下可用。")
+            }
+
+            HStack(spacing: 10) {
+                if settings.asrBackend == .integrated {
+                    secondaryPill("准备模型") { appState.prepareLocalASRModel() }
+                }
+                secondaryPill(settings.asrBackend == .integrated ? "检查本地 ASR" : "测试 ASR") {
+                    appState.testConnection()
+                }
+                Spacer(minLength: 0)
             }
 
             if !appState.capabilityMessage.isEmpty {
@@ -320,9 +380,38 @@ private struct SettingsForm: View {
     private var translationSection: some View {
         settingsStack {
             settingsCard {
+                pickerRow("LLM 后处理") {
+                    Picker("", selection: Binding(
+                        get: { settings.llmBackend },
+                        set: { settings.llmBackend = $0 }
+                    )) {
+                        ForEach(LanguageModelBackend.allCases) { backend in
+                            Text(backend.label).tag(backend)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 180)
+                }
+                caption(settings.llmBackend.caption)
                 field("API 地址", text: $settings.llmEndpoint)
+                    .disabled(settings.llmBackend != .api)
                 secureField("API Key（未启用可留空）", text: $settings.llmApiKey)
+                    .disabled(settings.llmBackend != .api)
                 field("模型名", text: $settings.translationModel)
+                    .disabled(settings.llmBackend != .api)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("自定义 System Prompt")
+                        .font(.system(size: 12, weight: .medium))
+                    TextEditor(text: $settings.llmSystemPrompt)
+                        .font(.system(size: 13))
+                        .frame(minHeight: 96)
+                        .scrollContentBackground(.hidden)
+                        .padding(6)
+                        .background(AppChrome.canvas, in: RoundedRectangle(cornerRadius: 8))
+                }
+                .disabled(settings.llmBackend != .api)
+                caption("翻译/整理/Prompt 编译时作为附加指令；⌘⇧G 智能路由时作为唯一系统指令。")
                 pickerRow("输出语言") {
                     Picker("", selection: $settings.targetLanguageID) {
                         ForEach(TargetLanguage.all) { language in
@@ -332,17 +421,24 @@ private struct SettingsForm: View {
                     .labelsHidden()
                     .pickerStyle(.menu)
                 }
+                .disabled(!settings.llmFeaturesAvailable)
             }
 
-            caption("模型名请填写 oMLX / 兼容服务端已加载的 chat 模型；可留空后按需填写。")
-            caption("API Key 保存在本机钥匙串，不会写入明文偏好设置。")
+            if settings.llmBackend == .api {
+                caption("模型名请填写 oMLX / 兼容服务端已加载的 chat 模型；可留空后按需填写。")
+                caption("API Key 保存在本机钥匙串，不会写入明文偏好设置。")
+            } else {
+                caption("关闭时只输出 ASR 原文，下面的翻译、整理和 Prompt 编译参数不会生效。")
+            }
 
             settingsCard {
                 Toggle("使用结构化输出", isOn: $settings.structuredOutputEnabled)
                     .toggleStyle(.switch)
+                    .disabled(!settings.llmFeaturesAvailable)
                 if settings.structuredOutputEnabled {
                     Toggle("使用 Emoji", isOn: $settings.structuredEmojiEnabled)
                         .toggleStyle(.switch)
+                        .disabled(!settings.llmFeaturesAvailable)
                     pickerRow("整理强度") {
                         Picker("", selection: Binding(
                             get: { settings.structureIntensity },
@@ -355,6 +451,7 @@ private struct SettingsForm: View {
                         .labelsHidden()
                         .pickerStyle(.menu)
                     }
+                    .disabled(!settings.llmFeaturesAvailable)
                     caption(settings.structureIntensity.caption)
                     caption(settings.structuredEmojiEnabled
                         ? "分区标题会带修饰性 emoji（如 ✅ 📌）。"
@@ -362,6 +459,7 @@ private struct SettingsForm: View {
                 }
                 Toggle("Prompt 优化", isOn: $settings.promptOptimizeEnabled)
                     .toggleStyle(.switch)
+                    .disabled(!settings.llmFeaturesAvailable)
                 if settings.promptOptimizeEnabled {
                     pickerRow("目标 Agent") {
                         Picker("", selection: $settings.promptTargetID) {
@@ -372,10 +470,11 @@ private struct SettingsForm: View {
                         .labelsHidden()
                         .pickerStyle(.menu)
                     }
+                    .disabled(!settings.llmFeaturesAvailable)
                     caption(settings.promptTarget.caption)
                 }
             }
-            caption("翻译 / 结构化 / Prompt 编译共用上面的 API 地址、Key 与模型名，可与 ASR 完全不同。")
+            caption("翻译 / 结构化 / Prompt 编译只在 LLM API 模式且模型配置完整时启用，可与 ASR 完全不同。")
             if !appState.connectionMessage.isEmpty {
                 Text(appState.connectionMessage)
                     .font(.system(size: 12, weight: .medium))
@@ -409,7 +508,7 @@ private struct SettingsForm: View {
                     }
                 }
             }
-            caption("三个全局快捷键均为「按一次开始，再按一次结束」。菜单栏「开始录音」沿用下方开关组合。")
+            caption("全局快捷键均为「按一次开始，再按一次结束」。⌘⇧G 智能路由使用自定义 System Prompt 全权处理。")
 
             settingsCard {
                 HStack {
@@ -442,7 +541,6 @@ private struct SettingsForm: View {
 
             HStack(spacing: 10) {
                 secondaryPill("刷新设备") { inputDevices = AudioInputDevices.all() }
-                secondaryPill("测试 oMLX 连接") { appState.testConnection() }
                 if !appState.connectionMessage.isEmpty {
                     Text(appState.connectionMessage)
                         .font(.system(size: 12))
@@ -499,6 +597,38 @@ private struct SettingsForm: View {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(AppChrome.hairline, lineWidth: 1)
                 )
+        }
+    }
+
+    private func directoryField(_ title: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(AppChrome.muted)
+            HStack(spacing: 8) {
+                TextField("", text: text)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(AppChrome.canvas)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(AppChrome.hairline, lineWidth: 1)
+                    )
+                secondaryPill("选择…") {
+                    let panel = NSOpenPanel()
+                    panel.canChooseFiles = false
+                    panel.canChooseDirectories = true
+                    panel.allowsMultipleSelection = false
+                    panel.prompt = "选择"
+                    if panel.runModal() == .OK, let url = panel.url {
+                        text.wrappedValue = url.path
+                    }
+                }
+            }
         }
     }
 

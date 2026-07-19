@@ -5,6 +5,7 @@ struct TranslationConfiguration: Sendable {
     let model: String
     let targetLanguage: String
     let styleHint: String
+    var customSystemPrompt: String = ""
     let apiKey: String
     let task: LanguageModelTask
     /// Used only when `task == .optimizePrompt`.
@@ -16,7 +17,7 @@ enum TranslationError: LocalizedError {
     case server(status: Int, message: String)
     case invalidResponse
     case emptyText
-    case timedOut
+    case timedOut(seconds: Int)
     case promptCompile(String)
 
     var errorDescription: String? {
@@ -25,13 +26,15 @@ enum TranslationError: LocalizedError {
         case let .server(status, message): "翻译模型返回 HTTP \(status)：\(message)"
         case .invalidResponse: "翻译模型返回了无法解析的响应。"
         case .emptyText: "翻译完成，但返回文本为空。"
-        case .timedOut: "翻译超过 60 秒，已自动中断。"
+        case let .timedOut(seconds):
+            "LLM 处理超过 \(seconds) 秒，已自动中断。长内容可缩短后重试，或检查百炼模型的限流与上下文限制。"
         case let .promptCompile(detail): "Prompt 编译失败：\(detail)"
         }
     }
 }
 
 struct TranslationClient: Sendable {
+    private static let requestTimeoutSeconds = 180
     private struct ChatResponse: Decodable {
         struct Choice: Decodable {
             struct Message: Decodable {
@@ -116,14 +119,20 @@ struct TranslationClient: Sendable {
         )
     }
 
-    func translate(text: String, configuration: TranslationConfiguration) async throws -> String {
+    func translate(
+        text: String,
+        configuration: TranslationConfiguration,
+        onUsage: (@Sendable (TokenUsage) -> Void)? = nil
+    ) async throws -> String {
         try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask {
-                try await performTranslation(text: text, configuration: configuration)
+                try await performTranslation(
+                    text: text, configuration: configuration, onUsage: onUsage
+                )
             }
             group.addTask {
-                try await Task.sleep(for: .seconds(60))
-                throw TranslationError.timedOut
+                try await Task.sleep(for: .seconds(Self.requestTimeoutSeconds))
+                throw TranslationError.timedOut(seconds: Self.requestTimeoutSeconds)
             }
 
             defer { group.cancelAll() }
@@ -136,7 +145,8 @@ struct TranslationClient: Sendable {
 
     private func performTranslation(
         text: String,
-        configuration: TranslationConfiguration
+        configuration: TranslationConfiguration,
+        onUsage: (@Sendable (TokenUsage) -> Void)?
     ) async throws -> String {
         guard let url = URL(string: configuration.endpoint) else {
             throw TranslationError.invalidEndpoint
@@ -144,7 +154,7 @@ struct TranslationClient: Sendable {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 60
+        request.timeoutInterval = TimeInterval(Self.requestTimeoutSeconds)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
@@ -157,6 +167,18 @@ struct TranslationClient: Sendable {
         let maxTokens: Int
         let temperature: Double
         switch configuration.task {
+        case .smartRoute:
+            let systemPrompt = configuration.customSystemPrompt
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !systemPrompt.isEmpty else {
+                throw TranslationError.promptCompile("智能路由需要自定义 System Prompt，请在「翻译与整理」中填写。")
+            }
+            messages = [
+                ["role": "system", "content": systemPrompt],
+                ["role": "user", "content": text]
+            ]
+            maxTokens = 4096
+            temperature = 0.3
         case .optimizePrompt:
             // Stage 1 only: LLM extracts Prompt IR JSON. Stage 2 is local.
             let languageDirective = configuration.styleHint.isEmpty
@@ -172,7 +194,7 @@ struct TranslationClient: Sendable {
             messages = [
                 [
                     "role": "system",
-                    "content": """
+                    "content": Self.withCustomSystemPrompt("""
                     You are a translation engine, not a reasoning assistant.
                     Translate the following text into \(configuration.targetLanguage).
                     Rules:
@@ -183,21 +205,21 @@ struct TranslationClient: Sendable {
                     - Do not write Thinking Process, analysis, drafts, notes, or explanations.
                     - Do not use markdown or quotation marks around the result.
                     \(styleBlock)
-                    """
+                    """, custom: configuration.customSystemPrompt)
                 ],
                 [
                     "role": "user",
                     "content": "Translate into \(configuration.targetLanguage) now. Source:\n\n\(text)"
-                ],
-                // Prefill closed think block — reliable fallback when template kwargs are ignored.
-                [
-                    "role": "assistant",
-                    "content": "<think>\n</think>\n"
                 ]
             ]
             maxTokens = 1024
             temperature = 0.1
         }
+        let effectiveMessages = configuration.task == .optimizePrompt
+            ? Self.appendingCustomSystemPrompt(
+                to: messages, custom: configuration.customSystemPrompt
+            )
+            : messages
         let payload: [String: Any] = [
             "model": Self.sanitizeModelName(configuration.model),
             "temperature": temperature,
@@ -207,7 +229,7 @@ struct TranslationClient: Sendable {
             "chat_template_kwargs": [
                 "enable_thinking": false
             ],
-            "messages": messages
+            "messages": effectiveMessages
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
@@ -223,8 +245,17 @@ struct TranslationClient: Sendable {
               let message = chat.choices.first?.message else {
             throw TranslationError.invalidResponse
         }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let usage = TokenUsage.parse(object["usage"]) {
+            onUsage?(usage)
+        }
 
         let raw = message.content ?? ""
+        if configuration.task == .smartRoute {
+            let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !cleaned.isEmpty else { throw TranslationError.emptyText }
+            return cleaned
+        }
         if configuration.task == .optimizePrompt {
             // Stage 1 cleanup → parse IR → Stage 2 local Target Adapter
             let irText = Self.sanitizeIRModelOutput(raw)
@@ -240,6 +271,29 @@ struct TranslationClient: Sendable {
         let cleaned = Self.sanitizeModelOutput(raw)
         guard !cleaned.isEmpty else { throw TranslationError.emptyText }
         return cleaned
+    }
+
+    static func withCustomSystemPrompt(_ base: String, custom: String) -> String {
+        let trimmed = custom.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return base }
+        return "\(base)\n\n用户自定义 System Prompt（在不违背上述任务与安全边界的前提下遵守）：\n\(trimmed)"
+    }
+
+    static func appendingCustomSystemPrompt(
+        to messages: [[String: String]], custom: String
+    ) -> [[String: String]] {
+        guard !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return messages
+        }
+        var result = messages
+        if let index = result.firstIndex(where: { $0["role"] == "system" }) {
+            result[index]["content"] = withCustomSystemPrompt(
+                result[index]["content"] ?? "", custom: custom
+            )
+        } else {
+            result.insert(["role": "system", "content": custom], at: 0)
+        }
+        return result
     }
 
     /// Light cleanup before IR JSON parse — keep braces/quotes intact.

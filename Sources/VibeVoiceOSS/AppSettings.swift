@@ -134,6 +134,83 @@ struct TargetLanguage: Identifiable, Hashable {
 enum LanguageModelTask: String, Sendable {
     case translate
     case optimizePrompt
+    case smartRoute
+}
+
+enum ASRBackend: String, CaseIterable, Identifiable, Sendable {
+    case integrated
+    case api
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .integrated: "集成模式 · 本地原生"
+        case .api: "API 模式 · OpenAI 兼容"
+        }
+    }
+
+    var caption: String {
+        switch self {
+        case .integrated:
+            "默认使用 WhisperKit 本地转写；Qwen3-ASR 需选择已下载的 MLX 模型目录；不需要 ASR API 服务。"
+        case .api:
+            "连接 oMLX 或远端 OpenAI-compatible /v1/audio/transcriptions 服务。"
+        }
+    }
+}
+
+enum IntegratedASREngine: String, CaseIterable, Identifiable, Sendable {
+    case qwen3MLX
+    case whisperMLX
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .qwen3MLX: "Qwen3-ASR · mlx-swift-asr"
+        case .whisperMLX: "Whisper · WhisperKit"
+        }
+    }
+
+    var defaultModel: String {
+        switch self {
+        case .qwen3MLX: "Qwen3-ASR-0.6B-6bit"
+        case .whisperMLX: "tiny"
+        }
+    }
+
+    var caption: String {
+        switch self {
+        case .qwen3MLX:
+            "Swift 原生 MLX 推理，无 Python 运行时；需要选择已下载的 Qwen3-ASR MLX 模型目录。"
+        case .whisperMLX:
+            "使用 WhisperKit/Core ML，本地自动下载并缓存所选 WhisperKit 模型。"
+        }
+    }
+}
+
+enum LanguageModelBackend: String, CaseIterable, Identifiable, Sendable {
+    case disabled
+    case api
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .disabled: "关闭"
+        case .api: "API 模式"
+        }
+    }
+
+    var caption: String {
+        switch self {
+        case .disabled:
+            "仅输出 ASR 原文；翻译、整理和 Prompt 编译不会运行。"
+        case .api:
+            "通过 OpenAI-compatible Chat Completions API 执行翻译、整理和 Prompt 编译。"
+        }
+    }
 }
 
 enum TranscodeProfile: String, CaseIterable, Identifiable, Sendable {
@@ -179,6 +256,11 @@ enum TranscodeProfile: String, CaseIterable, Identifiable, Sendable {
 final class AppSettings: ObservableObject {
     private enum Key {
         static let endpoint = "endpoint"
+        static let asrBackend = "asrBackend"
+        static let integratedASREngine = "integratedASREngine"
+        static let integratedASRModelPath = "integratedASRModelPath"
+        static let qwenModelRepo = "qwenModelRepo"
+        static let whisperKitModel = "whisperKitModel"
         static let model = "model"
         static let language = "language"
         static let prompt = "prompt"
@@ -195,8 +277,10 @@ final class AppSettings: ObservableObject {
         static let streamingMode = "streamingMode"
         static let streamingWSURL = "streamingWSURL"
         static let recordingHotKeyID = "recordingHotKeyID"
+        static let llmBackend = "llmBackend"
         static let llmEndpoint = "llmEndpoint"
         static let llmApiKey = "llmApiKey"
+        static let llmSystemPrompt = "llmSystemPrompt"
         static let transcodeProfileID = "transcodeProfileID"
         static let transcodeNormalize = "transcodeNormalize"
         static let transcodeMaxGainDb = "transcodeMaxGainDb"
@@ -209,7 +293,29 @@ final class AppSettings: ObservableObject {
     - Keep technical identifiers, paths, symbols, and quoted literals unchanged in preserve_verbatim.
     """
 
+    @Published var asrBackendRaw: String {
+        didSet { save(asrBackendRaw, for: Key.asrBackend) }
+    }
+    @Published var integratedASREngineRaw: String {
+        didSet {
+            save(integratedASREngineRaw, for: Key.integratedASREngine)
+            let engine = IntegratedASREngine(rawValue: integratedASREngineRaw) ?? .whisperMLX
+            if engine == .whisperMLX,
+               whisperKitModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                whisperKitModel = engine.defaultModel
+            }
+        }
+    }
     @Published var endpoint: String { didSet { save(endpoint, for: Key.endpoint) } }
+    @Published var integratedASRModelPath: String {
+        didSet { save(integratedASRModelPath, for: Key.integratedASRModelPath) }
+    }
+    @Published var qwenModelRepo: String {
+        didSet { save(qwenModelRepo, for: Key.qwenModelRepo) }
+    }
+    @Published var whisperKitModel: String {
+        didSet { save(whisperKitModel, for: Key.whisperKitModel) }
+    }
     @Published var model: String { didSet { save(model, for: Key.model) } }
     @Published var language: String { didSet { save(language, for: Key.language) } }
     @Published var prompt: String { didSet { save(prompt, for: Key.prompt) } }
@@ -254,9 +360,16 @@ final class AppSettings: ObservableObject {
     @Published var recordingHotKeyID: String {
         didSet { save(recordingHotKeyID, for: Key.recordingHotKeyID) }
     }
+    @Published var llmBackendRaw: String {
+        didSet { save(llmBackendRaw, for: Key.llmBackend) }
+    }
     @Published var llmEndpoint: String { didSet { save(llmEndpoint, for: Key.llmEndpoint) } }
     @Published var llmApiKey: String {
         didSet { KeychainStore.set(llmApiKey, account: .llmAPIKey) }
+    }
+    /// User-provided instruction appended to every LLM post-processing system prompt.
+    @Published var llmSystemPrompt: String {
+        didSet { save(llmSystemPrompt, for: Key.llmSystemPrompt) }
     }
     @Published var transcodeProfileID: String {
         didSet { save(transcodeProfileID, for: Key.transcodeProfileID) }
@@ -271,6 +384,31 @@ final class AppSettings: ObservableObject {
     var structureIntensity: StructureIntensity {
         get { StructureIntensity(rawValue: structureIntensityRaw) ?? .auto }
         set { structureIntensityRaw = newValue.rawValue }
+    }
+
+    var asrBackend: ASRBackend {
+        get { ASRBackend(rawValue: asrBackendRaw) ?? .integrated }
+        set { asrBackendRaw = newValue.rawValue }
+    }
+
+    var integratedASREngine: IntegratedASREngine {
+        get { IntegratedASREngine(rawValue: integratedASREngineRaw) ?? .whisperMLX }
+        set { integratedASREngineRaw = newValue.rawValue }
+    }
+
+    var llmBackend: LanguageModelBackend {
+        get { LanguageModelBackend(rawValue: llmBackendRaw) ?? .disabled }
+        set { llmBackendRaw = newValue.rawValue }
+    }
+
+    var llmFeaturesAvailable: Bool {
+        llmBackend == .api
+            && !llmEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !TranslationClient.sanitizeModelName(translationModel).isEmpty
+    }
+
+    var effectiveTargetLanguage: TargetLanguage {
+        llmFeaturesAvailable ? targetLanguage : .none
     }
 
     var streamingMode: StreamingMode {
@@ -295,20 +433,46 @@ final class AppSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        let storedASRBackend = defaults.string(forKey: Key.asrBackend) ?? ASRBackend.integrated.rawValue
+        asrBackendRaw = ASRBackend(rawValue: storedASRBackend)?.rawValue ?? ASRBackend.integrated.rawValue
+        let storedIntegratedEngine = defaults.string(forKey: Key.integratedASREngine)
+            ?? IntegratedASREngine.whisperMLX.rawValue
+        integratedASREngineRaw = IntegratedASREngine(rawValue: storedIntegratedEngine)?.rawValue
+            ?? IntegratedASREngine.whisperMLX.rawValue
         endpoint = KeychainStore.coalesceString(
             defaults: defaults,
             key: Key.endpoint,
             fallback: "http://127.0.0.1:8000/v1/audio/transcriptions"
         )
+        integratedASRModelPath = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.integratedASRModelPath,
+            fallback: ""
+        )
+        qwenModelRepo = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.qwenModelRepo,
+            fallback: "mlx-community/Qwen3-ASR-0.6B-6bit"
+        )
+        let storedWhisperKitModel = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.whisperKitModel,
+            fallback: IntegratedASREngine.whisperMLX.defaultModel
+        )
+        let normalizedWhisperKitModel = Self.normalizeWhisperKitModel(storedWhisperKitModel)
+        whisperKitModel = normalizedWhisperKitModel
+        if normalizedWhisperKitModel != storedWhisperKitModel {
+            defaults.set(normalizedWhisperKitModel, forKey: Key.whisperKitModel)
+        }
         model = KeychainStore.coalesceString(
             defaults: defaults,
             key: Key.model,
-            fallback: "mlx-community/Qwen3-ASR-0.6B-4bit"
+            fallback: ""
         )
         language = KeychainStore.coalesceString(
             defaults: defaults,
             key: Key.language,
-            fallback: "zh"
+            fallback: "auto"
         )
         let resolvedPrompt = Self.sanitizedASRPrompt(
             KeychainStore.coalesceString(
@@ -338,13 +502,14 @@ final class AppSettings: ObservableObject {
         if storedTarget != resolvedTarget.id {
             defaults.set(resolvedTarget.id, forKey: Key.targetLanguageID)
         }
-        translationModel = TranslationClient.sanitizeModelName(
+        let resolvedTranslationModel = TranslationClient.sanitizeModelName(
             KeychainStore.coalesceString(
                 defaults: defaults,
                 key: Key.translationModel,
                 fallback: ""
             )
         )
+        translationModel = resolvedTranslationModel
         structuredOutputEnabled = defaults.bool(forKey: Key.structuredOutputEnabled)
         // Default OFF when key never set.
         if defaults.object(forKey: Key.structuredEmojiEnabled) == nil {
@@ -366,6 +531,16 @@ final class AppSettings: ObservableObject {
         recordingHotKeyID = RecordingHotKey.resolve(id: storedHotKey).id
         let storedPromptTarget = defaults.string(forKey: Key.promptTargetID) ?? PromptTargetKind.codingCodex.rawValue
         promptTargetID = PromptTargetKind(rawValue: storedPromptTarget)?.rawValue ?? PromptTargetKind.codingCodex.rawValue
+        if let storedLLMBackend = defaults.string(forKey: Key.llmBackend) {
+            llmBackendRaw = LanguageModelBackend(rawValue: storedLLMBackend)?.rawValue
+                ?? LanguageModelBackend.disabled.rawValue
+        } else {
+            let resolvedLLMBackend = resolvedTranslationModel.isEmpty
+                ? LanguageModelBackend.disabled.rawValue
+                : LanguageModelBackend.api.rawValue
+            llmBackendRaw = resolvedLLMBackend
+            defaults.set(resolvedLLMBackend, forKey: Key.llmBackend)
+        }
         if defaults.object(forKey: Key.promptOptimizeEnabled) == nil {
             promptOptimizeEnabled = migratedFromPromptOption
             defaults.set(migratedFromPromptOption, forKey: Key.promptOptimizeEnabled)
@@ -410,6 +585,11 @@ final class AppSettings: ObservableObject {
         } else {
             llmApiKey = resolvedLLMKey
         }
+        llmSystemPrompt = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.llmSystemPrompt,
+            fallback: ""
+        )
         let storedTranscode = defaults.string(forKey: Key.transcodeProfileID)
             ?? TranscodeProfile.asr16kMono.rawValue
         transcodeProfileID = TranscodeProfile(rawValue: storedTranscode)?.rawValue
@@ -434,12 +614,26 @@ final class AppSettings: ObservableObject {
         defaults.set(value, forKey: key)
     }
 
+    nonisolated static func normalizeWhisperKitModel(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = "openai_whisper-"
+        if trimmed.hasPrefix(prefix) {
+            return String(trimmed.dropFirst(prefix.count))
+        }
+        return trimmed
+    }
+
     var targetLanguage: TargetLanguage {
         TargetLanguage.resolve(id: targetLanguageID)
     }
 
     var configuration: TranscriptionConfiguration {
         TranscriptionConfiguration(
+            backend: asrBackend,
+            integratedEngine: integratedASREngine,
+            integratedModelPath: integratedASRModelPath,
+            qwenModelRepo: qwenModelRepo,
+            whisperKitModel: whisperKitModel,
             endpoint: endpoint,
             model: model,
             language: language,
@@ -449,19 +643,20 @@ final class AppSettings: ObservableObject {
     }
 
     var translationConfiguration: TranslationConfiguration {
-        let language = targetLanguage
+        let language = effectiveTargetLanguage
         return TranslationConfiguration(
             endpoint: llmEndpoint,
             model: TranslationClient.sanitizeModelName(translationModel),
             targetLanguage: language.promptName,
             styleHint: language.styleHint,
+            customSystemPrompt: llmSystemPrompt,
             apiKey: llmApiKey,
             task: .translate
         )
     }
 
     private var promptOptimizeLanguageDirective: String {
-        let language = targetLanguage
+        let language = effectiveTargetLanguage
         var lines = [Self.promptOptimizeLanguageRulesBase]
         if !language.translates {
             lines.append("""
@@ -489,12 +684,29 @@ final class AppSettings: ObservableObject {
         TranslationConfiguration(
             endpoint: llmEndpoint,
             model: TranslationClient.sanitizeModelName(translationModel),
-            targetLanguage: targetLanguage.promptName,
+            targetLanguage: effectiveTargetLanguage.promptName,
             styleHint: promptOptimizeLanguageDirective,
+            customSystemPrompt: llmSystemPrompt,
             apiKey: llmApiKey,
             task: .optimizePrompt,
             promptTarget: promptTarget
         )
+    }
+
+    var smartRouteConfiguration: TranslationConfiguration {
+        TranslationConfiguration(
+            endpoint: llmEndpoint,
+            model: TranslationClient.sanitizeModelName(translationModel),
+            targetLanguage: "",
+            styleHint: "",
+            customSystemPrompt: llmSystemPrompt,
+            apiKey: llmApiKey,
+            task: .smartRoute
+        )
+    }
+
+    var hasSmartRoutePrompt: Bool {
+        !llmSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func semanticFormatterConfiguration(for transcript: String) -> SemanticFormatterConfiguration {
@@ -504,8 +716,9 @@ final class AppSettings: ObservableObject {
             model: TranslationClient.sanitizeModelName(translationModel),
             apiKey: llmApiKey,
             mode: mode,
-            outputLanguageDirective: targetLanguage.translates
-                ? targetLanguage.outputLanguageDirective
+            customSystemPrompt: llmSystemPrompt,
+            outputLanguageDirective: effectiveTargetLanguage.translates
+                ? effectiveTargetLanguage.outputLanguageDirective
                 : nil,
             useEmoji: structuredEmojiEnabled
         )
@@ -513,7 +726,9 @@ final class AppSettings: ObservableObject {
 
     var outputCaption: String {
         var parts: [String] = []
-        if promptOptimizeEnabled {
+        if !llmFeaturesAvailable {
+            parts.append("仅转写原文")
+        } else if promptOptimizeEnabled {
             let targetLabel = promptTarget.label
             var suffix: String
             if !targetLanguage.translates {
@@ -539,9 +754,12 @@ final class AppSettings: ObservableObject {
 
     /// Caption for a one-shot mode override from a global hotkey.
     func outputCaption(for mode: RecordingOutputMode) -> String {
+        guard llmFeaturesAvailable else { return "仅转写原文" }
         switch mode {
         case .conversation:
             return targetLanguage.menuCaption
+        case .english:
+            return "直接翻译 → English"
         case .structured:
             var structured = "结构化：\(structureIntensity.label)"
             if structuredEmojiEnabled {
@@ -557,6 +775,10 @@ final class AppSettings: ObservableObject {
                 return "Prompt 编译 → \(targetLabel)（\(targetLanguage.shortLabel)）"
             }
             return "Prompt 编译 → \(targetLabel)（\(targetLanguage.label)）"
+        case .smartRoute:
+            return hasSmartRoutePrompt
+                ? "智能路由 → 自定义 System Prompt"
+                : "智能路由（未配置 System Prompt）"
         }
     }
 

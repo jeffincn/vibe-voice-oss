@@ -6,17 +6,14 @@ Licensed under the [MIT License](LICENSE).
 
 ## Requirements
 
-- macOS 14+
+- macOS 15+
 - Apple Silicon
 - Xcode 16+
-- A local (or otherwise trusted) OpenAI-compatible ASR endpoint
+- Optional: a local (or otherwise trusted) OpenAI-compatible ASR / LLM endpoint
 
 ## Quick start
 
-1. Start your ASR server. Default assumption: `http://127.0.0.1:8000`.
-2. Load an ASR model the client can name, for example `mlx-community/Qwen3-ASR-0.6B-4bit`.
-3. Confirm `GET http://127.0.0.1:8000/v1/models` responds.
-4. Build and run:
+1. Build and run:
 
 ```bash
 chmod +x scripts/build-app.sh
@@ -24,7 +21,9 @@ chmod +x scripts/build-app.sh
 open "dist/Vibe Voice OSS.app"
 ```
 
-The build installs as **Vibe Voice OSS** (bundle id `app.vibevoice.oss.macos`, version **0.4.0**) into both `dist/` and `/Applications`.
+By default the app uses **Integrated ASR** with WhisperKit. Use **Prepare Model** in Settings to download or repair the selected local ASR model. Qwen3-ASR is available through `mlx-swift-asr` and defaults to the Hugging Face repo `mlx-community/Qwen3-ASR-0.6B-6bit`; you can also point it at an existing local MLX model directory. You can switch the ASR mode to an OpenAI-compatible API endpoint in Settings.
+
+The build installs as **Vibe Voice OSS** (bundle id `app.vibevoice.oss.macos`, version **0.5.2**) into both `dist/` and `/Applications`.
 First launch needs Microphone and Accessibility permissions.
 
 The build script prefers an Apple Development identity from your keychain so Accessibility grants survive rebuilds; without one it falls back to ad-hoc signing.
@@ -33,21 +32,24 @@ The build script prefers an Apple Development identity from your keychain so Acc
 
 Open Settings from the menu bar to configure:
 
-- ASR HTTP endpoint, optional API key, model name, language, hotspot prompt
-- Streaming mode and WebSocket URL
-- Separate LLM endpoint / key / model for translation, structured cleanup, and prompt compile
+- ASR mode: integrated local MLX or OpenAI-compatible API
+- Integrated ASR engine: Qwen3-ASR / mlx-swift-asr or Whisper / WhisperKit
+- Prepare Model downloads or repairs local WhisperKit / Qwen3-ASR model files before first use
+- API ASR HTTP endpoint, optional API key, model name, language, hotspot prompt
+- API streaming mode and WebSocket URL
+- LLM API mode, endpoint / key / model for translation, structured cleanup, and prompt compile
 - Input device, hotkeys, launch-at-login
 
 API keys are stored in the macOS Keychain. See [docs/configuration.md](docs/configuration.md) and [docs/privacy.md](docs/privacy.md).
 
-**Data flow:** audio and text go only to the URLs you configure. Defaults target localhost. If you enter a remote URL, that host receives the request payloads.
+**Data flow:** integrated ASR runs locally without Python. API modes send audio and/or text only to the URLs you configure. If you enter a remote URL, that host receives the request payloads.
 
 ## Workflow
 
 ```text
 Hotkey → capture microphone → hotkey again → 16 kHz mono WAV
-→ POST /v1/audio/transcriptions (or streaming path)
-→ optional LLM post-process
+→ integrated MLX ASR or POST /v1/audio/transcriptions
+→ optional LLM API post-process
 → insert into the focused app
 ```
 

@@ -22,6 +22,7 @@ struct OMLXCapabilities: Equatable, Sendable {
 
     var summary: String {
         guard serverReachable else { return detail }
+        if detail.hasPrefix("本地原生") { return detail }
         var parts: [String] = []
         if let openAPIVersion { parts.append("oMLX \(openAPIVersion)") }
         parts.append(supportsResultSSE ? "SSE 结果流：有" : "SSE 结果流：无")
@@ -32,6 +33,17 @@ struct OMLXCapabilities: Equatable, Sendable {
 
 enum OMLXCapabilityProbe {
     static func probe(configuration: TranscriptionConfiguration) async -> OMLXCapabilities {
+        if configuration.backend == .integrated {
+            return OMLXCapabilities(
+                serverReachable: true,
+                openAPIVersion: nil,
+                transcriptionEndpointOK: true,
+                supportsResultSSE: false,
+                supportsRealtimeIngress: false,
+                detail: "本地原生 ASR 集成模式：不使用 oMLX Streaming 探测"
+            )
+        }
+
         guard let transcriptionURL = URL(string: configuration.endpoint) else {
             return OMLXCapabilities(
                 serverReachable: false,

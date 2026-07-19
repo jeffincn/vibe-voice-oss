@@ -62,7 +62,7 @@ final class RecordingHUDController {
         let showingCaption: Bool = {
             guard let appState else { return true }
             switch appState.phase {
-            case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing:
+            case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing, .routing:
                 return true
             case .success, .failed, .idle:
                 return !appState.partialTranscript.isEmpty
@@ -345,7 +345,7 @@ private struct RecordingHUDView: View {
 
     private func shouldShowDisplay(phase: AppState.Phase, partial: String) -> Bool {
         switch phase {
-        case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing:
+        case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing, .routing:
             return true
         case .success, .failed:
             return !partial.isEmpty
@@ -437,7 +437,7 @@ private struct RecordingHUDView: View {
     /// Show an explicit status chrome for processing / outcome phases (and recording).
     private func shouldShowStatusChrome(phase: AppState.Phase) -> Bool {
         switch phase {
-        case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing, .success, .failed:
+        case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing, .routing, .success, .failed:
             return true
         case .idle:
             return false
@@ -520,6 +520,8 @@ private struct RecordingHUDView: View {
             return primary.isEmpty ? "正在翻译…" : primary
         case .optimizing:
             return primary.isEmpty ? "正在编译 Prompt…" : primary
+        case .routing:
+            return primary.isEmpty ? "智能路由处理中…" : primary
         case .success:
             return primary.isEmpty ? "完成" : primary
         case .failed:
@@ -543,6 +545,8 @@ private struct RecordingHUDView: View {
             return "正在翻译内容…"
         case .optimizing:
             return "正在编译 Prompt…"
+        case .routing:
+            return "智能路由处理中…"
         case .failed:
             return "处理失败，请重试"
         case .success:
@@ -725,6 +729,7 @@ private struct RecordingHUDView: View {
         case .structuring: "structuring"
         case .translating: "translating"
         case .optimizing: "optimizing"
+        case .routing: "routing"
         case .success: "success"
         case .failed: "failed"
         }

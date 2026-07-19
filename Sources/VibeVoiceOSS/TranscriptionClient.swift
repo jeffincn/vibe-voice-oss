@@ -1,6 +1,11 @@
 import Foundation
 
 struct TranscriptionConfiguration: Sendable {
+    let backend: ASRBackend
+    let integratedEngine: IntegratedASREngine
+    let integratedModelPath: String
+    let qwenModelRepo: String
+    let whisperKitModel: String
     let endpoint: String
     let model: String
     let language: String
@@ -14,6 +19,8 @@ enum TranscriptionError: LocalizedError {
     case invalidResponse
     case emptyText
     case timedOut
+    case localTimedOut(seconds: Int)
+    case localRuntime(String)
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +29,9 @@ enum TranscriptionError: LocalizedError {
         case .invalidResponse: "oMLX 返回了无法解析的响应。"
         case .emptyText: "识别完成，但返回文本为空。"
         case .timedOut: "转写超过 30 秒，已自动中断。"
+        case let .localTimedOut(seconds):
+            "本地 ASR 超过 \(seconds / 60) 分钟仍未完成，已自动中断。首次下载或加载模型可能较慢，请检查网络、模型名称或本地模型目录后重试。"
+        case let .localRuntime(message): "本地 ASR 运行失败：\(message)"
         }
     }
 }
@@ -29,12 +39,17 @@ enum TranscriptionError: LocalizedError {
 struct TranscriptionClient: Sendable {
     private struct Response: Decodable { let text: String }
 
-    func transcribe(wav: Data, configuration: TranscriptionConfiguration) async throws -> String {
+    func transcribe(
+        wav: Data,
+        configuration: TranscriptionConfiguration,
+        onUsage: (@Sendable (TokenUsage) -> Void)? = nil
+    ) async throws -> String {
         try await transcribe(
             wav: wav,
             configuration: configuration,
             streamResults: false,
-            onEvent: nil
+            onEvent: nil,
+            onUsage: onUsage
         )
     }
 
@@ -44,20 +59,27 @@ struct TranscriptionClient: Sendable {
         wav: Data,
         configuration: TranscriptionConfiguration,
         streamResults: Bool,
-        onEvent: StreamingASRPartialHandler?
+        onEvent: StreamingASRPartialHandler?,
+        onUsage: (@Sendable (TokenUsage) -> Void)? = nil
     ) async throws -> String {
-        try await withThrowingTaskGroup(of: String.self) { group in
+        let timeoutSeconds = configuration.backend == .integrated ? 600 : 30
+        return try await withThrowingTaskGroup(of: String.self) { group in
             group.addTask {
                 try await performTranscription(
                     wav: wav,
                     configuration: configuration,
                     streamResults: streamResults,
-                    onEvent: onEvent
+                    onEvent: onEvent,
+                    onUsage: onUsage
                 )
             }
             group.addTask {
-                try await Task.sleep(for: .seconds(30))
-                throw TranscriptionError.timedOut
+                try await Task.sleep(for: .seconds(timeoutSeconds))
+                if configuration.backend == .integrated {
+                    throw TranscriptionError.localTimedOut(seconds: timeoutSeconds)
+                } else {
+                    throw TranscriptionError.timedOut
+                }
             }
 
             defer { group.cancelAll() }
@@ -72,8 +94,21 @@ struct TranscriptionClient: Sendable {
         wav: Data,
         configuration: TranscriptionConfiguration,
         streamResults: Bool,
-        onEvent: StreamingASRPartialHandler?
+        onEvent: StreamingASRPartialHandler?,
+        onUsage: (@Sendable (TokenUsage) -> Void)?
     ) async throws -> String {
+        if configuration.backend == .integrated {
+            let text = try await NativeASRClient.shared.transcribe(wav: wav, configuration: configuration)
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { throw TranscriptionError.emptyText }
+            if streamResults {
+                onEvent?(.partial(trimmed))
+                onEvent?(.final(trimmed))
+                onEvent?(.done)
+            }
+            return trimmed
+        }
+
         guard let url = URL(string: configuration.endpoint) else {
             throw TranscriptionError.invalidEndpoint
         }
@@ -112,7 +147,7 @@ struct TranscriptionClient: Sendable {
 
         let contentType = http.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
         if streamResults, contentType.contains("text/event-stream") {
-            let text = try await consumeSSE(bytes: bytes, onEvent: onEvent)
+            let text = try await consumeSSE(bytes: bytes, onEvent: onEvent, onUsage: onUsage)
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { throw TranscriptionError.emptyText }
             onEvent?(.final(trimmed))
@@ -124,10 +159,12 @@ struct TranscriptionClient: Sendable {
         for try await byte in bytes {
             data.append(byte)
         }
-        guard let payload = try? JSONDecoder().decode(Response.self, from: data) else {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rawText = object["text"] as? String else {
             throw TranscriptionError.invalidResponse
         }
-        let text = payload.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let usage = TokenUsage.parse(object["usage"]) { onUsage?(usage) }
+        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw TranscriptionError.emptyText }
         if streamResults {
             onEvent?(.partial(text))
@@ -139,7 +176,8 @@ struct TranscriptionClient: Sendable {
 
     private func consumeSSE(
         bytes: URLSession.AsyncBytes,
-        onEvent: StreamingASRPartialHandler?
+        onEvent: StreamingASRPartialHandler?,
+        onUsage: (@Sendable (TokenUsage) -> Void)?
     ) async throws -> String {
         var assembled = ""
         var eventType = "message"
@@ -154,7 +192,10 @@ struct TranscriptionClient: Sendable {
             dataLines = []
             let type = eventType
             eventType = "message"
-            handleSSEPayload(type: type, payload: payload, assembled: &assembled, onEvent: onEvent)
+            handleSSEPayload(
+                type: type, payload: payload, assembled: &assembled,
+                onEvent: onEvent, onUsage: onUsage
+            )
         }
 
         for try await line in bytes.lines {
@@ -181,7 +222,8 @@ struct TranscriptionClient: Sendable {
         type: String,
         payload: String,
         assembled: inout String,
-        onEvent: StreamingASRPartialHandler?
+        onEvent: StreamingASRPartialHandler?,
+        onUsage: (@Sendable (TokenUsage) -> Void)?
     ) {
         if payload == "[DONE]" {
             onEvent?(.done)
@@ -199,6 +241,7 @@ struct TranscriptionClient: Sendable {
         }
 
         let eventName = (json["type"] as? String) ?? type
+        if let usage = TokenUsage.parse(json["usage"]) { onUsage?(usage) }
         if eventName.contains("done") || eventName == "transcript.text.done" {
             if let text = json["text"] as? String, !text.isEmpty {
                 assembled = text
@@ -238,6 +281,11 @@ struct TranscriptionClient: Sendable {
     }
 
     func checkServer(configuration: TranscriptionConfiguration) async throws {
+        if configuration.backend == .integrated {
+            try await NativeASRClient.shared.checkRuntime(configuration: configuration)
+            return
+        }
+
         guard let transcriptionURL = URL(string: configuration.endpoint) else {
             throw TranscriptionError.invalidEndpoint
         }

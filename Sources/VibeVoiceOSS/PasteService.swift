@@ -4,34 +4,36 @@ import ApplicationServices
 enum TextInsertionMethod: Sendable {
     case accessibility
     case pasteboard
+    case appleScript
 }
 
 enum PasteService {
     @MainActor
-    static func requestAccessibilityIfNeeded() -> Bool {
-        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+    static func requestAccessibilityIfNeeded(prompt: Bool = true) -> Bool {
+        let options = ["AXTrustedCheckOptionPrompt": prompt] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    /// Inserts text into the application that owned the cursor when recording began.
-    /// AX selected-text insertion is clipboard-free; Cmd+V is the compatibility fallback.
+    @MainActor
+    static var hasAccessibilityPermission: Bool {
+        AXIsProcessTrusted()
+    }
+
     @MainActor
     static func insert(_ text: String, into processIdentifier: pid_t?) async throws -> TextInsertionMethod {
         guard AXIsProcessTrusted() else {
-            _ = requestAccessibilityIfNeeded()
             throw PasteError.accessibilityDenied
         }
 
         if let processIdentifier,
            let application = NSRunningApplication(processIdentifier: processIdentifier) {
+            let isWebEditor = prefersPasteboardInsertion(application)
             application.activate()
-            try? await Task.sleep(for: .milliseconds(150))
+            let activationDelay: Duration = isWebEditor ? .milliseconds(420) : .milliseconds(150)
+            try? await Task.sleep(for: activationDelay)
 
-            // Chromium/Electron editors may report AXSelectedText writes as successful
-            // without updating their internal editor model. A real paste event is reliable there.
-            if prefersPasteboardInsertion(application) {
-                try await insertUsingPasteboard(text)
-                return .pasteboard
+            if isWebEditor {
+                return try await insertIntoPasteboardTarget(text)
             }
 
             if insertUsingAccessibility(text, processIdentifier: processIdentifier) {
@@ -39,8 +41,63 @@ enum PasteService {
             }
         }
 
-        try await insertUsingPasteboard(text)
+        return try await insertIntoPasteboardTarget(text)
+    }
+
+    /// Try CGEvent Cmd+V first; fall back to AppleScript System Events keystroke.
+    @MainActor
+    private static func insertIntoPasteboardTarget(_ text: String) async throws -> TextInsertionMethod {
+        let pasteboard = NSPasteboard.general
+        let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+
+        if let method = try? await postCmdV() {
+            try? await Task.sleep(for: .milliseconds(800))
+            restoreIfUnchanged(snapshot: snapshot, expected: text)
+            return method
+        }
+
+        if let method = try? await appleScriptCmdV() {
+            try? await Task.sleep(for: .milliseconds(800))
+            restoreIfUnchanged(snapshot: snapshot, expected: text)
+            return method
+        }
+
+        throw PasteError.cannotCreateEvent
+    }
+
+    /// Simulate Cmd+V via CGEvent.
+    @MainActor
+    private static func postCmdV() async throws -> TextInsertionMethod {
+        // virtualKey 9 = 'V' on the standard US keyboard layout.
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
+            throw PasteError.cannotCreateEvent
+        }
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.post(tap: .cgSessionEventTap)
+        keyUp.post(tap: .cgSessionEventTap)
         return .pasteboard
+    }
+
+    /// Simulate Cmd+V via AppleScript System Events — survives stricter
+    /// macOS 26 CGEvent restrictions that block direct event posting.
+    @MainActor
+    private static func appleScriptCmdV() async throws -> TextInsertionMethod {
+        let script = NSAppleScript(source: """
+            tell application "System Events"
+                keystroke "v" using command down
+            end tell
+        """)
+        var errorInfo: NSDictionary?
+        script?.executeAndReturnError(&errorInfo)
+        if errorInfo != nil {
+            throw PasteError.cannotCreateEvent
+        }
+        return .appleScript
     }
 
     private static func prefersPasteboardInsertion(_ application: NSRunningApplication) -> Bool {
@@ -74,25 +131,9 @@ enum PasteService {
         return insertStatus == .success
     }
 
-    @MainActor
-    private static func insertUsingPasteboard(_ text: String) async throws {
+    private static func restoreIfUnchanged(snapshot: PasteboardSnapshot, expected: String) {
         let pasteboard = NSPasteboard.general
-        let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-
-        guard let source = CGEventSource(stateID: .combinedSessionState),
-              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
-            throw PasteError.cannotCreateEvent
-        }
-        keyDown.flags = .maskCommand
-        keyUp.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.post(tap: .cghidEventTap)
-
-        try? await Task.sleep(for: .milliseconds(800))
-        if pasteboard.string(forType: .string) == text {
+        if pasteboard.string(forType: .string) == expected {
             snapshot.restore(to: pasteboard)
         }
     }
@@ -130,7 +171,7 @@ enum PasteError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .accessibilityDenied: "需要辅助功能权限才能向当前光标插入文字。"
+        case .accessibilityDenied: "需要辅助功能权限才能向当前光标插入文字。请在系统设置 → 隐私与安全 → 辅助功能中关闭再重新打开 Vibe Voice OSS 的开关。"
         case .cannotCreateEvent: "无法生成文本输入事件。"
         }
     }
