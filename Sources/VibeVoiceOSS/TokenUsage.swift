@@ -110,15 +110,19 @@ struct TokenUsageRecord: Codable, Identifiable, Sendable {
 @MainActor
 final class TokenUsageStore: ObservableObject {
     @Published private(set) var records: [TokenUsageRecord] = []
-    private let defaultsKey = "tokenUsageRecords.v1"
     private let maxRecords = 1_000
-    private let defaults: UserDefaults
+    private let store = DataStore.shared
 
     init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-        if let data = defaults.data(forKey: defaultsKey),
-           let decoded = try? JSONDecoder().decode([TokenUsageRecord].self, from: data) {
-            records = decoded
+        records = store.loadAllTokenUsage()
+
+        // One-time migration from legacy UserDefaults / JSON.
+        if records.isEmpty {
+            let migrated = Self.migrateFromLegacy(defaults: defaults)
+            if !migrated.isEmpty {
+                for record in migrated { store.insertTokenUsage(record) }
+                records = migrated
+            }
         }
     }
 
@@ -128,20 +132,47 @@ final class TokenUsageStore: ObservableObject {
 
     func record(_ usage: TokenUsage, stage: UsageStage, model: String) {
         guard !usage.isEmpty else { return }
-        records.append(TokenUsageRecord(
+        let record = TokenUsageRecord(
             id: UUID(), createdAt: Date(), stage: stage, model: model, usage: usage
-        ))
+        )
+        records.append(record)
         if records.count > maxRecords { records.removeFirst(records.count - maxRecords) }
-        persist()
+        store.insertTokenUsage(record)
     }
 
     func clear() {
         records = []
-        defaults.removeObject(forKey: defaultsKey)
+        store.clearTokenUsage()
     }
 
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(records) else { return }
-        defaults.set(data, forKey: defaultsKey)
+    private static func migrateFromLegacy(defaults: UserDefaults) -> [TokenUsageRecord] {
+        // Try JSON file first, then UserDefaults.
+        let fileURL = PersistenceDirectory.url.appendingPathComponent("token_usage.json")
+        if let data = try? Data(contentsOf: fileURL),
+           let decoded = try? JSONDecoder().decode([TokenUsageRecord].self, from: data) {
+            try? FileManager.default.removeItem(at: fileURL)
+            return decoded
+        }
+        if let data = defaults.data(forKey: "tokenUsageRecords.v1"),
+           let decoded = try? JSONDecoder().decode([TokenUsageRecord].self, from: data) {
+            defaults.removeObject(forKey: "tokenUsageRecords.v1")
+            return decoded
+        }
+        return []
+    }
+}
+
+/// Shared directory for persisting app data.
+enum PersistenceDirectory {
+    static let url: URL = {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask
+        ).first ?? URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+        return appSupport.appendingPathComponent("VibeVoiceOSS", isDirectory: true)
+    }()
+
+    static func ensureExists() {
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
 }

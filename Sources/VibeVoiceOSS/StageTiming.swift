@@ -112,6 +112,7 @@ enum StageTimingFormatter {
 }
 
 /// Records wall-clock duration for each pipeline stage and keeps recent run history.
+/// Data is persisted to `~/Library/Application Support/VibeVoiceOSS/stage_timing.json`.
 @MainActor
 final class StageTimingStore: ObservableObject {
     static let maxSessions = 100
@@ -126,6 +127,21 @@ final class StageTimingStore: ObservableObject {
     private var buildingStages: [StageDuration] = []
     private var promptTarget: String?
     private var firstPartialMs: Int?
+    private let store = DataStore.shared
+
+    init() {
+        sessions = store.loadAllPipelineRuns()
+        // One-time migration from legacy JSON file.
+        if sessions.isEmpty {
+            let fileURL = PersistenceDirectory.url.appendingPathComponent("stage_timing.json")
+            if let data = try? Data(contentsOf: fileURL),
+               let decoded = try? JSONDecoder().decode([PipelineRunReport].self, from: data) {
+                sessions = decoded
+                for report in decoded { store.insertPipelineRun(report) }
+                try? FileManager.default.removeItem(at: fileURL)
+            }
+        }
+    }
 
     var latestSession: PipelineRunReport? { sessions.first }
 
@@ -185,10 +201,12 @@ final class StageTimingStore: ObservableObject {
             sessions = Array(sessions.prefix(Self.maxSessions))
         }
         resetBuilder()
+        store.insertPipelineRun(report)
     }
 
     func clearHistory() {
         sessions.removeAll()
+        store.clearPipelineRuns()
     }
 
     private func closeOpenStage(at date: Date) {

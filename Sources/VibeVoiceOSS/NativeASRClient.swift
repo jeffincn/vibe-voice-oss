@@ -142,14 +142,45 @@ actor NativeASRClient {
         configuration: TranscriptionConfiguration
     ) async throws -> String {
         let kit = try await loadWhisperKit(configuration: configuration)
+        var options = whisperDecodingOptions(configuration)
+
+        // Encode recognition hints into prompt tokens for word biasing.
+        // Join newline-separated keywords with commas so Whisper treats them
+        // as natural context rather than multi-line noise.
+        let promptText = configuration.prompt
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        let hasPrompt = !promptText.isEmpty
+        if hasPrompt, let tokenizer = kit.tokenizer {
+            options.promptTokens = tokenizer.encode(text: promptText)
+        }
+
         let results = try await kit.transcribe(
             audioPath: audioURL.path,
-            decodeOptions: whisperDecodingOptions(configuration)
+            decodeOptions: options
         )
-        let text = results
+        var text = results
             .map(\.text)
             .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Retry without prompt tokens if the first pass returned empty.
+        if text.isEmpty && hasPrompt {
+            var fallback = options
+            fallback.promptTokens = nil
+            let retryResults = try await kit.transcribe(
+                audioPath: audioURL.path,
+                decodeOptions: fallback
+            )
+            text = retryResults
+                .map(\.text)
+                .joined(separator: "\n")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
         guard !text.isEmpty else { throw TranscriptionError.emptyText }
         return text
     }

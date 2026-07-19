@@ -201,6 +201,78 @@ The agent MUST NOT silently assume completion. Even if the build succeeds and al
 
 ---
 
+## R10 — Qwen3-ASR Local Model Preparation
+
+The Qwen3-ASR model (MLX quantised) requires special preparation before it can be loaded by the app. The Hugging Face repository (`mlx-community/Qwen3-ASR-0.6B-6bit`) does **not** ship a ready-to-use `tokenizer.json`. Agents MUST follow this procedure whenever the user downloads or prepares a Qwen3-ASR model.
+
+### Step 1 — Download Model Files
+
+Download all files from the Hugging Face repository to the local model directory:
+
+```zsh
+MODEL_DIR=~/Documents/VibeVoiceOSS/Models/Qwen3-ASR-0.6B-6bit
+mkdir -p "$MODEL_DIR"
+# Download core files (config, weights, vocab, merges, tokenizer_config)
+for f in config.json model.safetensors vocab.json merges.txt tokenizer_config.json; do
+  curl -sL "https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-6bit/resolve/main/$f" \
+       -o "$MODEL_DIR/$f"
+done
+```
+
+If Hugging Face is unreachable, use a mirror:
+
+```zsh
+export HF_ENDPOINT=https://hf-mirror.com
+```
+
+### Step 2 — Generate `tokenizer.json`
+
+The MLXASR library (`AutoTokenizer.from(modelFolder:)`) requires a `tokenizer.json` file in HuggingFace Tokenizers format (~11 MB). The repo only provides `vocab.json` + `merges.txt`. Generate it with Python:
+
+```bash
+pip install transformers tokenizers
+python3 -c "
+from transformers import AutoTokenizer
+t = AutoTokenizer.from_pretrained('$MODEL_DIR')
+t.save_pretrained('$MODEL_DIR')
+"
+```
+
+Verify the generated file is at least 5 MB (a 12 KB file is the wrong format — that's likely a copy of `tokenizer_config.json`).
+
+### Step 3 — Verify Required Files
+
+After preparation, the model directory MUST contain at minimum:
+
+| File | Size (approx.) | Purpose |
+|------|----------------|---------|
+| `model.safetensors` | ~818 MB | Model weights |
+| `config.json` | ~2 KB | Model architecture config |
+| `vocab.json` | ~2.8 MB | Vocabulary mapping |
+| `merges.txt` | ~1.7 MB | BPE merge rules |
+| `tokenizer.json` | ~11 MB | Full HuggingFace tokenizer (generated) |
+| `tokenizer_config.json` | ~12 KB | Tokenizer configuration |
+
+### Step 4 — MLX Metal Shader Prerequisite
+
+Qwen3-ASR uses MLX for inference, which requires `default.metallib` in the app bundle. This is handled by the build script (see R5). If the user reports "Failed to load the default metallib":
+
+1. Ensure the Metal Toolchain is installed: `xcodebuild -downloadComponent MetalToolchain`
+2. Rebuild with `zsh scripts/build-app.sh` (the script auto-compiles `.metal` → `.metallib`)
+3. Verify the metallib is in the bundle: `ls "dist/Vibe Voice OSS.app/Contents/Resources/mlx-swift_Cmlx.bundle/default.metallib"`
+
+### Common Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Required configuration file missing: tokenizer.json` | Repo doesn't ship it | Run Step 2 to generate |
+| `tokenizer.json` exists but model fails to load | File is only 12 KB (wrong format) | Delete and regenerate with Step 2 |
+| `MLX Error: Failed to load the default metallib` | Metal shaders not compiled | Run Step 4 |
+| Download stuck at 54% | Network restriction on huggingface.co | Use `HF_ENDPOINT` mirror or download with `curl` |
+| `Invalid metadata: File metadata must have been retrieved from server` | Mirror redirect issue | Download directly with `curl` (Step 1) |
+
+---
+
 ## Acceptance Criteria
 
 - [ ] Every code change is followed by a successful `zsh scripts/build-app.sh`.

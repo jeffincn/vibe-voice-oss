@@ -318,7 +318,12 @@ final class AppSettings: ObservableObject {
     }
     @Published var model: String { didSet { save(model, for: Key.model) } }
     @Published var language: String { didSet { save(language, for: Key.language) } }
-    @Published var prompt: String { didSet { save(prompt, for: Key.prompt) } }
+    @Published var prompt: String {
+        didSet {
+            save(prompt, for: Key.prompt)
+            syncPromptToSQLite(prompt)
+        }
+    }
     @Published var apiKey: String {
         didSet { KeychainStore.set(apiKey, account: .asrAPIKey) }
     }
@@ -474,13 +479,19 @@ final class AppSettings: ObservableObject {
             key: Key.language,
             fallback: "auto"
         )
-        let resolvedPrompt = Self.sanitizedASRPrompt(
-            KeychainStore.coalesceString(
-                defaults: defaults,
-                key: Key.prompt,
-                fallback: ""
-            )
+        var rawPrompt = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.prompt,
+            fallback: ""
         )
+        // Recover from SQLite if UserDefaults is empty (e.g. after a fresh install).
+        if rawPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let sqliteWords = DataStore.shared.loadRecognitionPrompts()
+            if !sqliteWords.isEmpty {
+                rawPrompt = sqliteWords.joined(separator: "\n")
+            }
+        }
+        let resolvedPrompt = Self.sanitizedASRPrompt(rawPrompt)
         prompt = resolvedPrompt
         defaults.set(resolvedPrompt, forKey: Key.prompt)
         let resolvedASRKey = KeychainStore.loadOrMigrate(
@@ -606,12 +617,24 @@ final class AppSettings: ObservableObject {
         } else {
             transcodeMaxGainDb = defaults.double(forKey: Key.transcodeMaxGainDb)
         }
+        // All stored properties are now initialized — safe to call instance methods.
+        syncPromptToSQLite(resolvedPrompt)
     }
 
     private let defaults: UserDefaults
 
     private func save(_ value: String, for key: String) {
         defaults.set(value, forKey: key)
+    }
+
+    private func syncPromptToSQLite(_ prompt: String) {
+        let words = prompt
+            .components(separatedBy: .newlines)
+            .flatMap { $0.components(separatedBy: "，") }
+            .flatMap { $0.components(separatedBy: ",") }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        DataStore.shared.saveRecognitionPrompts(words)
     }
 
     nonisolated static func normalizeWhisperKitModel(_ value: String) -> String {

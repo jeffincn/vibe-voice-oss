@@ -4,10 +4,19 @@ import SwiftUI
 struct VibeVoiceOSSApp: App {
     @StateObject private var appState = AppState()
 
+    init() {
+        // Force Aqua appearance for all AppKit components (NSMenu, NSPopover, etc.)
+        // so Picker dropdowns don't render white-on-white in system dark mode.
+        DispatchQueue.main.async {
+            NSApp?.appearance = NSAppearance(named: .aqua)
+        }
+    }
+
     var body: some Scene {
         MenuBarExtra {
             MenuContentView()
                 .environmentObject(appState)
+                .preferredColorScheme(.light)
         } label: {
             Image(systemName: appState.phase.symbol)
         }
@@ -16,18 +25,21 @@ struct VibeVoiceOSSApp: App {
         Window("阶段耗时报告", id: "stage-timing-report") {
             StageTimingReportView()
                 .environmentObject(appState)
+                .preferredColorScheme(.light)
         }
         .defaultSize(width: 560, height: 460)
 
         Window("Token 用量统计", id: "token-usage-report") {
             TokenUsageReportView()
                 .environmentObject(appState)
+                .preferredColorScheme(.light)
         }
         .defaultSize(width: 560, height: 460)
 
         Settings {
             SettingsView()
                 .environmentObject(appState)
+                .preferredColorScheme(.light)
         }
     }
 }
