@@ -291,12 +291,18 @@ actor OverlappingWindowStreamingASRClient: StreamingASRClient {
         } catch is CancellationError {
             return
         } catch let error as TranscriptionError {
-            if case .emptyText = error { return }
-            if case let .server(status, _) = error, status == 401 || status == 403 {
+            switch error {
+            case .emptyText:
+                return
+            case let .server(status, _) where status == 401 || status == 403:
                 onEvent(.error("转写需要 API Key：请在设置 → 语音识别中填写后重试"))
+            case let .localRuntime(message):
+                onEvent(.error("流式字幕：\(message)"))
+            default:
+                onEvent(.error("流式转写失败：\(error.localizedDescription)"))
             }
         } catch {
-            return
+            onEvent(.error("流式字幕：\(error.localizedDescription)"))
         }
     }
 

@@ -426,7 +426,7 @@ private struct SettingsForm: View {
 
             if settings.llmBackend == .api {
                 caption("模型名请填写 oMLX / 兼容服务端已加载的 chat 模型；可留空后按需填写。")
-                caption("API Key 保存在本机钥匙串，不会写入明文偏好设置。")
+                caption("API Key 保存在本机 UserDefaults，仅限本地使用。")
             } else {
                 caption("关闭时只输出 ASR 原文，下面的翻译、整理和 Prompt 编译参数不会生效。")
             }

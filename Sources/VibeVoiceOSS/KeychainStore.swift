@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// Stores API keys and non-secret preferences in UserDefaults.
 ///
@@ -122,5 +123,24 @@ enum KeychainStore {
             return number.stringValue
         }
         return ""
+    }
+
+    // MARK: - Legacy Keychain Cleanup
+
+    /// Delete old Keychain entries left over from builds that used SecItem storage.
+    /// `SecItemDelete` does NOT trigger the login-password dialog — only reads do.
+    /// Called once on first launch after migration; the flag prevents repeat work.
+    static func cleanupLegacyKeychainEntries() {
+        let doneKey = "\(service).keychain-cleanup-v2"
+        guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
+        let services = [service] + previousServices
+        for svc in services {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: svc,
+            ]
+            SecItemDelete(query as CFDictionary)
+        }
+        UserDefaults.standard.set(true, forKey: doneKey)
     }
 }

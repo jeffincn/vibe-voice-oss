@@ -21,6 +21,9 @@ actor NativeASRClient {
     private var qwenModelPath = ""
     private var whisperKit: WhisperKit?
     private var whisperModel = ""
+    /// Separate WhisperKit instance for streaming to avoid reloading the primary model.
+    private var streamingWhisperKit: WhisperKit?
+    private var streamingWhisperModel = ""
 
     func transcribe(wav: Data, configuration: TranscriptionConfiguration) async throws -> String {
         let audioURL = try writeJobWAV(wav)
@@ -115,8 +118,23 @@ actor NativeASRClient {
             let kit = try await WhisperKit(WhisperKitConfig(modelFolder: folder.path, load: true, download: false))
             whisperKit = kit
             whisperModel = modelName
+
+            // Also pre-download the streaming model (base) for live captions.
+            let streamingModel = StreamingTranscriptionSession.streamingModel
+            if streamingModel != modelName {
+                let streamFolder = localWhisperKitFolder(modelName: streamingModel)
+                if !hasRequiredWhisperKitFiles(in: streamFolder) {
+                    onProgress?("正在下载流式字幕模型 \(streamingModel)…")
+                    let variant = Self.whisperKitVariant(streamingModel)
+                    _ = try await WhisperKit.download(variant: variant) { progress in
+                        onProgress?(Self.formatProgress(progress, prefix: "下载流式模型 \(streamingModel)"))
+                    }
+                    onProgress?("流式字幕模型 \(streamingModel) 已准备。")
+                }
+            }
+
             return NativeASRPreparationResult(
-                message: "WhisperKit 模型已准备：\(modelName)",
+                message: "WhisperKit 模型已准备：\(modelName)（流式字幕用 \(streamingModel)）",
                 modelPath: folder.path
             )
         }
@@ -141,12 +159,13 @@ actor NativeASRClient {
         audioURL: URL,
         configuration: TranscriptionConfiguration
     ) async throws -> String {
-        let kit = try await loadWhisperKit(configuration: configuration)
+        let isStreamingModel = isStreamingModelRequest(configuration)
+        let kit = isStreamingModel
+            ? try await loadStreamingWhisperKit(configuration: configuration)
+            : try await loadWhisperKit(configuration: configuration)
         var options = whisperDecodingOptions(configuration)
 
         // Encode recognition hints into prompt tokens for word biasing.
-        // Join newline-separated keywords with commas so Whisper treats them
-        // as natural context rather than multi-line noise.
         let promptText = configuration.prompt
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .components(separatedBy: .newlines)
@@ -167,7 +186,6 @@ actor NativeASRClient {
             .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Retry without prompt tokens if the first pass returned empty.
         if text.isEmpty && hasPrompt {
             var fallback = options
             fallback.promptTokens = nil
@@ -183,6 +201,31 @@ actor NativeASRClient {
 
         guard !text.isEmpty else { throw TranscriptionError.emptyText }
         return text
+    }
+
+    private func isStreamingModelRequest(_ configuration: TranscriptionConfiguration) -> Bool {
+        let streamModel = StreamingTranscriptionSession.streamingModel.lowercased()
+        return configuration.whisperKitModel.lowercased().contains(streamModel)
+            && !whisperModel.lowercased().contains(streamModel)
+    }
+
+    private func loadStreamingWhisperKit(configuration: TranscriptionConfiguration) async throws -> WhisperKit {
+        let modelName = effectiveModel(configuration)
+        if let streamingWhisperKit, streamingWhisperModel == modelName {
+            return streamingWhisperKit
+        }
+        removeCorruptWhisperKitCacheIfNeeded(modelName: modelName)
+        let localFolder = localWhisperKitFolder(modelName: modelName)
+        let config: WhisperKitConfig
+        if hasRequiredWhisperKitFiles(in: localFolder) {
+            config = WhisperKitConfig(modelFolder: localFolder.path, load: true, download: false)
+        } else {
+            config = WhisperKitConfig(model: Self.whisperKitVariant(modelName), load: true, download: true)
+        }
+        let kit = try await WhisperKit(config)
+        streamingWhisperKit = kit
+        streamingWhisperModel = modelName
+        return kit
     }
 
     private func loadQwen(configuration: TranscriptionConfiguration) async throws -> Qwen3ASRSTT {

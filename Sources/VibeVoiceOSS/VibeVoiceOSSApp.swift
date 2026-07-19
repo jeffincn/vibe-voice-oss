@@ -1,16 +1,16 @@
 import SwiftUI
 
+private class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        KeychainStore.cleanupLegacyKeychainEntries()
+        NSApp?.appearance = NSAppearance(named: .aqua)
+    }
+}
+
 @main
 struct VibeVoiceOSSApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var appState = AppState()
-
-    init() {
-        // Force Aqua appearance for all AppKit components (NSMenu, NSPopover, etc.)
-        // so Picker dropdowns don't render white-on-white in system dark mode.
-        DispatchQueue.main.async {
-            NSApp?.appearance = NSAppearance(named: .aqua)
-        }
-    }
 
     var body: some Scene {
         MenuBarExtra {

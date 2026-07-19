@@ -84,8 +84,15 @@ final class StreamingTranscriptionSession {
         backend = .overlappingWindow
     }
 
+    /// The fast model used for live streaming captions during recording.
+    /// The full-quality model is only used for the final transcription after recording stops.
+    nonisolated static let streamingModel = "base"
+
     /// Open a local-only streaming session for integrated ASR (no WebSocket).
-    /// Uses wider windows and slower polling since local inference is heavier.
+    /// Uses a lightweight model (base) for fast live captions. The configured
+    /// full-quality model is used for the final batch transcription after
+    /// recording stops — the dual-model approach gives responsive partials
+    /// without sacrificing final accuracy.
     func openLocal(configuration: TranscriptionConfiguration) async {
         closeClients()
         accumulator.reset()
@@ -100,17 +107,69 @@ final class StreamingTranscriptionSession {
             }
         }
 
+        // Use a fast model for live streaming (base/tiny), regardless of
+        // the configured production model. Qwen3 uses its own model directly.
+        let streamConfig: TranscriptionConfiguration
+        if configuration.integratedEngine == .whisperMLX {
+            streamConfig = Self.streamingConfiguration(from: configuration)
+        } else {
+            streamConfig = configuration
+        }
+
+        let params = Self.localStreamingParams(for: streamConfig)
         let window = OverlappingWindowStreamingASRClient(
-            configuration: configuration,
-            liveWindowSeconds: 6.0,
-            liveKeepSeconds: 2.5,
-            pollMs: 2500,
+            configuration: streamConfig,
+            liveWindowSeconds: params.window,
+            liveKeepSeconds: params.keep,
+            pollMs: params.poll,
             onEvent: handler
         )
         await window.start()
         windowClient = window
         client = window
         backend = .overlappingWindow
+    }
+
+    /// Build a lighter config for streaming by substituting a fast model.
+    private static func streamingConfiguration(
+        from config: TranscriptionConfiguration
+    ) -> TranscriptionConfiguration {
+        let target = config.whisperKitModel.lowercased()
+        // If the user already configured a lightweight model, keep it.
+        if target.contains("tiny") || target.contains("base") {
+            return config
+        }
+        return TranscriptionConfiguration(
+            backend: config.backend,
+            integratedEngine: config.integratedEngine,
+            integratedModelPath: config.integratedModelPath,
+            qwenModelRepo: config.qwenModelRepo,
+            whisperKitModel: streamingModel,
+            endpoint: config.endpoint,
+            model: config.model,
+            language: config.language,
+            prompt: config.prompt,
+            apiKey: config.apiKey
+        )
+    }
+
+    private struct LocalStreamingParams {
+        let window: Double
+        let keep: Double
+        let poll: UInt64
+    }
+
+    /// Adaptive parameters based on the streaming model weight class.
+    private static func localStreamingParams(for config: TranscriptionConfiguration) -> LocalStreamingParams {
+        let model = config.whisperKitModel.lowercased()
+        if config.integratedEngine == .qwen3MLX {
+            return LocalStreamingParams(window: 3.5, keep: 1.2, poll: 1200)
+        }
+        if model.contains("tiny") {
+            return LocalStreamingParams(window: 2.5, keep: 0.8, poll: 600)
+        }
+        // base (default streaming model) or small
+        return LocalStreamingParams(window: 3.0, keep: 1.0, poll: 800)
     }
 
     func appendPCM(_ frame: Data) {
