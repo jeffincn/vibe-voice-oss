@@ -1,4 +1,6 @@
-# Vibe Voice OSS 0.5.0 Change Note
+# Changelog
+
+## Vibe Voice OSS 0.5.0
 
 Vibe Voice OSS 0.5.0 moves the app from an API-dependent dictation client to a local-first voice workflow. It can now transcribe entirely on the Mac while retaining OpenAI-compatible API support for users who prefer an external ASR or LLM service.
 
