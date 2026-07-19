@@ -65,3 +65,31 @@ API keys remain in the macOS Keychain. Integrated ASR processes audio locally. A
 ## Upgrading from 0.4
 
 Version 0.4 required an OpenAI-compatible ASR service. Version 0.5 defaults to integrated WhisperKit transcription, so an external server is no longer required. Existing API users can select API mode and keep their endpoint, model, and Keychain-backed credentials. Because the minimum deployment target is now macOS 15, macOS 14 systems must remain on the 0.4 release line.
+
+## Detailed feature reference
+
+### ASR configuration
+
+The Settings window now separates ASR mode, integrated engine, Qwen model repository and directory, WhisperKit model, API endpoint, API key, model, language, prompt, streaming mode, and WebSocket URL. Integrated mode uses WhisperKit or Qwen3-ASR locally; API mode retains HTTP transcription, SSE, WebSocket streaming, and overlapping-window pseudo-streaming.
+
+The **Prepare Model** action downloads or repairs local model files. A manually selected Qwen directory must contain `config.json`, `model.safetensors`, and tokenizer files. Readiness checks provide targeted guidance for missing files, gated repositories, Hugging Face authorization, and local runtime failures.
+
+### LLM processing and routing
+
+When LLM API mode has a complete endpoint and model, the app supports translation, direct English translation, clean or structured formatting, two-stage Prompt compilation, and Smart Route. Custom System Prompts supplement normal tasks and control Smart Route output, enabling specialized rewriting, extraction, classification, formatting, or routing. LLM controls are disabled when the backend is off or incomplete.
+
+### Processing and errors
+
+The pipeline now distinguishes routing, model preparation, local transcription, API transcription, structuring, translation, and Prompt optimization. Cancellation works across these stages. Errors identify model, authorization, API, runtime, Accessibility, and insertion failures. If insertion fails after processing, the result remains available for copying and is preserved in the clipboard when possible.
+
+### Usage accounting
+
+Usage records are persisted locally with a bounded history and include stage, model, timestamp, and provider-reported usage. The report shows cumulative totals and recent requests for input, output, cached, reasoning, audio, and duration fields. It accepts common Chat/Responses, realtime, and audio-transcription usage shapes without double-counting nested details. Local inference and APIs that omit `usage` are not estimated, and the report can be cleared.
+
+### Packaging and deployment
+
+The release build conditionally compiles MLX Metal sources into `default.metallib`, places it in `mlx-swift_Cmlx.bundle`, installs independently into `dist/` and `/Applications`, and strictly verifies both copies. Signing selects an environment override, the persistent local identity, an Apple Development identity, or ad-hoc signing in that order. Release 0.5.0 used `Vibe Voice OSS Local Code Signing`, so Accessibility grants survive rebuilds.
+
+### Verification
+
+The 0.5.0 release passed 81 Swift tests. The release build completed successfully, the bundle reports version `0.5.0` / build `9`, the MLX Metal library is present in both installed bundles, and both app copies pass `codesign --verify --deep --strict`.
