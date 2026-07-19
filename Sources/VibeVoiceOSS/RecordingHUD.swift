@@ -24,6 +24,9 @@ final class RecordingHUDController {
         // Allow the stop button to receive clicks.
         panel.ignoresMouseEvents = false
         panel.isReleasedWhenClosed = false
+        if #available(macOS 26, *) {
+            panel.appearance = NSAppearance(named: .darkAqua)
+        }
         panel.contentView = RecordingHostingView(
             rootView: RecordingHUDView(
                 onStop: { [weak self] in
@@ -245,18 +248,19 @@ private final class HUDFrostedGlassView: NSVisualEffectView {
 
 private struct HUDFrostedGlass: NSViewRepresentable {
     var cornerRadius: CGFloat
+    var intensity: CGFloat = 1.0
 
     func makeNSView(context: Context) -> HUDFrostedGlassView {
         let view = HUDFrostedGlassView(frame: .zero)
         view.cornerRadius = cornerRadius
-        view.alphaValue = 1
+        view.alphaValue = intensity
         return view
     }
 
     func updateNSView(_ view: HUDFrostedGlassView, context: Context) {
         view.cornerRadius = cornerRadius
         view.state = .active
-        view.alphaValue = 1
+        view.alphaValue = intensity
     }
 }
 
@@ -291,30 +295,29 @@ private struct RecordingHUDView: View {
         let stable = appState.stableTranscript
         let showDisplay = shouldShowDisplay(phase: phase, partial: partial)
 
-        VStack(spacing: 14) {
-            if showDisplay {
-                // Keep glass OUTSIDE TimelineView — rebuilding NSVisualEffectView every frame
-                // collapses it into an opaque gray/beige fill.
-                displayBubble(
-                    partial: partial,
-                    stable: stable,
-                    primary: primary,
-                    secondary: secondary,
-                    phase: phase
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
-            }
-
-            HStack(spacing: 12) {
-                // Animate waveform only — keep NSButton outside TimelineView so clicks aren't dropped.
-                TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
-                    let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-                    let activity = Self.activity(from: level)
-                    waveformPill(phase: phase, activity: activity, bands: bands, time: time)
+        glassRoot {
+            VStack(spacing: 14) {
+                if showDisplay {
+                    displayBubble(
+                        partial: partial,
+                        stable: stable,
+                        primary: primary,
+                        secondary: secondary,
+                        phase: phase
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
                 }
 
-                if showsStopButton(phase: phase) {
-                    stopButton
+                HStack(spacing: 12) {
+                    TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
+                        let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                        let activity = Self.activity(from: level)
+                        waveformPill(phase: phase, activity: activity, bands: bands, time: time)
+                    }
+
+                    if showsStopButton(phase: phase) {
+                        stopButton
+                    }
                 }
             }
         }
@@ -325,6 +328,18 @@ private struct RecordingHUDView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel(primary: primary, secondary: secondary, phase: phase, partial: partial))
         .frame(width: 640, height: showDisplay ? 380 : 220)
+    }
+
+    @ViewBuilder
+    private func glassRoot<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if #available(macOS 26, *) {
+            GlassEffectContainer {
+                content()
+            }
+            .environment(\.colorScheme, .dark)
+        } else {
+            content()
+        }
     }
 
     private func showsStopButton(phase: AppState.Phase) -> Bool {
@@ -354,8 +369,50 @@ private struct RecordingHUDView: View {
         }
     }
 
-    // MARK: - Display (frosted glass text bubble)
+    // MARK: - Display (glass text bubble)
 
+    private func displayTextContent(
+        display: String,
+        waiting: Bool,
+        stable: String,
+        primary: String,
+        secondary: String?,
+        phase: AppState.Phase,
+        showStatusChrome: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if showStatusChrome {
+                TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1.0 / 20.0, paused: reduceMotion)) { timeline in
+                    let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
+                    let status = statusCaption(phase: phase, time: time, primary: primary, secondary: secondary)
+                    statusHeader(text: status, phase: phase, time: time)
+                }
+            }
+
+            if waiting {
+                if !showStatusChrome {
+                    Text(statusCaption(phase: phase, time: 0, primary: primary, secondary: secondary))
+                        .font(.system(size: captionFontSize, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.7))
+                        .lineLimit(captionLineCount)
+                        .frame(maxWidth: .infinity, minHeight: captionBodyHeight, maxHeight: captionBodyHeight, alignment: .topLeading)
+                } else {
+                    Text(waitingBodyHint(phase: phase))
+                        .font(.system(size: 15, weight: .regular, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.6))
+                        .lineLimit(captionLineCount)
+                        .frame(maxWidth: .infinity, minHeight: captionBodyHeight, maxHeight: captionBodyHeight, alignment: .topLeading)
+                }
+            } else {
+                subtitleText(partial: display, stable: stable)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 14)
+    }
+
+    @ViewBuilder
     private func displayBubble(
         partial: String,
         stable: String,
@@ -367,70 +424,53 @@ private struct RecordingHUDView: View {
         let waiting = display.isEmpty
         let showStatusChrome = shouldShowStatusChrome(phase: phase)
 
-        let glassShape = RoundedRectangle(cornerRadius: 32, style: .continuous)
+        if #available(macOS 26, *) {
+            displayTextContent(
+                display: display, waiting: waiting, stable: stable,
+                primary: primary, secondary: secondary,
+                phase: phase, showStatusChrome: showStatusChrome
+            )
+            .glassEffect(
+                .regular.interactive(),
+                in: .rect(cornerRadius: 32)
+            )
+        } else {
+            let glassShape = RoundedRectangle(cornerRadius: 32, style: .continuous)
 
-        return ZStack {
-            // Soft diffuse shadow (no hard rim) — wide blur so it feels like fog, not a box.
-            glassShape
-                .fill(Color.black.opacity(0.001))
-                .shadow(color: Color.black.opacity(0.28), radius: 40, y: 18)
+            ZStack {
+                glassShape
+                    .fill(Color.black.opacity(0.001))
+                    .shadow(color: Color.black.opacity(0.28), radius: 40, y: 18)
 
-            // Thin tea glaze only — the blur itself must stay visible.
-            // Previous black@0.22 + heavy dark material looked like solid charcoal.
-            HUDFrostedGlass(cornerRadius: 32)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay {
-                    glassShape
-                        .fill(Color(red: 0.18, green: 0.14, blue: 0.10).opacity(0.18))
-                        .allowsHitTesting(false)
-                }
-                // Soft top sheen (keep faint so it doesn't wash out the glass).
-                .overlay {
-                    glassShape
-                        .fill(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: Color.white.opacity(0.10), location: 0),
-                                    .init(color: Color.white.opacity(0.02), location: 0.35),
-                                    .init(color: Color.clear, location: 0.7),
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
+                HUDFrostedGlass(cornerRadius: 32)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay {
+                        glassShape
+                            .fill(Color(red: 0.18, green: 0.14, blue: 0.10).opacity(0.18))
+                            .allowsHitTesting(false)
+                    }
+                    .overlay {
+                        glassShape
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color.white.opacity(0.10), location: 0),
+                                        .init(color: Color.white.opacity(0.02), location: 0.35),
+                                        .init(color: Color.clear, location: 0.7),
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
                             )
-                        )
-                        .allowsHitTesting(false)
-                }
-
-            VStack(alignment: .leading, spacing: 10) {
-                if showStatusChrome {
-                    TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1.0 / 20.0, paused: reduceMotion)) { timeline in
-                        let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-                        let status = statusCaption(phase: phase, time: time, primary: primary, secondary: secondary)
-                        statusHeader(text: status, phase: phase, time: time)
+                            .allowsHitTesting(false)
                     }
-                }
 
-                if waiting {
-                    if !showStatusChrome {
-                        Text(statusCaption(phase: phase, time: 0, primary: primary, secondary: secondary))
-                            .font(.system(size: captionFontSize, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.white.opacity(0.7))
-                            .lineLimit(captionLineCount)
-                            .frame(maxWidth: .infinity, minHeight: captionBodyHeight, maxHeight: captionBodyHeight, alignment: .topLeading)
-                    } else {
-                        Text(waitingBodyHint(phase: phase))
-                            .font(.system(size: 15, weight: .regular, design: .rounded))
-                            .foregroundStyle(Color.white.opacity(0.6))
-                            .lineLimit(captionLineCount)
-                            .frame(maxWidth: .infinity, minHeight: captionBodyHeight, maxHeight: captionBodyHeight, alignment: .topLeading)
-                    }
-                } else {
-                    subtitleText(partial: display, stable: stable)
-                }
+                displayTextContent(
+                    display: display, waiting: waiting, stable: stable,
+                    primary: primary, secondary: secondary,
+                    phase: phase, showStatusChrome: showStatusChrome
+                )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 22)
-            .padding(.vertical, 14)
         }
     }
 
@@ -604,9 +644,9 @@ private struct RecordingHUDView: View {
         .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: partial)
     }
 
-    // MARK: - Input (black pill + 9-bar waveform)
+    // MARK: - Input (pill + 9-bar waveform)
 
-    private func waveformPill(
+    private func waveformBars(
         phase: AppState.Phase,
         activity: CGFloat,
         bands: AudioBands,
@@ -631,16 +671,31 @@ private struct RecordingHUDView: View {
         .padding(.horizontal, 28)
         .padding(.vertical, pillBarInset)
         .frame(width: pillWidth, height: pillHeight)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color.black.opacity(0.92))
-                .overlay(
+    }
+
+    @ViewBuilder
+    private func waveformPill(
+        phase: AppState.Phase,
+        activity: CGFloat,
+        bands: AudioBands,
+        time: TimeInterval
+    ) -> some View {
+        if #available(macOS 26, *) {
+            waveformBars(phase: phase, activity: activity, bands: bands, time: time)
+                .glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            waveformBars(phase: phase, activity: activity, bands: bands, time: time)
+                .background(
                     Capsule(style: .continuous)
-                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                        .fill(Color.black.opacity(0.92))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                        )
+                        .shadow(color: Color.black.opacity(0.18), radius: 12, y: 4)
                 )
-                .shadow(color: Color.black.opacity(0.18), radius: 12, y: 4)
-        )
-        .clipShape(Capsule(style: .continuous))
+                .clipShape(Capsule(style: .continuous))
+        }
     }
 
     /// Symmetric mountain envelope matching the reference (center tallest, outer ends as dots).
