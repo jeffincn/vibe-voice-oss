@@ -2,10 +2,9 @@
 
 ## Vibe Voice OSS 0.6.0
 
-<<<<<<< HEAD
-Experimental **Voice Pipeline** (optional): continuous listen → Apple Voice Processing → Silero VAD segmentation → Qwen3-ASR raw transcript. Toggle in Settings; existing push-to-talk path unchanged. No LLM rewrite or paste in this path.
-=======
 Vibe Voice OSS 0.6.0 focuses on everyday usability: bilingual UI, safer mid-pipeline copy, and making Settings reachable from Command-Tab even though the app remains a menu-bar agent.
+
+Experimental **Voice Pipeline** (optional, integrated ASR only): continuous listen → Apple Voice Processing → Silero VAD segmentation → local ASR raw transcript. Toggle in Settings; existing push-to-talk path unchanged. No LLM rewrite or paste in this path.
 
 ## Highlights
 
@@ -31,7 +30,6 @@ Vibe Voice OSS 0.6.0 focuses on everyday usability: bilingual UI, safer mid-pipe
 
 - Vendored `mlx-swift-asr` remains pinned for Swift 6.2 / mlx-swift 0.31.4 compatibility.
 - Release version: 0.6.0, build 32.
->>>>>>> main
 
 ## Vibe Voice OSS 0.5.0
 
