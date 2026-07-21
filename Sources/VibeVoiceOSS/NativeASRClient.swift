@@ -14,6 +14,12 @@ struct NativeASRDownloadGuidance: Sendable {
     let manualCommand: String
 }
 
+struct NativeASRSampleResult: Sendable {
+    let text: String
+    let language: String?
+    let audioDuration: Double
+}
+
 actor NativeASRClient {
     static let shared = NativeASRClient()
 
@@ -35,6 +41,29 @@ actor NativeASRClient {
         case .whisperMLX:
             return try await transcribeWithWhisperKit(audioURL: audioURL, configuration: configuration)
         }
+    }
+
+    /// Transcribe in-memory 16 kHz mono Float samples with Qwen3-ASR (no temp WAV).
+    func transcribe(
+        samples: [Float],
+        configuration: TranscriptionConfiguration
+    ) async throws -> NativeASRSampleResult {
+        guard configuration.integratedEngine == .qwen3MLX else {
+            throw TranscriptionError.localRuntime("样本转写仅支持 Qwen3-ASR。")
+        }
+        let stt = try await loadQwen(configuration: configuration)
+        let result = try await stt.transcribe(
+            audio: samples,
+            language: qwenLanguage(configuration.language),
+            context: configuration.prompt.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        )
+        let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw TranscriptionError.emptyText }
+        return NativeASRSampleResult(
+            text: text,
+            language: result.language,
+            audioDuration: result.audioDuration
+        )
     }
 
     func checkRuntime(configuration: TranscriptionConfiguration) async throws {
@@ -283,14 +312,38 @@ actor NativeASRClient {
               isDirectory.boolValue else {
             throw TranscriptionError.localRuntime("Qwen3-ASR 模型目录不存在：\(expanded)")
         }
-        let required = ["config.json", "model.safetensors"]
+        let directory = URL(fileURLWithPath: expanded, isDirectory: true)
+        let required = ["config.json", "model.safetensors", "tokenizer.json"]
+        var missing: [String] = []
         for file in required {
-            let path = URL(fileURLWithPath: expanded).appendingPathComponent(file).path
-            guard FileManager.default.fileExists(atPath: path) else {
-                throw TranscriptionError.localRuntime("Qwen3-ASR 模型目录缺少 \(file)：\(expanded)")
+            let path = directory.appendingPathComponent(file).path
+            if !FileManager.default.fileExists(atPath: path) {
+                missing.append(file)
             }
         }
-        return URL(fileURLWithPath: expanded, isDirectory: true)
+        if !missing.isEmpty {
+            throw TranscriptionError.localRuntime(
+                "Qwen3-ASR 模型目录不完整，缺少 \(missing.joined(separator: "、"))：\(expanded)。请点「准备模型」，或运行 AGENTS.md R10 补全下载（需含 config.json、model.safetensors≈800MB、tokenizer.json≈11MB）。"
+            )
+        }
+        // Truncated CDN downloads often leave a tiny/partial weights file.
+        let weights = directory.appendingPathComponent("model.safetensors")
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: weights.path),
+           let size = attrs[.size] as? NSNumber,
+           size.int64Value < 400_000_000 {
+            throw TranscriptionError.localRuntime(
+                "Qwen3-ASR 权重文件过小（\(ByteCountFormatter.string(fromByteCount: size.int64Value, countStyle: .file))），疑似下载中断。请删除后点「准备模型」重新下载：\(weights.path)"
+            )
+        }
+        let tokenizer = directory.appendingPathComponent("tokenizer.json")
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: tokenizer.path),
+           let size = attrs[.size] as? NSNumber,
+           size.int64Value < 5_000_000 {
+            throw TranscriptionError.localRuntime(
+                "tokenizer.json 过小（\(ByteCountFormatter.string(fromByteCount: size.int64Value, countStyle: .file))），格式不对。请按 AGENTS.md R10 用 transformers 重新生成。"
+            )
+        }
+        return directory
     }
 
     private func downloadQwenModel(

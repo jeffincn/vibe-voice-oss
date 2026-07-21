@@ -39,6 +39,17 @@ final class AppState: ObservableObject {
             }
         }
 
+        func pipelineLabel(hotKey: RecordingHotKey) -> String {
+            switch self {
+            case .idle: "Voice Pipeline：按 \(hotKey.label) 开始聆听"
+            case .recording: "聆听中…说话自动切段转写，再按 \(hotKey.label) 结束"
+            case .transcribing: "正在转写切段…"
+            case let .success(text): text
+            case let .failed(message): message
+            default: label
+            }
+        }
+
         func label(mode: RecordingOutputMode?) -> String {
             switch self {
             case .idle:
@@ -85,6 +96,17 @@ final class AppState: ObservableObject {
             }
         }
 
+        /// HUD primary when Voice Pipeline mode is active.
+        var pipelineHUDPrimary: String {
+            switch self {
+            case .recording: "聆听中"
+            case .transcribing: "切段转写"
+            case .success: "完成"
+            case .failed: "失败"
+            default: hudPrimary
+            }
+        }
+
         /// Whether this phase can show a nested engine / target sub-status.
         var showsHUDSecondary: Bool {
             if case .optimizing = self { return true }
@@ -123,7 +145,9 @@ final class AppState: ObservableObject {
     var inputDeviceName: String { recorder.deviceName(for: settings.inputDeviceUID) }
 
     private let recorder = AudioRecorder()
+    private let voicePipeline = SpeechPipelineCoordinator()
     private let client = TranscriptionClient()
+    private var pipelineObservation: Task<Void, Never>?
     private let translator = TranslationClient()
     private let formatter = SemanticFormatterClient()
     private let hotKey: HotKeyManager
@@ -141,8 +165,16 @@ final class AppState: ObservableObject {
     private let partialPublishInterval: TimeInterval = 1.0 / 20.0
     /// Serializes start paths so overlapping ⌘⇧R / menu / permission probe cannot double-open the engine.
     private var isStartingRecording = false
+    private var isStartingVoicePipeline = false
+    /// True while an open Voice Pipeline listen session owns the mic/HUD (independent of the settings toggle).
+    private var voicePipelineSessionActive = false
 
-    var phaseLabel: String { phase.label(mode: sessionOutputMode) }
+    var phaseLabel: String {
+        if settings.effectiveVoicePipelineEnabled {
+            return phase.pipelineLabel(hotKey: settings.recordingHotKey)
+        }
+        return phase.label(mode: sessionOutputMode)
+    }
 
     private struct ProcessingSnapshot {
         let wav: Data?
@@ -191,7 +223,13 @@ final class AppState: ObservableObject {
                 case .pressed:
                     guard let self, !self.hotKeyIsDown else { return }
                     self.hotKeyIsDown = true
-                    if self.phase == .recording {
+                    if self.settings.effectiveVoicePipelineEnabled {
+                        await self.toggleVoicePipeline()
+                    } else if self.voicePipelineSessionActive {
+                        // Settings toggle was turned off mid-session — tear down pipeline, don't
+                        // call finishRecording() on an AudioRecorder that never started.
+                        self.stopVoicePipeline()
+                    } else if self.phase == .recording {
                         self.finishRecording()
                     } else {
                         await self.beginRecording(outputMode: mode)
@@ -219,6 +257,145 @@ final class AppState: ObservableObject {
     func applyRecordingHotKeyFromSettings() {
         hotKey.registerAll()
         objectWillChange.send()
+    }
+
+    /// Toggle experimental Voice Pipeline (VAD → local ASR). No LLM / paste in this path.
+    func toggleVoicePipeline() async {
+        if isStartingVoicePipeline { return }
+
+        // Stop only when actively listening (not while stuck on a start-failure screen).
+        if voicePipeline.isListening {
+            stopVoicePipeline()
+            return
+        }
+        if case .failed = voicePipeline.state {
+            stopVoicePipeline()
+        }
+
+        isStartingVoicePipeline = true
+        defer { isStartingVoicePipeline = false }
+
+        // Cancel any in-flight PTT work.
+        if phase.isBusy {
+            processingGeneration += 1
+            transcriptionTask?.cancel()
+            transcriptionTask = nil
+            streamingSession?.cancel()
+            streamingSession = nil
+            recorder.cancel()
+        }
+
+        partialTranscript = ""
+        stableTranscript = ""
+        lastTranscript = ""
+        transcriptCopied = false
+        resultBanner.hide()
+        phase = .transcribing // "starting" affordance while models/mic prepare
+        recordingHUD.show()
+        connectionMessage = "Voice Pipeline 正在启动…"
+        NSSound(named: "Tink")?.play()
+
+        pipelineObservation?.cancel()
+        pipelineObservation = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var lastState = self.voicePipeline.state
+            var lastStatusAt = Date.distantPast
+            while !Task.isCancelled {
+                let state = self.voicePipeline.state
+                let level = self.voicePipeline.audioLevel
+                let bands = self.voicePipeline.audioBands
+                if abs(level - self.audioLevel) > 0.01 {
+                    self.audioLevel = level
+                }
+                if bands != self.audioBands {
+                    self.audioBands = bands
+                }
+                if state != lastState {
+                    lastState = state
+                    self.applyVoicePipelineState(state)
+                }
+                let now = Date()
+                if self.voicePipeline.isListening, now.timeIntervalSince(lastStatusAt) >= 1.0 {
+                    lastStatusAt = now
+                    let pct = Int((self.voicePipeline.lastSpeechProbability * 100).rounded())
+                    self.connectionMessage = self.voicePipeline.vadUsesCoreML
+                        ? "聆听中 · Silero 语音概率 \(pct)%"
+                        : "聆听中 · VAD \(pct)% · 说完停半秒出字"
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+
+        await voicePipeline.start(
+            deviceUID: settings.inputDeviceUID,
+            configuration: settings.configuration
+        )
+        applyVoicePipelineState(voicePipeline.state)
+        if case let .failed(message) = voicePipeline.state {
+            connectionMessage = message
+        } else if voicePipeline.isListening {
+            connectionMessage = voicePipeline.vadUsesCoreML
+                ? "Voice Pipeline 聆听中（Silero CoreML）"
+                : "Voice Pipeline 聆听中（能量 VAD；可运行 prepare-silero-vad.sh 启用 CoreML）"
+        }
+    }
+
+    func stopVoicePipeline() {
+        pipelineObservation?.cancel()
+        pipelineObservation = nil
+        voicePipeline.stop()
+        isStartingVoicePipeline = false
+        voicePipelineSessionActive = false
+        audioLevel = 0
+        audioBands = .silent
+        phase = .idle
+        connectionMessage = ""
+        recordingHUD.hide()
+    }
+
+    /// Called when Settings turns Voice Pipeline off (or switches to API mode).
+    func handleVoicePipelineSettingChanged(enabled: Bool) {
+        if !enabled, voicePipelineSessionActive || isStartingVoicePipeline || voicePipeline.isListening {
+            stopVoicePipeline()
+        }
+    }
+
+    private func applyVoicePipelineState(_ state: SpeechPipelineState) {
+        switch state {
+        case .idle:
+            // Don't hide a start-failure message that AppState already pinned.
+            if case .failed = phase { return }
+            phase = .idle
+            recordingHUD.hide()
+        case .listening, .speechDetected, .speaking:
+            // Stay on recording for the whole open session — avoid success↔recording flicker.
+            phase = .recording
+            recordingHUD.show()
+        case .processing:
+            phase = .transcribing
+        case let .completed(text):
+            // Accumulate segments; keep HUD in listening/recording (do not bounce through .success).
+            if lastTranscript.isEmpty {
+                lastTranscript = text
+            } else if !lastTranscript.contains(text) || !lastTranscript.hasSuffix(text) {
+                lastTranscript += "\n" + text
+            }
+            partialTranscript = lastTranscript
+            stableTranscript = lastTranscript
+            phase = .recording
+            recordingHUD.show()
+        case let .failed(message):
+            // Segment ASR hiccups stay quiet if we are still listening; only pin hard start failures.
+            if voicePipeline.isListening {
+                connectionMessage = "切段转写失败：\(message)"
+                phase = .recording
+                recordingHUD.show()
+            } else {
+                phase = .failed(message)
+                connectionMessage = message
+                recordingHUD.show()
+            }
+        }
     }
 
     func beginRecording(outputMode: RecordingOutputMode? = nil) async {
@@ -928,6 +1105,16 @@ final class AppState: ObservableObject {
 
     /// Abort recording or any in-flight pipeline stage without producing output.
     func cancelActiveSession() {
+        if settings.effectiveVoicePipelineEnabled,
+           voicePipeline.isListening
+            || isStartingVoicePipeline
+            || {
+                if case .failed = voicePipeline.state { return true }
+                return false
+            }() {
+            stopVoicePipeline()
+            return
+        }
         switch phase {
         case .recording:
             processingGeneration += 1

@@ -273,6 +273,24 @@ Qwen3-ASR uses MLX for inference, which requires `default.metallib` in the app b
 
 ---
 
+## R11 — Silero VAD Preparation (Voice Pipeline)
+
+Voice Pipeline requires Silero VAD under `~/Documents/VibeVoiceOSS/Models/SileroVAD/`.
+
+```zsh
+zsh scripts/prepare-silero-vad.sh
+```
+
+| Artifact | Purpose |
+|----------|---------|
+| `silero_vad.onnx` | Upstream Silero ONNX |
+| `silero_vad.mlpackage` / `.mlmodelc` | Preferred CoreML runtime |
+| `USE_ENERGY_VAD` | Written when CoreML conversion is unavailable; app uses Silero-windowed energy backend |
+
+Without these files, enabling Voice Pipeline fails at start and recovers to idle/listening.
+
+---
+
 ## Acceptance Criteria
 
 - [ ] Every code change is followed by a successful `zsh scripts/build-app.sh`.

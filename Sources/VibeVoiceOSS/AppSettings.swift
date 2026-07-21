@@ -277,6 +277,7 @@ final class AppSettings: ObservableObject {
         static let streamingMode = "streamingMode"
         static let streamingWSURL = "streamingWSURL"
         static let recordingHotKeyID = "recordingHotKeyID"
+        static let voicePipelineEnabled = "voicePipelineEnabled"
         static let llmBackend = "llmBackend"
         static let llmEndpoint = "llmEndpoint"
         static let llmApiKey = "llmApiKey"
@@ -353,6 +354,10 @@ final class AppSettings: ObservableObject {
     @Published var structuredEmojiEnabled: Bool {
         didSet { defaults.set(structuredEmojiEnabled, forKey: Key.structuredEmojiEnabled) }
     }
+    /// Experimental always-listen VAD pipeline. Default off; unavailable in API mode.
+    @Published var voicePipelineEnabled: Bool {
+        didSet { defaults.set(voicePipelineEnabled, forKey: Key.voicePipelineEnabled) }
+    }
     @Published var structureIntensityRaw: String {
         didSet { save(structureIntensityRaw, for: Key.structureIntensity) }
     }
@@ -393,7 +398,21 @@ final class AppSettings: ObservableObject {
 
     var asrBackend: ASRBackend {
         get { ASRBackend(rawValue: asrBackendRaw) ?? .integrated }
-        set { asrBackendRaw = newValue.rawValue }
+        set {
+            asrBackendRaw = newValue.rawValue
+            // Voice Pipeline is local-only; force off when switching to API mode.
+            if newValue == .api, voicePipelineEnabled {
+                voicePipelineEnabled = false
+            }
+        }
+    }
+
+    /// Voice Pipeline is only meaningful with integrated local ASR.
+    var isVoicePipelineAvailable: Bool { asrBackend == .integrated }
+
+    /// Effective flag used by runtime paths (always false in API mode).
+    var effectiveVoicePipelineEnabled: Bool {
+        isVoicePipelineAvailable && voicePipelineEnabled
     }
 
     var integratedASREngine: IntegratedASREngine {
@@ -528,6 +547,13 @@ final class AppSettings: ObservableObject {
             defaults.set(false, forKey: Key.structuredEmojiEnabled)
         } else {
             structuredEmojiEnabled = defaults.bool(forKey: Key.structuredEmojiEnabled)
+        }
+        // Default off. API mode cannot enable Voice Pipeline.
+        let storedVoicePipeline = defaults.bool(forKey: Key.voicePipelineEnabled)
+        let pipelineAllowed = storedASRBackend != ASRBackend.api.rawValue
+        voicePipelineEnabled = storedVoicePipeline && pipelineAllowed
+        if storedVoicePipeline, !pipelineAllowed {
+            defaults.set(false, forKey: Key.voicePipelineEnabled)
         }
         let storedIntensity = defaults.string(forKey: Key.structureIntensity) ?? StructureIntensity.auto.rawValue
         structureIntensityRaw = StructureIntensity(rawValue: storedIntensity)?.rawValue ?? StructureIntensity.auto.rawValue

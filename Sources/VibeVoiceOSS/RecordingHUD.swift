@@ -40,6 +40,11 @@ final class RecordingHUDController {
         // Fit panel to current content height before placing, so the waveform stays on-screen.
         syncPanelSize()
         positionOnActiveScreen()
+        // Already visible: refresh layout only. Re-fading alpha→0 causes endless HUD flashing
+        // when Voice Pipeline re-enters `.listening` after every VAD/ASR state tick.
+        if panel.isVisible, panel.alphaValue > 0.9 {
+            return
+        }
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { context in
@@ -287,7 +292,9 @@ private struct RecordingHUDView: View {
 
     var body: some View {
         let phase = appState.phase
-        let primary = phase.hudPrimary
+        let primary = appState.settings.effectiveVoicePipelineEnabled
+            ? phase.pipelineHUDPrimary
+            : phase.hudPrimary
         let secondary = appState.hudSecondary
         let bands = appState.audioBands
         let level = max(appState.audioLevel, bands.overall)

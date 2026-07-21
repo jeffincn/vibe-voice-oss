@@ -8,7 +8,9 @@ let package = Package(
         .executable(name: "VibeVoiceOSS", targets: ["VibeVoiceOSS"])
     ],
     dependencies: [
-        .package(url: "https://github.com/ontypehq/mlx-swift-asr.git", branch: "main"),
+        // Vendored + patched: upstream pins mlx-swift `main`, which now requires Swift 6.3.
+        // Local pin uses mlx-swift 0.31.4 (last release compatible with Swift 6.2.x).
+        .package(path: "Vendor/mlx-swift-asr"),
         .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.0.0"),
     ],
     targets: [

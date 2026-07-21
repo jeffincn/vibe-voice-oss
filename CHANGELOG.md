@@ -1,5 +1,9 @@
 # Changelog
 
+## Vibe Voice OSS 0.6.0
+
+Experimental **Voice Pipeline** (optional): continuous listen → Apple Voice Processing → Silero VAD segmentation → Qwen3-ASR raw transcript. Toggle in Settings; existing push-to-talk path unchanged. No LLM rewrite or paste in this path.
+
 ## Vibe Voice OSS 0.5.0
 
 Vibe Voice OSS 0.5.0 moves the app from an API-dependent dictation client to a local-first voice workflow. It can now transcribe entirely on the Mac while retaining OpenAI-compatible API support for users who prefer an external ASR or LLM service.

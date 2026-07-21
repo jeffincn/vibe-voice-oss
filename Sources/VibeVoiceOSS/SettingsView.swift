@@ -253,6 +253,14 @@ private struct SettingsForm: View {
                     .pickerStyle(.menu)
                 }
                 caption(settings.asrBackend.caption)
+                Toggle("Voice Pipeline（VAD 切段）", isOn: $settings.voicePipelineEnabled)
+                    .toggleStyle(.switch)
+                    .disabled(!settings.isVoicePipelineAvailable)
+                if settings.isVoicePipelineAvailable {
+                    caption("开启后热键进入持续聆听：VAD 自动切段并送本地 ASR（WhisperKit 或 Qwen3-ASR），只累积原始文本（不改写、不粘贴）。再按同一热键结束。可选运行 scripts/prepare-silero-vad.sh 启用 Silero CoreML。")
+                } else {
+                    caption("Voice Pipeline 仅在「集成模式」下可用；当前为 API 模式，已强制关闭。")
+                }
                 if settings.asrBackend == .integrated {
                     pickerRow("本地引擎") {
                         Picker("", selection: Binding(
