@@ -1,5 +1,34 @@
 # Changelog
 
+## Vibe Voice OSS 0.6.0
+
+Vibe Voice OSS 0.6.0 focuses on everyday usability: bilingual UI, safer mid-pipeline copy, and making Settings reachable from Command-Tab even though the app remains a menu-bar agent.
+
+## Highlights
+
+### Interface language (简体中文 / English)
+
+- Settings → **General** includes an **Interface language** picker.
+- Switching updates menus, HUD status, banners, and common settings labels immediately.
+- Recognition language and output language stay independent of the UI language.
+- LLM / ASR prompts are not translated.
+
+### Copy live captions during processing
+
+- A secondary Liquid Glass **Copy** control sits beside the recording dock (50pt vs 60pt Stop).
+- Available while recording / finalizing / transcribing / formatting so text is not lost if paste fails.
+- Clipboard → checkmark spring feedback (~0.25s) with an ~0.8s success chip.
+
+### Command-Tab for Settings and reports
+
+- Opening Settings, Stage Timing, or Token Usage temporarily promotes the app to a regular activation policy so it appears in Dock / ⌘⇥.
+- Closing those windows returns to accessory (menu-bar only) mode.
+
+### Build notes
+
+- Vendored `mlx-swift-asr` remains pinned for Swift 6.2 / mlx-swift 0.31.4 compatibility.
+- Release version: 0.6.0, build 32.
+
 ## Vibe Voice OSS 0.5.0
 
 Vibe Voice OSS 0.5.0 moves the app from an API-dependent dictation client to a local-first voice workflow. It can now transcribe entirely on the Mac while retaining OpenAI-compatible API support for users who prefer an external ASR or LLM service.

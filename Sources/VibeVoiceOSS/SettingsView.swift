@@ -11,6 +11,7 @@ struct SettingsView: View {
 }
 
 private enum SettingsPane: String, CaseIterable, Identifiable {
+    case general
     case recognition
     case audio
     case translation
@@ -22,20 +23,22 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .recognition: "语音识别"
-        case .audio: "音频转码"
-        case .translation: "翻译与整理"
-        case .prompt: "识别提示词"
-        case .shortcuts: "快捷键与权限"
-        case .performance: "性能与耗时"
+        case .general: L10n.t(.paneGeneral)
+        case .recognition: L10n.t(.paneRecognition)
+        case .audio: L10n.t(.paneAudio)
+        case .translation: L10n.t(.paneTranslation)
+        case .prompt: L10n.t(.panePrompt)
+        case .shortcuts: L10n.t(.paneShortcuts)
+        case .performance: L10n.t(.panePerformance)
         }
     }
 
     var symbol: String {
         switch self {
+        case .general: "globe"
         case .recognition: "waveform"
         case .audio: "slider.horizontal.3"
-        case .translation: "globe"
+        case .translation: "character.book.closed"
         case .prompt: "text.book.closed"
         case .shortcuts: "keyboard"
         case .performance: "stopwatch"
@@ -48,10 +51,11 @@ private struct SettingsForm: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.openWindow) private var openWindow
 
-    @State private var pane: SettingsPane = .recognition
+    @State private var pane: SettingsPane = .general
     @State private var inputDevices = AudioInputDevices.all()
 
     var body: some View {
+        let _ = settings.uiLanguageID
         HStack(spacing: 0) {
             sidebar
                 .frame(width: 220)
@@ -166,18 +170,18 @@ private struct SettingsForm: View {
     private var detailHeaderAction: some View {
         switch pane {
         case .performance:
-            pillButton("打开耗时统计") {
+            pillButton(L10n.t(.settingsOpenTiming)) {
                 openWindow(id: "stage-timing-report")
-                NSApplication.shared.activate()
+                AppActivation.promoteForUserWindows()
             }
         case .recognition:
-            pillButton(settings.asrBackend == .integrated ? "检查本地 ASR" : "测试 ASR") {
+            pillButton(settings.asrBackend == .integrated ? L10n.t(.settingsCheckASR) : L10n.t(.settingsTestASR)) {
                 appState.testConnection()
             }
         case .translation:
-            pillButton("测试翻译模型") { appState.testLanguageModelConnection() }
+            pillButton(L10n.t(.settingsTestTranslation)) { appState.testLanguageModelConnection() }
         case .shortcuts:
-            pillButton("检查权限") { appState.requestPermissions() }
+            pillButton(L10n.t(.settingsCheckPermissions)) { appState.requestPermissions() }
         default:
             EmptyView()
         }
@@ -198,6 +202,8 @@ private struct SettingsForm: View {
     @ViewBuilder
     private var detailContent: some View {
         switch pane {
+        case .general:
+            generalPane
         case .performance:
             performanceSection
         case .recognition:
@@ -220,7 +226,7 @@ private struct SettingsForm: View {
         settingsStack {
             if let latest = appState.stageTiming.latestSession {
                 settingsCard {
-                    labeledRow("最近一次合计", "\(latest.formattedTotal) · \(latest.outcome.label)")
+                    labeledRow(L10n.t(.latestTotal), "\(latest.formattedTotal) · \(latest.outcome.label)")
                     if !latest.stages.isEmpty {
                         ForEach(latest.stages.prefix(6)) { stage in
                             labeledRow(
@@ -231,16 +237,30 @@ private struct SettingsForm: View {
                     }
                 }
             } else {
-                caption("完成一次录音处理后，这里会显示各阶段耗时；也可导出 CSV / HTML。")
+                caption(L10n.t(.stageTimingEmptyCaption))
             }
         }
     }
 
-    @ViewBuilder
+    private var generalPane: some View {
+        settingsCard {
+            pickerRow(L10n.t(.uiLanguage)) {
+                Picker("", selection: $settings.uiLanguageID) {
+                    ForEach(AppUILanguage.allCases) { language in
+                        Text(language.displayName).tag(language.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+            caption(L10n.t(.uiLanguageCaption))
+        }
+    }
+
     private var recognitionSection: some View {
         settingsStack {
             settingsCard {
-                pickerRow("ASR 模式") {
+                pickerRow(L10n.t(.settingsASRMode)) {
                     Picker("", selection: Binding(
                         get: { settings.asrBackend },
                         set: { settings.asrBackend = $0 }
@@ -285,8 +305,8 @@ private struct SettingsForm: View {
                     secureField("API Key（未启用可留空）", text: $settings.apiKey)
                     field("模型名", text: $settings.model)
                 }
-                field("识别语言", text: $settings.language)
-                caption("常用：zh=中文，yue=粤语，en=English，auto=自动检测；Qwen3-ASR 会自动映射成模型需要的语言提示。")
+                field(L10n.t(.recognitionLanguage), text: $settings.language)
+                caption(L10n.t(.recognitionLanguageCaption))
             }
 
             if settings.asrBackend == .api {
@@ -308,7 +328,7 @@ private struct SettingsForm: View {
                     }
                     caption(settings.streamingMode.caption)
                     if settings.streamingMode == .duplexStreaming {
-                        field("双工 WebSocket", text: $settings.streamingWSURL)
+                        field(L10n.t(.settingsDuplexWS), text: $settings.streamingWSURL)
                         caption("连不上时自动降级为重叠窗伪流式（仍走本机转写接口）。")
                     }
                 }
@@ -318,7 +338,7 @@ private struct SettingsForm: View {
 
             HStack(spacing: 10) {
                 if settings.asrBackend == .integrated {
-                    secondaryPill("准备模型") { appState.prepareLocalASRModel() }
+                    secondaryPill(L10n.t(.settingsPrepareModel)) { appState.prepareLocalASRModel() }
                 }
                 secondaryPill(settings.asrBackend == .integrated ? "检查本地 ASR" : "测试 ASR") {
                     appState.testConnection()
@@ -372,7 +392,7 @@ private struct SettingsForm: View {
                 }
                 Slider(value: $settings.transcodeMaxGainDb, in: 0...24, step: 1)
             }
-            caption("本地音频规格，不走远程 API。")
+            caption(L10n.t(.localAudioSpecCaption))
         }
     }
 
@@ -412,7 +432,7 @@ private struct SettingsForm: View {
                 }
                 .disabled(settings.llmBackend != .api)
                 caption("翻译/整理/Prompt 编译时作为附加指令；⌘⇧G 智能路由时作为唯一系统指令。")
-                pickerRow("输出语言") {
+                pickerRow(L10n.t(.outputLanguage)) {
                     Picker("", selection: $settings.targetLanguageID) {
                         ForEach(TargetLanguage.all) { language in
                             Text(language.label).tag(language.id)
@@ -439,7 +459,7 @@ private struct SettingsForm: View {
                     Toggle("使用 Emoji", isOn: $settings.structuredEmojiEnabled)
                         .toggleStyle(.switch)
                         .disabled(!settings.llmFeaturesAvailable)
-                    pickerRow("整理强度") {
+                    pickerRow(L10n.t(.structureIntensity)) {
                         Picker("", selection: Binding(
                             get: { settings.structureIntensity },
                             set: { settings.structureIntensity = $0 }
@@ -461,7 +481,7 @@ private struct SettingsForm: View {
                     .toggleStyle(.switch)
                     .disabled(!settings.llmFeaturesAvailable)
                 if settings.promptOptimizeEnabled {
-                    pickerRow("目标 Agent") {
+                    pickerRow(L10n.t(.targetAgent)) {
                         Picker("", selection: $settings.promptTargetID) {
                             ForEach(PromptTargetKind.allCases) { target in
                                 Text(target.label).tag(target.rawValue)
@@ -492,7 +512,7 @@ private struct SettingsForm: View {
                     .frame(minHeight: 160)
                     .scrollContentBackground(.hidden)
             }
-            caption("填写人名、项目名和技术词，使用中文逗号分隔。")
+            caption(L10n.t(.promptHintWordsCaption))
         }
     }
 

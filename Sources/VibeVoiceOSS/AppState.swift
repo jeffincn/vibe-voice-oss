@@ -18,14 +18,14 @@ final class AppState: ObservableObject {
 
         var label: String {
             switch self {
-            case .idle: "按快捷键开始，再按一次结束"
-            case .recording: "正在录音…再按一次结束"
-            case .finalizing: "正在收敛识别…"
-            case .transcribing: "正在转写…"
-            case .structuring: "正在整理内容…"
-            case .translating: "正在翻译…"
-            case .optimizing: "正在编译 Prompt…"
-            case .routing: "智能路由处理中…"
+            case .idle: L10n.t(.phaseIdle)
+            case .recording: L10n.t(.phaseRecording)
+            case .finalizing: L10n.t(.phaseFinalizing)
+            case .transcribing: L10n.t(.phaseTranscribing)
+            case .structuring: L10n.t(.phaseStructuring)
+            case .translating: L10n.t(.phaseTranslating)
+            case .optimizing: L10n.t(.phaseOptimizing)
+            case .routing: L10n.t(.phaseRouting)
             case let .success(text): text
             case let .failed(message): message
             }
@@ -33,8 +33,8 @@ final class AppState: ObservableObject {
 
         func label(hotKey: RecordingHotKey) -> String {
             switch self {
-            case .idle: "按 \(hotKey.label) 开始，再按一次结束"
-            case .recording: "正在录音…按 \(hotKey.label) 结束"
+            case .idle: L10n.t(.phaseIdleHotKey, hotKey.label)
+            case .recording: L10n.t(.phaseRecordingHotKey, hotKey.label)
             default: label
             }
         }
@@ -45,9 +45,9 @@ final class AppState: ObservableObject {
                 return RecordingOutputMode.shortcutLegend
             case .recording:
                 if let mode {
-                    return "正在录音（\(mode.label)）…按 \(mode.chordLabel) 结束"
+                    return L10n.t(.phaseRecordingMode, mode.label, mode.chordLabel)
                 }
-                return "正在录音…再按一次结束"
+                return L10n.t(.phaseRecording)
             default:
                 return label
             }
@@ -72,15 +72,15 @@ final class AppState: ObservableObject {
         /// High-level HUD caption (animation window).
         var hudPrimary: String {
             switch self {
-            case .recording: "录音中"
-            case .finalizing: "收敛中"
-            case .transcribing: "转写中"
-            case .structuring: "整理中"
-            case .translating: "翻译中"
-            case .optimizing: "输出 Prompt"
-            case .routing: "智能路由"
-            case .success: "完成"
-            case .failed: "失败"
+            case .recording: L10n.t(.hudRecording)
+            case .finalizing: L10n.t(.hudFinalizing)
+            case .transcribing: L10n.t(.hudTranscribing)
+            case .structuring: L10n.t(.hudStructuring)
+            case .translating: L10n.t(.hudTranslating)
+            case .optimizing: L10n.t(.hudOptimizing)
+            case .routing: L10n.t(.hudRouting)
+            case .success: L10n.t(.success)
+            case .failed: L10n.t(.failed)
             case .idle: ""
             }
         }
@@ -100,7 +100,7 @@ final class AppState: ObservableObject {
     /// Nested HUD line for Prompt compile — e.g. Codex / Claude Code.
     var hudSecondary: String? {
         guard phase.showsHUDSecondary else { return nil }
-        if case .routing = phase { return "自定义 System Prompt" }
+        if case .routing = phase { return L10n.t(.hudCustomSystemPrompt) }
         return settings.promptTarget.label
     }
 
@@ -486,6 +486,7 @@ final class AppState: ObservableObject {
                         for: transcript,
                         intensity: snapshot.structureIntensity
                     ),
+                    customSystemPrompt: snapshot.translationConfiguration.customSystemPrompt,
                     outputLanguageDirective: snapshot.targetLanguage.translates
                         ? snapshot.targetLanguage.outputLanguageDirective
                         : nil,
@@ -851,11 +852,25 @@ final class AppState: ObservableObject {
 
     func copyLastTranscript() {
         guard !lastTranscript.isEmpty else { return }
+        writeTranscriptToPasteboard(lastTranscript)
+    }
+
+    /// Copy whatever the HUD is currently showing (live partial text during
+    /// recording / 收敛 / 转写 / 整理). Falls back to the last finished transcript.
+    func copyPartialTranscript() {
+        let live = partialTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finished = lastTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = live.isEmpty ? finished : live
+        guard !text.isEmpty else { return }
+        writeTranscriptToPasteboard(text)
+    }
+
+    private func writeTranscriptToPasteboard(_ text: String) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(lastTranscript, forType: .string)
+        NSPasteboard.general.setString(text, forType: .string)
         transcriptCopied = true
         Task {
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(for: .seconds(0.8))
             transcriptCopied = false
         }
     }

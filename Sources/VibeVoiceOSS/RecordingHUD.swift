@@ -31,6 +31,9 @@ final class RecordingHUDController {
             rootView: RecordingHUDView(
                 onStop: { [weak self] in
                     self?.appState?.cancelActiveSession()
+                },
+                onCopy: { [weak self] in
+                    self?.appState?.copyPartialTranscript()
                 }
             ).environmentObject(appState)
         )
@@ -149,8 +152,8 @@ private final class RecordingHostingView<Content: View>: NSHostingView<Content> 
 }
 
 /// AppKit button so clicks work on a floating nonactivating HUD panel.
-private final class HUDStopButtonView: NSButton {
-    var side: CGFloat = 58 {
+private final class HUDCircleButtonView: NSButton {
+    var side: CGFloat = 60 {
         didSet { invalidateIntrinsicContentSize() }
     }
 
@@ -170,13 +173,13 @@ private struct HUDStopNSButton: NSViewRepresentable {
         Coordinator(action: action)
     }
 
-    func makeNSView(context: Context) -> HUDStopButtonView {
-        let button = HUDStopButtonView(frame: NSRect(x: 0, y: 0, width: size, height: size))
+    func makeNSView(context: Context) -> HUDCircleButtonView {
+        let button = HUDCircleButtonView(frame: NSRect(x: 0, y: 0, width: size, height: size))
         button.side = size
         button.title = ""
         button.image = NSImage(
             systemSymbolName: "stop.fill",
-            accessibilityDescription: "停止"
+            accessibilityDescription: L10n.t(.stopAndCancel)
         )
         button.imagePosition = .imageOnly
         button.isBordered = false
@@ -189,15 +192,15 @@ private struct HUDStopNSButton: NSViewRepresentable {
         button.layer?.cornerRadius = size / 2
         button.layer?.borderWidth = 1
         button.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
-        button.toolTip = "停止并取消"
-        button.setAccessibilityLabel("停止")
+        button.toolTip = L10n.t(.stopAndCancel)
+        button.setAccessibilityLabel(L10n.t(.stopAndCancel))
         button.target = context.coordinator
         button.action = #selector(Coordinator.clicked(_:))
         button.sendAction(on: .leftMouseUp)
         return button
     }
 
-    func updateNSView(_ button: HUDStopButtonView, context: Context) {
+    func updateNSView(_ button: HUDCircleButtonView, context: Context) {
         context.coordinator.action = action
         button.side = size
         button.layer?.cornerRadius = size / 2
@@ -209,6 +212,230 @@ private struct HUDStopNSButton: NSViewRepresentable {
 
         @objc func clicked(_ sender: Any?) {
             action()
+        }
+    }
+}
+
+/// Invisible AppKit hit target — Liquid Glass chrome sits underneath; this
+/// receives first-click on a nonactivating panel without swallowing hover samples.
+private struct HUDGlassHitNSButton: NSViewRepresentable {
+    var size: CGFloat
+    var enabled: Bool
+    var accessibilityLabel: String
+    var action: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    func makeNSView(context: Context) -> HUDCircleButtonView {
+        let button = HUDCircleButtonView(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        button.side = size
+        button.title = ""
+        button.image = nil
+        button.imagePosition = .imageOnly
+        button.isBordered = false
+        button.bezelStyle = .inline
+        button.setButtonType(.momentaryChange)
+        button.focusRingType = .none
+        button.wantsLayer = true
+        button.layer?.backgroundColor = NSColor.clear.cgColor
+        button.alphaValue = 0.01
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.clicked(_:))
+        button.sendAction(on: .leftMouseUp)
+        button.isEnabled = enabled
+        button.setAccessibilityLabel(accessibilityLabel)
+        button.toolTip = accessibilityLabel
+        return button
+    }
+
+    func updateNSView(_ button: HUDCircleButtonView, context: Context) {
+        context.coordinator.action = action
+        button.side = size
+        button.isEnabled = enabled
+        button.setAccessibilityLabel(accessibilityLabel)
+        button.toolTip = accessibilityLabel
+    }
+
+    final class Coordinator: NSObject {
+        var action: () -> Void
+        init(action: @escaping () -> Void) { self.action = action }
+
+        @objc func clicked(_ sender: Any?) {
+            action()
+        }
+    }
+}
+
+/// Secondary dock control: Liquid Glass circle that morphs clipboard → checkmark.
+private struct HUDDockCopyButton: View {
+    var size: CGFloat
+    var enabled: Bool
+    var reduceMotion: Bool
+    var action: () -> Void
+
+    @State private var showCopied = false
+    @State private var pressFlash = false
+    @State private var resetTask: Task<Void, Never>?
+
+    private var morphAnimation: Animation? {
+        reduceMotion ? nil : .spring(duration: 0.25, bounce: 0.32)
+    }
+
+    var body: some View {
+        ZStack {
+            glassPlate
+
+            // Press highlight flash (dynamic feedback).
+            Circle()
+                .fill(Color.white.opacity(pressFlash ? 0.18 : 0))
+                .allowsHitTesting(false)
+
+            glyph
+
+            HUDGlassHitNSButton(
+                size: size,
+                enabled: enabled,
+                accessibilityLabel: showCopied ? L10n.t(.copied) : L10n.t(.copyCurrentText),
+                action: triggerCopy
+            )
+        }
+        .frame(width: size, height: size)
+        .scaleEffect(pressFlash ? 0.92 : (showCopied ? 1.04 : 1.0))
+        .shadow(color: Color.black.opacity(0.18), radius: 12, y: 4)
+        .opacity(enabled ? 1 : 0.38)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: enabled)
+        .accessibilityLabel(showCopied ? L10n.t(.copied) : L10n.t(.copyCurrentText))
+        .accessibilityHint(L10n.t(.copyAccessibilityHint))
+        .accessibilityAddTraits(.isButton)
+        .onDisappear {
+            resetTask?.cancel()
+            resetTask = nil
+        }
+    }
+
+    @ViewBuilder
+    private var glassPlate: some View {
+        if #available(macOS 26, *) {
+            Color.clear
+                .frame(width: size, height: size)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .overlay { glassRim }
+                .overlay { glassInnerShadow }
+        } else {
+            ZStack {
+                HUDFrostedGlass(cornerRadius: size / 2)
+                    .frame(width: size, height: size)
+
+                // Adaptive dark tint so glyphs stay legible on light desktops.
+                Circle()
+                    .fill(Color(red: 0.12, green: 0.11, blue: 0.10).opacity(0.28))
+                    .allowsHitTesting(false)
+
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color.white.opacity(0.16), location: 0),
+                                .init(color: Color.white.opacity(0.04), location: 0.4),
+                                .init(color: Color.clear, location: 0.72),
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .padding(1)
+                    .allowsHitTesting(false)
+
+                glassRim
+                glassInnerShadow
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+        }
+    }
+
+    /// Double-edge refraction rim (outer highlight + inner cool edge).
+    private var glassRim: some View {
+        ZStack {
+            Circle()
+                .strokeBorder(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color.white.opacity(0.48), location: 0),
+                            .init(color: Color.white.opacity(0.14), location: 0.35),
+                            .init(color: Color.white.opacity(0.05), location: 0.65),
+                            .init(color: Color.black.opacity(0.22), location: 1),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+            Circle()
+                .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
+                .padding(1.5)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var glassInnerShadow: some View {
+        Circle()
+            .stroke(Color.black.opacity(0.3), lineWidth: 3)
+            .blur(radius: 2.4)
+            .mask(
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.7)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            )
+            .allowsHitTesting(false)
+    }
+
+    private var glyph: some View {
+        Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
+            .font(.system(size: size * 0.34, weight: .semibold, design: .rounded))
+            .foregroundStyle(Color.white.opacity(showCopied ? 0.98 : 0.92))
+            .symbolRenderingMode(.monochrome)
+            .contentTransition(.symbolEffect(.replace))
+            .frame(width: size, height: size)
+            .allowsHitTesting(false)
+    }
+
+    private func triggerCopy() {
+        guard enabled else { return }
+        action()
+        resetTask?.cancel()
+
+        if reduceMotion {
+            pressFlash = false
+            showCopied = true
+        } else {
+            withAnimation(.easeOut(duration: 0.08)) {
+                pressFlash = true
+            }
+            withAnimation(morphAnimation) {
+                showCopied = true
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(90))
+                withAnimation(.spring(duration: 0.22, bounce: 0.28)) {
+                    pressFlash = false
+                }
+            }
+        }
+
+        resetTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.8))
+            guard !Task.isCancelled else { return }
+            withAnimation(morphAnimation) {
+                showCopied = false
+            }
         }
     }
 }
@@ -268,15 +495,20 @@ private struct RecordingHUDView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onStop: () -> Void
+    let onCopy: () -> Void
 
     /// Nine waveform bars inside the input pill (Typeless hero reference).
     /// Idle = equal dots; speaking = stretch into capsule bars with a center peak.
     private let barCount = 9
     private let barWidth: CGFloat = 8
     private let barSpacing: CGFloat = 6
-    private let pillHeight: CGFloat = 58
-    private let pillWidth: CGFloat = 236
+    /// Waveform capsule — Option C dock (240–280pt).
+    private let pillHeight: CGFloat = 60
+    private let pillWidth: CGFloat = 260
     private let pillBarInset: CGFloat = 10
+    /// Secondary Copy is intentionally smaller than primary Stop.
+    private let copyButtonSize: CGFloat = 50
+    private let stopButtonSize: CGFloat = 60
     /// Live caption shows up to 3 lines; overflow scrolls.
     private let captionLineCount = 3
     private let captionFontSize: CGFloat = 16
@@ -286,6 +518,7 @@ private struct RecordingHUDView: View {
     private let shadowBleed: CGFloat = 36
 
     var body: some View {
+        let _ = appState.settings.uiLanguageID
         let phase = appState.phase
         let primary = phase.hudPrimary
         let secondary = appState.hudSecondary
@@ -294,6 +527,7 @@ private struct RecordingHUDView: View {
         let partial = appState.partialTranscript
         let stable = appState.stableTranscript
         let showDisplay = shouldShowDisplay(phase: phase, partial: partial)
+        let canCopy = !partial.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         glassRoot {
             VStack(spacing: 14) {
@@ -308,6 +542,7 @@ private struct RecordingHUDView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
                 }
 
+                // Option C: waveform | Copy 50pt | Stop 60pt
                 HStack(spacing: 12) {
                     TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
                         let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
@@ -316,13 +551,29 @@ private struct RecordingHUDView: View {
                     }
 
                     if showsStopButton(phase: phase) {
+                        if canCopy {
+                            HUDDockCopyButton(
+                                size: copyButtonSize,
+                                enabled: true,
+                                reduceMotion: reduceMotion,
+                                action: onCopy
+                            )
+                            .transition(
+                                .asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.86)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.9))
+                                )
+                            )
+                        }
+
                         stopButton
                     }
                 }
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: canCopy)
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: showDisplay)
-        .frame(width: 480)
+        .frame(width: 520)
         .padding(.vertical, 10)
         .padding(shadowBleed)
         .accessibilityElement(children: .contain)
@@ -352,10 +603,10 @@ private struct RecordingHUDView: View {
     }
 
     private var stopButton: some View {
-        HUDStopNSButton(size: pillHeight, action: onStop)
-            .frame(width: pillHeight, height: pillHeight)
+        HUDStopNSButton(size: stopButtonSize, action: onStop)
+            .frame(width: stopButtonSize, height: stopButtonSize)
             .shadow(color: Color.black.opacity(0.18), radius: 12, y: 4)
-            .accessibilityHint("取消当前录音与后续处理")
+            .accessibilityHint(L10n.t(.stopAccessibilityHint))
     }
 
     private func shouldShowDisplay(phase: AppState.Phase, partial: String) -> Bool {
@@ -497,9 +748,44 @@ private struct RecordingHUDView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
 
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+
+            if appState.transcriptCopied {
+                copiedToastChip
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.88, anchor: .trailing)),
+                            removal: .opacity
+                        )
+                    )
+            }
         }
+        .animation(reduceMotion ? nil : .spring(duration: 0.25, bounce: 0.28), value: appState.transcriptCopied)
         .accessibilityAddTraits(.updatesFrequently)
+    }
+
+    /// Compact success chip — matches the design’s “已复制” toast on the caption pane.
+    private var copiedToastChip: some View {
+        Text(L10n.t(.copied))
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(Color.white.opacity(0.95))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
+                if #available(macOS 26, *) {
+                    Capsule(style: .continuous)
+                        .fill(Color.clear)
+                        .glassEffect(.regular.tint(.green.opacity(0.35)).interactive(), in: .capsule)
+                } else {
+                    Capsule(style: .continuous)
+                        .fill(Color.black.opacity(0.72))
+                        .overlay {
+                            Capsule(style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.75)
+                        }
+                }
+            }
+            .accessibilityHidden(true)
     }
 
     private func statusDotColor(phase: AppState.Phase) -> Color {
@@ -549,23 +835,23 @@ private struct RecordingHUDView: View {
         switch phase {
         case .recording:
             let dots = String(repeating: ".", count: Int(time * 2) % 3 + 1)
-            return primary.isEmpty ? "正在聆听\(dots)" : "\(primary)\(dots)"
+            return primary.isEmpty ? "\(L10n.t(.hudListening))\(dots)" : "\(primary)\(dots)"
         case .finalizing:
-            return primary.isEmpty ? "正在收敛识别…" : primary
+            return primary.isEmpty ? L10n.t(.phaseFinalizing) : primary
         case .transcribing:
-            return primary.isEmpty ? "正在转写…" : primary
+            return primary.isEmpty ? L10n.t(.phaseTranscribing) : primary
         case .structuring:
-            return primary.isEmpty ? "正在整理…" : primary
+            return primary.isEmpty ? L10n.t(.phaseStructuring) : primary
         case .translating:
-            return primary.isEmpty ? "正在翻译…" : primary
+            return primary.isEmpty ? L10n.t(.phaseTranslating) : primary
         case .optimizing:
-            return primary.isEmpty ? "正在编译 Prompt…" : primary
+            return primary.isEmpty ? L10n.t(.phaseOptimizing) : primary
         case .routing:
-            return primary.isEmpty ? "智能路由处理中…" : primary
+            return primary.isEmpty ? L10n.t(.phaseRouting) : primary
         case .success:
-            return primary.isEmpty ? "完成" : primary
+            return primary.isEmpty ? L10n.t(.success) : primary
         case .failed:
-            return primary.isEmpty ? "出错了" : primary
+            return primary.isEmpty ? L10n.t(.failed) : primary
         case .idle:
             return primary.isEmpty ? "…" : primary
         }
@@ -574,23 +860,23 @@ private struct RecordingHUDView: View {
     private func waitingBodyHint(phase: AppState.Phase) -> String {
         switch phase {
         case .recording:
-            return "说点什么，字幕会出现在这里"
+            return L10n.t(.hudWaitingSpeak)
         case .finalizing:
-            return "正在收敛识别结果…"
+            return L10n.t(.hudWaitingFinalizing)
         case .transcribing:
-            return "正在转写语音…"
+            return L10n.t(.hudWaitingTranscribing)
         case .structuring:
-            return "正在整理内容格式…"
+            return L10n.t(.hudWaitingStructuring)
         case .translating:
-            return "正在翻译内容…"
+            return L10n.t(.hudWaitingTranslating)
         case .optimizing:
-            return "正在编译 Prompt…"
+            return L10n.t(.hudWaitingOptimizing)
         case .routing:
-            return "智能路由处理中…"
+            return L10n.t(.hudWaitingRouting)
         case .failed:
-            return "处理失败，请重试"
+            return L10n.t(.hudWaitingFailed)
         case .success:
-            return "已完成"
+            return L10n.t(.hudWaitingSuccess)
         case .idle:
             return "…"
         }
@@ -821,11 +1107,11 @@ private struct RecordingHUDView: View {
         if let secondary {
             parts.append("\(primary)，\(secondary)")
         } else if phase == .recording {
-            parts.append("正在录音，再按对应快捷键结束")
+            parts.append(L10n.t(.phaseRecording))
         } else if !primary.isEmpty {
             parts.append(primary)
         } else {
-            parts.append("语音输入")
+            parts.append("Vibe Voice OSS")
         }
         if !partial.isEmpty {
             parts.append(partial)
