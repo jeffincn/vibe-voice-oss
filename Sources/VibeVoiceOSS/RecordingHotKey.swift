@@ -13,21 +13,21 @@ enum RecordingOutputMode: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .conversation: "对话"
-        case .english: "英文"
-        case .structured: "结构化"
-        case .prompt: "Prompt"
-        case .smartRoute: "智能路由"
+        case .conversation: L10n.t(.modeConversation)
+        case .english: L10n.t(.modeEnglish)
+        case .structured: L10n.t(.modeStructured)
+        case .prompt: L10n.t(.modePrompt)
+        case .smartRoute: L10n.t(.modeSmartRoute)
         }
     }
 
     var caption: String {
         switch self {
-        case .conversation: "按输出语言处理（翻译 / 原样）"
-        case .english: "直接翻译为英文，不改变默认输出语言"
-        case .structured: "结构化整理（沿用整理强度与 Emoji 开关）"
-        case .prompt: "按 Prompt 规则编译到目标 Agent"
-        case .smartRoute: "自定义 System Prompt 全权决定输出"
+        case .conversation: L10n.t(.modeConversationCaption)
+        case .english: L10n.t(.modeEnglishCaption)
+        case .structured: L10n.t(.modeStructuredCaption)
+        case .prompt: L10n.t(.modePromptCaption)
+        case .smartRoute: L10n.t(.modeSmartRouteCaption)
         }
     }
 
@@ -98,7 +98,7 @@ struct RecordingHotKey: Equatable, Sendable, Identifiable {
         all.first { $0.id == id } ?? all[0]
     }
 
-    var pressHint: String { "按 \(label)" }
+    var pressHint: String { L10n.t(.pressHotKey, label) }
 
-    var toggleHint: String { "\(label)（按一次开始，再按一次结束）" }
+    var toggleHint: String { L10n.t(.toggleHotKeyHint, label) }
 }

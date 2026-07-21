@@ -108,7 +108,7 @@ private struct ResultBannerView: View {
 
     private var preview: String {
         let text = appState.lastTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return "识别完成" }
+        guard !text.isEmpty else { return L10n.t(.recognitionComplete) }
         if text.count <= 120 { return text }
         return String(text.prefix(120)) + "…"
     }
@@ -123,7 +123,7 @@ private struct ResultBannerView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.primary)
                         Spacer(minLength: 8)
-                        Text("刚刚")
+                        Text(L10n.t(.justNow))
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                         Button(action: onDismiss) {
@@ -134,7 +134,7 @@ private struct ResultBannerView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("关闭")
+                        .help(L10n.t(.close))
                     }
                     Text(preview)
                         .font(.system(size: 12))
@@ -147,7 +147,7 @@ private struct ResultBannerView: View {
 
             HStack(spacing: 8) {
                 actionButton(
-                    title: appState.transcriptCopied ? "已复制" : BannerChrome.copyButtonTitle,
+                    title: appState.transcriptCopied ? L10n.t(.copied) : L10n.t(.copyButtonTitle),
                     systemImage: appState.transcriptCopied ? "checkmark" : "doc.on.doc",
                     emphasized: false,
                     action: onCopy
@@ -155,7 +155,7 @@ private struct ResultBannerView: View {
                 .accessibilityIdentifier(BannerChrome.copyButtonTitle)
 
                 actionButton(
-                    title: BannerChrome.reformatButtonTitle,
+                    title: L10n.t(.reformatButtonTitle),
                     systemImage: "arrow.triangle.2.circlepath",
                     emphasized: true,
                     action: onReformat

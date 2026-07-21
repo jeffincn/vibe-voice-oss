@@ -254,23 +254,23 @@ enum PromptTargetKind: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var label: String {
         switch self {
-        case .chat: "通用 Chat"
+        case .chat: L10n.t(.promptTargetChat)
         case .codingCodex: "Codex"
         case .codingClaude: "Claude Code"
         case .codingGrok: "Grok"
-        case .research: "Deep Research"
-        case .image: "图像生成"
+        case .research: L10n.t(.promptTargetResearch)
+        case .image: L10n.t(.promptTargetImage)
         }
     }
 
     var caption: String {
         switch self {
-        case .chat: "面向对话型 LLM 的自包含指令"
-        case .codingCodex: "面向 Codex：读仓、改文件、跑命令/测试"
-        case .codingClaude: "面向 Claude Code：仓库级编码代理"
-        case .codingGrok: "面向 Grok 编码代理"
-        case .research: "面向深度调研：证据、来源、对比"
-        case .image: "面向文生图：主体、构图、风格、约束"
+        case .chat: L10n.t(.promptTargetChatCaption)
+        case .codingCodex: L10n.t(.promptTargetCodexCaption)
+        case .codingClaude: L10n.t(.promptTargetClaudeCaption)
+        case .codingGrok: L10n.t(.promptTargetGrokCaption)
+        case .research: L10n.t(.promptTargetResearchCaption)
+        case .image: L10n.t(.promptTargetImageCaption)
         }
     }
 

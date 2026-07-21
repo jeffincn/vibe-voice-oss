@@ -12,21 +12,21 @@ enum StructureIntensity: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .auto: "自动"
-        case .clean: "轻度整理"
-        case .ultraConcise: "超精简"
-        case .structured: "内容整理"
-        case .rewrite: "深度整理"
+        case .auto: L10n.t(.intensityAuto)
+        case .clean: L10n.t(.intensityClean)
+        case .ultraConcise: L10n.t(.intensityUltraConcise)
+        case .structured: L10n.t(.intensityStructured)
+        case .rewrite: L10n.t(.intensityRewrite)
         }
     }
 
     var caption: String {
         switch self {
-        case .auto: "按字数自动选择轻度或内容整理"
-        case .clean: "标点、错词、口头语与基本分段"
-        case .ultraConcise: "比内容整理更狠地压缩：只留关键要点"
-        case .structured: "理解关系并重组为段落、清单或步骤"
-        case .rewrite: "压缩冗余并改写成正式文档表达"
+        case .auto: L10n.t(.intensityAutoCaption)
+        case .clean: L10n.t(.intensityCleanCaption)
+        case .ultraConcise: L10n.t(.intensityUltraConciseCaption)
+        case .structured: L10n.t(.intensityStructuredCaption)
+        case .rewrite: L10n.t(.intensityRewriteCaption)
         }
     }
 }
@@ -112,6 +112,9 @@ enum SemanticFormatter {
     private static let chatLayoutRulesWithEmoji = """
     对话阅读排版（内容整理 / 超精简 / 深度整理均必须遵守）：
     - 短段 + 空行：避免大段堆砌；一句一事更易扫读。
+    - 长文换行：正文超过约 100 字且含多句时，必须用换行拆开；尽量让每一行/每一句约 20 个汉字，一句一事、一句一行。
+    - 语义相关的短句之间用空行分段；清单仍用 - 或编号，每条一行。
+    - 不要为凑行宽硬拆专有名词、路径、代码标识符或英文专名。
     - 必须使用修饰性 emoji：每个分区标题或关键要点行前加 1 个 macOS / 聊天输入法常规 Unicode emoji（如 ✅ 📌 💡 ⚠️ 📝 🎯 ✨ 🚀 🔍 💬）。
     - 纯文字、毫无 emoji 的输出视为不合格；至少出现 1–3 个 emoji，让读起来更轻松有趣。
     - 不要用 [NOTE]、[TODO]、[OK] 这类方括号单词标签代替 emoji。
@@ -122,6 +125,9 @@ enum SemanticFormatter {
     private static let chatLayoutRulesPlain = """
     对话阅读排版（内容整理 / 超精简 / 深度整理均必须遵守）：
     - 短段 + 空行：避免大段堆砌；一句一事更易扫读。
+    - 长文换行：正文超过约 100 字且含多句时，必须用换行拆开；尽量让每一行/每一句约 20 个汉字，一句一事、一句一行。
+    - 语义相关的短句之间用空行分段；清单仍用 - 或编号，每条一行。
+    - 不要为凑行宽硬拆专有名词、路径、代码标识符或英文专名。
     - 可用简短中文小标题（如「结论」「待办」「问题」），不要使用 emoji。
     - 不要用 [NOTE]、[TODO]、[OK] 这类方括号单词标签。
     - 不要为装饰而堆砌符号。
@@ -508,13 +514,13 @@ enum SemanticFormatter {
                 body += """
 
 
-                请整理后输出：分区标题必须带常规修饰性 emoji，短段换行；不要纯文字干巴输出。
+                请整理后输出：分区标题必须带常规修饰性 emoji；短段换行；长文尽量每行约 20 字、一句一行；不要纯文字干巴输出。
                 """
             } else {
                 body += """
 
 
-                请整理后输出：短段换行，可用中文小标题；不要使用 emoji。
+                请整理后输出：短段换行；长文尽量每行约 20 字、一句一行；可用中文小标题；不要使用 emoji。
                 """
             }
         }

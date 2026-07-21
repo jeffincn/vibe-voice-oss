@@ -27,12 +27,25 @@ if [[ ! -f "$METALLIB" ]] || [[ "$ROOT/.build/checkouts/mlx-swift/Package.swift"
     MLX_INCLUDE="$CMLX/mlx"
     AIR_DIR=$(mktemp -d)
     trap 'rm -rf "$AIR_DIR" "$STAGING_DIR"' EXIT
-    find "$METAL_DIR" -name "*.metal" -print0 | while IFS= read -r -d '' f; do
+    metal_count=0
+    air_count=0
+    for f in "$METAL_DIR"/*.metal(N); do
+        metal_count=$((metal_count + 1))
         base=$(basename "$f" .metal)
         xcrun metal -c -I "$KERNEL_INCLUDE" -I "$STEEL_INCLUDE" -I "$MLX_INCLUDE" \
             -std=metal3.2 -target air64-apple-macos15.0 \
-            "$f" -o "$AIR_DIR/$base.air" 2>/dev/null
+            "$f" -o "$AIR_DIR/$base.air"
+        air_count=$((air_count + 1))
     done
+    if (( metal_count == 0 )); then
+        echo "error: no .metal sources under $METAL_DIR" >&2
+        exit 1
+    fi
+    if (( air_count == 0 )); then
+        echo "error: Metal compile produced no .air files (is Metal Toolchain installed?)" >&2
+        echo "  Install with: xcodebuild -downloadComponent MetalToolchain" >&2
+        exit 1
+    fi
     xcrun metallib "$AIR_DIR"/*.air -o "$METALLIB"
     rm -rf "$AIR_DIR"
     echo "MLX metallib compiled: $(du -h "$METALLIB" | cut -f1)"

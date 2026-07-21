@@ -145,17 +145,15 @@ enum ASRBackend: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .integrated: "集成模式 · 本地原生"
-        case .api: "API 模式 · OpenAI 兼容"
+        case .integrated: L10n.t(.asrIntegrated)
+        case .api: L10n.t(.asrAPI)
         }
     }
 
     var caption: String {
         switch self {
-        case .integrated:
-            "默认使用 WhisperKit 本地转写；Qwen3-ASR 需选择已下载的 MLX 模型目录；不需要 ASR API 服务。"
-        case .api:
-            "连接 oMLX 或远端 OpenAI-compatible /v1/audio/transcriptions 服务。"
+        case .integrated: L10n.t(.asrIntegratedCaption)
+        case .api: L10n.t(.asrAPICaption)
         }
     }
 }
@@ -182,10 +180,8 @@ enum IntegratedASREngine: String, CaseIterable, Identifiable, Sendable {
 
     var caption: String {
         switch self {
-        case .qwen3MLX:
-            "Swift 原生 MLX 推理，无 Python 运行时；需要选择已下载的 Qwen3-ASR MLX 模型目录。"
-        case .whisperMLX:
-            "使用 WhisperKit/Core ML，本地自动下载并缓存所选 WhisperKit 模型。"
+        case .qwen3MLX: L10n.t(.engineQwenCaption)
+        case .whisperMLX: L10n.t(.engineWhisperCaption)
         }
     }
 }
@@ -198,17 +194,15 @@ enum LanguageModelBackend: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .disabled: "关闭"
-        case .api: "API 模式"
+        case .disabled: L10n.t(.llmDisabled)
+        case .api: L10n.t(.llmAPI)
         }
     }
 
     var caption: String {
         switch self {
-        case .disabled:
-            "仅输出 ASR 原文；翻译、整理和 Prompt 编译不会运行。"
-        case .api:
-            "通过 OpenAI-compatible Chat Completions API 执行翻译、整理和 Prompt 编译。"
+        case .disabled: L10n.t(.llmDisabledCaption)
+        case .api: L10n.t(.llmAPICaption)
         }
     }
 }
@@ -221,15 +215,15 @@ enum TranscodeProfile: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .asr16kMono: "ASR 标准 · 16 kHz 单声道 WAV"
-        case .archive48kStereo: "存档 · 48 kHz 立体声 WAV"
+        case .asr16kMono: L10n.t(.transcodeASR)
+        case .archive48kStereo: L10n.t(.transcodeArchive)
         }
     }
 
     var caption: String {
         switch self {
-        case .asr16kMono: "送给 oMLX 语音识别的默认规格。"
-        case .archive48kStereo: "高质量存档，不直接送 ASR。"
+        case .asr16kMono: L10n.t(.transcodeASRCaption)
+        case .archive48kStereo: L10n.t(.transcodeArchiveCaption)
         }
     }
 
@@ -285,6 +279,7 @@ final class AppSettings: ObservableObject {
         static let transcodeProfileID = "transcodeProfileID"
         static let transcodeNormalize = "transcodeNormalize"
         static let transcodeMaxGainDb = "transcodeMaxGainDb"
+        static let uiLanguageID = "uiLanguageID"
     }
 
     /// Language rules for Stage 1 IR extraction (string fields inside Prompt IR JSON).
@@ -389,6 +384,18 @@ final class AppSettings: ObservableObject {
     }
     @Published var transcodeMaxGainDb: Double {
         didSet { defaults.set(transcodeMaxGainDb, forKey: Key.transcodeMaxGainDb) }
+    }
+    /// Interface language (UI only). Independent of ASR / output language.
+    @Published var uiLanguageID: String {
+        didSet {
+            save(uiLanguageID, for: Key.uiLanguageID)
+            AppLocalization.shared.apply(uiLanguage)
+        }
+    }
+
+    var uiLanguage: AppUILanguage {
+        get { AppUILanguage.resolve(id: uiLanguageID) }
+        set { uiLanguageID = newValue.rawValue }
     }
 
     var structureIntensity: StructureIntensity {
@@ -643,6 +650,9 @@ final class AppSettings: ObservableObject {
         } else {
             transcodeMaxGainDb = defaults.double(forKey: Key.transcodeMaxGainDb)
         }
+        let storedUILanguage = defaults.string(forKey: Key.uiLanguageID)
+        uiLanguageID = AppUILanguage.resolve(id: storedUILanguage).rawValue
+        AppLocalization.shared.apply(uiLanguage)
         // All stored properties are now initialized — safe to call instance methods.
         syncPromptToSQLite(resolvedPrompt)
     }
@@ -776,20 +786,20 @@ final class AppSettings: ObservableObject {
     var outputCaption: String {
         var parts: [String] = []
         if !llmFeaturesAvailable {
-            parts.append("仅转写原文")
+            parts.append(L10n.t(.captionASROnly))
         } else if promptOptimizeEnabled {
             let targetLabel = promptTarget.label
             var suffix: String
             if !targetLanguage.translates {
-                suffix = "随口述语言"
+                suffix = L10n.t(.followSpokenLanguage)
             } else if targetLanguage.bilingual {
                 suffix = targetLanguage.shortLabel
             } else {
                 suffix = targetLanguage.label
             }
-            parts.append("Prompt 编译 → \(targetLabel)（\(suffix)）")
+            parts.append(L10n.t(.promptCompileArrow, targetLabel, suffix))
         } else if structuredOutputEnabled {
-            var structured = "结构化：\(structureIntensity.label)"
+            var structured = L10n.t(.structuredPrefix, structureIntensity.label)
             if structuredEmojiEnabled {
                 structured += " · Emoji"
             }
@@ -803,14 +813,14 @@ final class AppSettings: ObservableObject {
 
     /// Caption for a one-shot mode override from a global hotkey.
     func outputCaption(for mode: RecordingOutputMode) -> String {
-        guard llmFeaturesAvailable else { return "仅转写原文" }
+        guard llmFeaturesAvailable else { return L10n.t(.captionASROnly) }
         switch mode {
         case .conversation:
             return targetLanguage.menuCaption
         case .english:
-            return "直接翻译 → English"
+            return L10n.t(.captionDirectEnglish)
         case .structured:
-            var structured = "结构化：\(structureIntensity.label)"
+            var structured = L10n.t(.structuredPrefix, structureIntensity.label)
             if structuredEmojiEnabled {
                 structured += " · Emoji"
             }
@@ -818,16 +828,14 @@ final class AppSettings: ObservableObject {
         case .prompt:
             let targetLabel = promptTarget.label
             if !targetLanguage.translates {
-                return "Prompt 编译 → \(targetLabel)（随口述语言）"
+                return L10n.t(.promptCompileArrow, targetLabel, L10n.t(.followSpokenLanguage))
             }
             if targetLanguage.bilingual {
-                return "Prompt 编译 → \(targetLabel)（\(targetLanguage.shortLabel)）"
+                return L10n.t(.promptCompileArrow, targetLabel, targetLanguage.shortLabel)
             }
-            return "Prompt 编译 → \(targetLabel)（\(targetLanguage.label)）"
+            return L10n.t(.promptCompileArrow, targetLabel, targetLanguage.label)
         case .smartRoute:
-            return hasSmartRoutePrompt
-                ? "智能路由 → 自定义 System Prompt"
-                : "智能路由（未配置 System Prompt）"
+            return L10n.t(.captionSmartRoute)
         }
     }
 
