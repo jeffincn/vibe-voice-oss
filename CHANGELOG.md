@@ -1,5 +1,9 @@
 # Changelog
 
+## Vibe Voice OSS 0.7.0
+
+Baseline for a fresh Voice Pipeline iteration on `feat/voice-pipeline` (merged with main 0.6.0). Build numbering restarts at 1.
+
 ## Vibe Voice OSS 0.6.0
 
 Vibe Voice OSS 0.6.0 focuses on everyday usability: bilingual UI, safer mid-pipeline copy, and making Settings reachable from Command-Tab even though the app remains a menu-bar agent.
