@@ -35,7 +35,8 @@ actor PipelineASRService {
 
     func transcribe(
         samples: [Float],
-        configuration: TranscriptionConfiguration
+        configuration: TranscriptionConfiguration,
+        priorContext: String? = nil
     ) async throws -> PipelineASRResult {
         guard configuration.backend == .integrated else {
             throw PipelineASRServiceError.apiBackendUnsupported
@@ -49,7 +50,8 @@ actor PipelineASRService {
         case .qwen3MLX:
             let sampleResult = try await NativeASRClient.shared.transcribe(
                 samples: samples,
-                configuration: configuration
+                configuration: configuration,
+                priorContext: priorContext
             )
             text = sampleResult.text
             language = sampleResult.language
@@ -63,7 +65,7 @@ actor PipelineASRService {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw PipelineASRServiceError.emptyText }
         SpeechPipelineLog.asr.info(
-            "asr done duration=\(audioDuration, format: .fixed(precision: 2))s latency=\(latency, format: .fixed(precision: 2))s chars=\(trimmed.count)"
+            "asr done duration=\(audioDuration, format: .fixed(precision: 2))s latency=\(latency, format: .fixed(precision: 2))s chars=\(trimmed.count) priorChars=\(priorContext?.count ?? 0)"
         )
         return PipelineASRResult(
             text: trimmed,

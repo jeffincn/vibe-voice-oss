@@ -44,18 +44,33 @@ actor NativeASRClient {
     }
 
     /// Transcribe in-memory 16 kHz mono Float samples with Qwen3-ASR (no temp WAV).
+    /// `priorContext` is previous transcript in the same session (helps continuity across VAD cuts).
     func transcribe(
         samples: [Float],
-        configuration: TranscriptionConfiguration
+        configuration: TranscriptionConfiguration,
+        priorContext: String? = nil
     ) async throws -> NativeASRSampleResult {
         guard configuration.integratedEngine == .qwen3MLX else {
             throw TranscriptionError.localRuntime("样本转写仅支持 Qwen3-ASR。")
         }
         let stt = try await loadQwen(configuration: configuration)
+        let prompt = configuration.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prior = priorContext?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let context: String?
+        if prompt.isEmpty, prior.isEmpty {
+            context = nil
+        } else if prior.isEmpty {
+            context = prompt
+        } else if prompt.isEmpty {
+            // Keep last ~500 chars so the decoder sees recent dialogue, not unbounded history.
+            context = String(prior.suffix(500))
+        } else {
+            context = prompt + "\n" + String(prior.suffix(500))
+        }
         let result = try await stt.transcribe(
             audio: samples,
             language: qwenLanguage(configuration.language),
-            context: configuration.prompt.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            context: context
         )
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw TranscriptionError.emptyText }

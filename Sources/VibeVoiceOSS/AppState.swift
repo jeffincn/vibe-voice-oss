@@ -224,7 +224,7 @@ final class AppState: ObservableObject {
                     guard let self, !self.hotKeyIsDown else { return }
                     self.hotKeyIsDown = true
                     if self.settings.effectiveVoicePipelineEnabled {
-                        await self.toggleVoicePipeline()
+                        await self.toggleVoicePipeline(outputMode: mode)
                     } else if self.voicePipelineSessionActive {
                         // Settings toggle was turned off mid-session — tear down pipeline, don't
                         // call finishRecording() on an AudioRecorder that never started.
@@ -259,21 +259,28 @@ final class AppState: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Toggle experimental Voice Pipeline (VAD → local ASR). No LLM / paste in this path.
-    func toggleVoicePipeline() async {
+    /// Toggle Voice Pipeline (VAD → local ASR). Ending the session runs the same post rules as
+    /// push-to-talk (structure / translate / Prompt / smart route) then pastes the result.
+    func toggleVoicePipeline(outputMode: RecordingOutputMode? = nil) async {
         if isStartingVoicePipeline { return }
 
         // Stop only when actively listening (not while stuck on a start-failure screen).
         if voicePipeline.isListening {
-            stopVoicePipeline()
+            await finishVoicePipeline()
             return
         }
         if case .failed = voicePipeline.state {
-            stopVoicePipeline()
+            stopVoicePipeline(deliver: false)
         }
 
         isStartingVoicePipeline = true
         defer { isStartingVoicePipeline = false }
+
+        // Remember where to paste when the session ends (before our HUD steals focus).
+        if let application = NSWorkspace.shared.frontmostApplication,
+           application.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            inputTargetPID = application.processIdentifier
+        }
 
         // Cancel any in-flight PTT work.
         if phase.isBusy {
@@ -284,6 +291,23 @@ final class AppState: ObservableObject {
             streamingSession = nil
             recorder.cancel()
         }
+
+        sessionOutputMode = outputMode
+        let promptLabel: String?
+        switch outputMode {
+        case .prompt:
+            promptLabel = settings.llmFeaturesAvailable ? settings.promptTarget.label : nil
+        case .smartRoute:
+            promptLabel = nil
+        case .none:
+            promptLabel = settings.llmFeaturesAvailable && settings.promptOptimizeEnabled
+                ? settings.promptTarget.label
+                : nil
+        case .conversation, .english, .structured:
+            promptLabel = nil
+        }
+        stageTiming.beginSession(promptTarget: promptLabel)
+        stageTiming.enter(.recording)
 
         partialTranscript = ""
         stableTranscript = ""
@@ -299,16 +323,23 @@ final class AppState: ObservableObject {
         pipelineObservation = Task { @MainActor [weak self] in
             guard let self else { return }
             var lastState = self.voicePipeline.state
+            var lastCompletedText = self.voicePipeline.lastCompletedText
             var lastStatusAt = Date.distantPast
             while !Task.isCancelled {
                 let state = self.voicePipeline.state
                 let level = self.voicePipeline.audioLevel
                 let bands = self.voicePipeline.audioBands
+                let completedText = self.voicePipeline.lastCompletedText
                 if abs(level - self.audioLevel) > 0.01 {
                     self.audioLevel = level
                 }
                 if bands != self.audioBands {
                     self.audioBands = bands
+                }
+                // Source of truth for captions: lastCompletedText (survives completed→listening race).
+                if !completedText.isEmpty, completedText != lastCompletedText {
+                    lastCompletedText = completedText
+                    self.applyVoicePipelineCompletedText(completedText)
                 }
                 if state != lastState {
                     lastState = state
@@ -319,7 +350,7 @@ final class AppState: ObservableObject {
                     lastStatusAt = now
                     let pct = Int((self.voicePipeline.lastSpeechProbability * 100).rounded())
                     self.connectionMessage = self.voicePipeline.vadUsesCoreML
-                        ? "聆听中 · Silero 语音概率 \(pct)%"
+                        ? "聆听中 · Silero 语音概率 \(pct)% · 说完停半秒出字"
                         : "聆听中 · VAD \(pct)% · 说完停半秒出字"
                 }
                 try? await Task.sleep(for: .milliseconds(50))
@@ -332,31 +363,197 @@ final class AppState: ObservableObject {
         )
         applyVoicePipelineState(voicePipeline.state)
         if case let .failed(message) = voicePipeline.state {
+            voicePipelineSessionActive = false
             connectionMessage = message
         } else if voicePipeline.isListening {
+            voicePipelineSessionActive = true
             connectionMessage = voicePipeline.vadUsesCoreML
                 ? "Voice Pipeline 聆听中（Silero CoreML）"
                 : "Voice Pipeline 聆听中（能量 VAD；可运行 prepare-silero-vad.sh 启用 CoreML）"
         }
     }
 
-    func stopVoicePipeline() {
+    func stopVoicePipeline(deliver: Bool = true) {
+        Task { @MainActor in
+            await finishVoicePipeline(deliver: deliver)
+        }
+    }
+
+    /// End listening. When `deliver` is true, prefer a whole-session re-ASR (so mid-pause
+    /// cuts don't lose dialogue continuity), then run the same post rules as push-to-talk.
+    @MainActor
+    func finishVoicePipeline(deliver: Bool = true) async {
         pipelineObservation?.cancel()
         pipelineObservation = nil
+
+        // Copy before stop — segment boundaries encode the user's pauses.
+        let segments = voicePipeline.segmentTexts
+        let sessionPCM = voicePipeline.takeSessionSamples()
+        let polishedSegments = Self.polishVoicePipelineSegments(segments)
+        let live = partialTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finished = lastTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = [polishedSegments, finished, live].first { !$0.isEmpty } ?? ""
+
         voicePipeline.stop()
         isStartingVoicePipeline = false
         voicePipelineSessionActive = false
         audioLevel = 0
         audioBands = .silent
-        phase = .idle
-        connectionMessage = ""
-        recordingHUD.hide()
+
+        guard deliver, !text.isEmpty || sessionPCM.count >= 8_000 else {
+            lastTranscript = text
+            partialTranscript = text
+            stableTranscript = text
+            sessionOutputMode = nil
+            if stageTiming.hasActiveSession {
+                stageTiming.finishSession(
+                    outcome: .cancelled,
+                    message: text.isEmpty ? "已取消" : "已保留识别文字（未后处理）"
+                )
+            }
+            phase = .idle
+            connectionMessage = text.isEmpty ? "" : "已保留识别文字（未后处理）"
+            recordingHUD.hide()
+            return
+        }
+
+        // Multi-segment sessions: keep one line per VAD pause (plus sentence terminators).
+        // Full-session re-ASR collapses pauses into one paragraph — only use it when we
+        // have a single continuous utterance (0–1 segments).
+        if segments.count <= 1,
+           settings.configuration.integratedEngine == .qwen3MLX,
+           sessionPCM.count >= 8_000 {
+            phase = .transcribing
+            connectionMessage = "正在整段重识别…"
+            recordingHUD.show()
+            do {
+                let coherent = try await NativeASRClient.shared.transcribe(
+                    samples: sessionPCM,
+                    configuration: settings.configuration,
+                    priorContext: nil
+                )
+                text = Self.ensureSentenceTerminator(
+                    coherent.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
+                SpeechPipelineLog.coordinator.info(
+                    "session re-asr ok samples=\(sessionPCM.count) chars=\(text.count)"
+                )
+            } catch {
+                SpeechPipelineLog.coordinator.error(
+                    "session re-asr failed, using captions: \(error.localizedDescription, privacy: .public)"
+                )
+                if text.isEmpty { text = polishedSegments }
+            }
+        } else if segments.count >= 2 {
+            text = polishedSegments
+            SpeechPipelineLog.coordinator.info(
+                "using \(segments.count) pause-aware segments for post-process chars=\(text.count)"
+            )
+        }
+
+        guard !text.isEmpty else {
+            sessionOutputMode = nil
+            phase = .failed("没有识别到有效内容")
+            connectionMessage = "没有识别到有效内容"
+            recordingHUD.show()
+            return
+        }
+
+        lastTranscript = text
+        partialTranscript = text
+        stableTranscript = text
+        connectionMessage = "正在按输出规则处理…"
+        recordingHUD.show()
+
+        processingGeneration += 1
+        let outputMode = sessionOutputMode
+        let llmEnabled = settings.llmFeaturesAvailable
+        let structured: Bool
+        let prompt: Bool
+        let smart: Bool
+        switch outputMode {
+        case .conversation:
+            structured = false
+            prompt = false
+            smart = false
+        case .english:
+            structured = false
+            prompt = false
+            smart = false
+        case .structured:
+            structured = llmEnabled
+            prompt = false
+            smart = false
+        case .prompt:
+            structured = false
+            prompt = llmEnabled
+            smart = false
+        case .smartRoute:
+            structured = false
+            prompt = false
+            smart = llmEnabled
+        case .none:
+            structured = llmEnabled && settings.structuredOutputEnabled
+            prompt = llmEnabled && settings.promptOptimizeEnabled
+            smart = false
+        }
+        let snapshot = ProcessingSnapshot(
+            wav: nil,
+            transcript: text,
+            generation: processingGeneration,
+            configuration: settings.configuration,
+            targetLanguage: outputMode == .english
+                ? TargetLanguage.resolve(id: "en")
+                : settings.effectiveTargetLanguage,
+            promptOptimizeEnabled: prompt,
+            structuredOutputEnabled: structured,
+            structuredEmojiEnabled: settings.structuredEmojiEnabled,
+            structureIntensity: settings.structureIntensity,
+            smartRouteEnabled: smart,
+            translationConfiguration: settings.translationConfiguration,
+            promptOptimizeConfiguration: settings.promptOptimizeConfiguration,
+            smartRouteConfiguration: settings.smartRouteConfiguration,
+            chatEndpoint: settings.llmEndpoint,
+            languageModel: settings.translationModel,
+            apiKey: settings.llmApiKey,
+            streamingMode: .batch,
+            outputMode: outputMode
+        )
+        sessionOutputMode = nil
+        transcriptionTask?.cancel()
+        transcriptionTask = Task {
+            defer { transcriptionTask = nil }
+            await processRecordingSnapshot(snapshot)
+        }
+    }
+
+    /// One line per VAD pause; ensure each line ends with a sentence terminator.
+    private static func polishVoicePipelineSegments(_ segments: [String]) -> String {
+        segments
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { ensureSentenceTerminator($0) }
+            .joined(separator: "\n")
+    }
+
+    private static func ensureSentenceTerminator(_ text: String) -> String {
+        guard !text.isEmpty else { return text }
+        let terminators: Set<Character> = ["。", "！", "？", "…", ".", "!", "?", "；", ";"]
+        if let last = text.last, terminators.contains(last) {
+            return text
+        }
+        let questionEnds = ["吗", "么", "呢", "吧", "呀"]
+        if questionEnds.contains(where: { text.hasSuffix($0) }) {
+            return text + "？"
+        }
+        return text + "。"
     }
 
     /// Called when Settings turns Voice Pipeline off (or switches to API mode).
     func handleVoicePipelineSettingChanged(enabled: Bool) {
         if !enabled, voicePipelineSessionActive || isStartingVoicePipeline || voicePipeline.isListening {
-            stopVoicePipeline()
+            // Settings toggle off: stop without forcing paste into a random focus target.
+            stopVoicePipeline(deliver: false)
         }
     }
 
@@ -373,15 +570,9 @@ final class AppState: ObservableObject {
             recordingHUD.show()
         case .processing:
             phase = .transcribing
+            connectionMessage = "正在识别这一段…"
         case let .completed(text):
-            // Accumulate segments; keep HUD in listening/recording (do not bounce through .success).
-            if lastTranscript.isEmpty {
-                lastTranscript = text
-            } else if !lastTranscript.contains(text) || !lastTranscript.hasSuffix(text) {
-                lastTranscript += "\n" + text
-            }
-            partialTranscript = lastTranscript
-            stableTranscript = lastTranscript
+            applyVoicePipelineCompletedText(text)
             phase = .recording
             recordingHUD.show()
         case let .failed(message):
@@ -396,6 +587,23 @@ final class AppState: ObservableObject {
                 recordingHUD.show()
             }
         }
+    }
+
+    private func applyVoicePipelineCompletedText(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if lastTranscript.isEmpty {
+            lastTranscript = trimmed
+        } else if !lastTranscript.hasSuffix(trimmed) {
+            lastTranscript += "\n" + trimmed
+        }
+        partialTranscript = lastTranscript
+        stableTranscript = lastTranscript
+        let n = voicePipeline.segmentTexts.count
+        connectionMessage = n > 0
+            ? "第 \(n) 段已出字 · 继续说；结束时会整段重识别再按规则处理"
+            : "已出字 · 继续说，或再按热键结束"
+        recordingHUD.show()
     }
 
     func beginRecording(outputMode: RecordingOutputMode? = nil) async {
@@ -574,6 +782,12 @@ final class AppState: ObservableObject {
         guard snapshot.generation == processingGeneration else { return }
         do {
             let transcript: String
+            if let ready = snapshot.transcript?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !ready.isEmpty {
+                // Voice Pipeline (or other pre-ASR paths): skip recognition, run post rules only.
+                transcript = ready
+                publishFinalTranscript(transcript)
+            } else {
             switch snapshot.streamingMode {
             case .duplexStreaming:
                 stageTiming.enter(.finalizing)
@@ -626,6 +840,7 @@ final class AppState: ObservableObject {
                 )
                 publishFinalTranscript(transcript)
             }
+            } // end ASR branch
 
             try Task.checkCancellation()
             guard snapshot.generation == processingGeneration else { return }

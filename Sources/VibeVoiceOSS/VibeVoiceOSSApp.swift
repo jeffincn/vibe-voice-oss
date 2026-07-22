@@ -184,6 +184,32 @@ private struct MenuPanel: View {
             }
             .appChromeCard()
 
+            // L2.5 — Voice Pipeline quick toggle (kept above the collapsed section for fast access)
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(isOn: Binding(
+                    get: { settings.voicePipelineEnabled },
+                    set: { newValue in
+                        settings.voicePipelineEnabled = newValue
+                        appState.handleVoicePipelineSettingChanged(enabled: settings.effectiveVoicePipelineEnabled)
+                    }
+                )) {
+                    Label("Voice Pipeline（VAD 切段）", systemImage: "waveform.badge.mic")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppChrome.ink)
+                }
+                .toggleStyle(.switch)
+                .disabled(!settings.isVoicePipelineAvailable)
+
+                Text(settings.isVoicePipelineAvailable
+                    ? "热键开始/结束。聆听中停顿自动出字；结束后按菜单里的输出规则（整理/翻译/Prompt）处理并粘贴。"
+                    : "仅在「集成模式」可用；当前为 API 模式，已强制关闭。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(AppChrome.muted)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .appChromeCard()
+
             // L3 — collapsed advanced output options
             DisclosureGroup(isExpanded: $moreOutputExpanded) {
                 VStack(alignment: .leading, spacing: 10) {

@@ -277,7 +277,7 @@ private struct SettingsForm: View {
                     .toggleStyle(.switch)
                     .disabled(!settings.isVoicePipelineAvailable)
                 if settings.isVoicePipelineAvailable {
-                    caption("开启后热键进入持续聆听：VAD 自动切段并送本地 ASR（WhisperKit 或 Qwen3-ASR），只累积原始文本（不改写、不粘贴）。再按同一热键结束。可选运行 scripts/prepare-silero-vad.sh 启用 Silero CoreML。")
+                    caption("开启后按热键进入持续聆听：停顿自动切段识别并显示字幕；再按同一热键或点停止后，按当前输出规则（整理 / 翻译 / Prompt 优化 / 智能路由，与普通录音相同）处理后粘贴。会话中的字幕是原始识别，结束时才做后处理。")
                 } else {
                     caption("Voice Pipeline 仅在「集成模式」下可用；当前为 API 模式，已强制关闭。")
                 }

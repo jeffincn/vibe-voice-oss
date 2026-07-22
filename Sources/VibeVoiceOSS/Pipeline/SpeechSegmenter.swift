@@ -10,21 +10,22 @@ enum SpeechSegmenterPhase: Equatable, Sendable {
 
 struct SpeechSegmenterConfig: Sendable {
     /// Probability above which speech is considered active.
-    var speechThreshold: Float = 0.45
+    var speechThreshold: Float = 0.35
     /// Probability below which silence is considered.
-    var silenceThreshold: Float = 0.28
+    var silenceThreshold: Float = 0.20
     /// Prepend this much audio when a segment starts (seconds @ 16 kHz).
     var preRollSeconds: Double = 0.30
     /// Append this much audio after endpoint (seconds).
     var postRollSeconds: Double = 0.20
     /// Ignore bursts shorter than this.
-    var minimumSpeechSeconds: Double = 0.20
+    var minimumSpeechSeconds: Double = 0.18
     /// Force-complete if continuous speech exceeds this.
-    var maximumSpeechSeconds: Double = 8.0
+    var maximumSpeechSeconds: Double = 20.0
     /// How long silence must last in PossibleEnd before completing.
-    var endpointTimeoutSeconds: Double = 0.55
+    /// Longer than a brief thinking pause so mid-sentence hesitation doesn't orphan context.
+    var endpointTimeoutSeconds: Double = 1.20
     /// How long speech must stay above threshold to leave Idle.
-    var speechOnsetSeconds: Double = 0.10
+    var speechOnsetSeconds: Double = 0.08
 
     var sampleRate: Double = 16_000
 

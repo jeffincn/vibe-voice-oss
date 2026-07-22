@@ -28,8 +28,8 @@ enum VADServiceError: LocalizedError {
 }
 
 struct VADConfig: Sendable {
-    var speechThreshold: Float = 0.45
-    var silenceThreshold: Float = 0.28
+    var speechThreshold: Float = 0.35
+    var silenceThreshold: Float = 0.20
     /// Silero window size at 16 kHz.
     var windowSamples: Int = 512
     var sampleRate: Int = 16_000
@@ -44,6 +44,13 @@ final class VADService: @unchecked Sendable {
     private var model: MLModel?
     private(set) var usesCoreML = false
     private(set) var modelDirectory: URL
+
+    // Silero v5 recurrent state (LSTM h/c) + 64-sample context carried across 512-sample chunks.
+    private static let contextSamples = 64
+    private static let chunkSamples = 512
+    private var sileroContext = [Float](repeating: 0, count: VADService.contextSamples)
+    private var sileroH: MLMultiArray?
+    private var sileroC: MLMultiArray?
 
     static var defaultModelDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser
@@ -74,16 +81,23 @@ final class VADService: @unchecked Sendable {
             do {
                 model = try MLModel(contentsOf: url)
                 usesCoreML = true
+                resetSileroStateLocked()
                 if fm.fileExists(atPath: marker.path) {
                     try? fm.removeItem(at: marker)
                 }
-                SpeechPipelineLog.vad.info("Loaded Silero CoreML from \(url.path, privacy: .public)")
+                SpeechPipelineLog.vad.info(
+                    "Loaded Silero CoreML from \(url.path, privacy: .public) h=\(self.sileroH != nil) c=\(self.sileroC != nil)"
+                )
                 return
             } catch {
                 SpeechPipelineLog.vad.error(
                     "CoreML load failed, falling back to energy VAD: \(error.localizedDescription, privacy: .public)"
                 )
             }
+        } else {
+            SpeechPipelineLog.vad.warning(
+                "Silero mlmodelc missing at \(compiled.path, privacy: .public)"
+            )
         }
 
         if !fm.fileExists(atPath: marker.path) {
@@ -100,7 +114,28 @@ final class VADService: @unchecked Sendable {
         lock.withLock {
             pending.removeAll(keepingCapacity: true)
             wasSpeech = false
+            sileroContext = [Float](repeating: 0, count: VADService.contextSamples)
+            resetSileroStateLocked()
         }
+    }
+
+    private func resetSileroStateLocked() {
+        guard usesCoreML else {
+            sileroH = nil
+            sileroC = nil
+            return
+        }
+        sileroH = try? MLMultiArray(shape: [1, 1, 128], dataType: .float16)
+        sileroC = try? MLMultiArray(shape: [1, 1, 128], dataType: .float16)
+        zeroFill(sileroH)
+        zeroFill(sileroC)
+    }
+
+    private func zeroFill(_ array: MLMultiArray?) {
+        guard let array else { return }
+        let count = array.count
+        let ptr = array.dataPointer.bindMemory(to: Float16.self, capacity: count)
+        for index in 0..<count { ptr[index] = 0 }
     }
 
     /// Push 16 kHz mono samples; returns the latest VAD result for the most recent full window.
@@ -124,47 +159,70 @@ final class VADService: @unchecked Sendable {
     }
 
     private func inferProbability(_ window: [Float]) -> Float {
+        let energy = energyProbability(window)
         if usesCoreML, let model {
-            if let p = inferCoreML(model: model, window: window) {
-                return p
+            if let silero = inferSilero(model: model, chunk: window) {
+                // Prefer Silero; keep a small energy floor so quiet speech still endpoints.
+                return max(silero, energy * 0.85)
             }
+            SpeechPipelineLog.vad.error("Silero infer returned nil; using energy=\(energy, format: .fixed(precision: 3))")
         }
-        return energyProbability(window)
+        return energy
     }
 
-    private func inferCoreML(model: MLModel, window: [Float]) -> Float? {
-        do {
-            let inputName = model.modelDescription.inputDescriptionsByName.keys.sorted().first ?? "audio"
-            let array = try MLMultiArray(shape: [1, NSNumber(value: window.count)], dataType: .float32)
-            for (index, sample) in window.enumerated() {
-                array[index] = NSNumber(value: sample)
-            }
-            let provider = try MLDictionaryFeatureProvider(dictionary: [inputName: MLFeatureValue(multiArray: array)])
-            let out = try model.prediction(from: provider)
-            // Prefer common Silero output names.
-            let candidates = ["output", "probability", "speech_prob", "var_1093"]
-            for name in candidates {
-                if let value = out.featureValue(for: name)?.multiArrayValue {
-                    return Float(truncating: value[0])
-                }
-                if let value = out.featureValue(for: name)?.doubleValue {
-                    return Float(value)
-                }
-            }
-            // Fallback: first multiarray / double output feature.
-            for name in out.featureNames {
-                if let array = out.featureValue(for: name)?.multiArrayValue {
-                    return Float(truncating: array[0])
-                }
-                if let value = out.featureValue(for: name)?.doubleValue {
-                    return Float(value)
-                }
-            }
-            return nil
-        } catch {
-            SpeechPipelineLog.vad.error("CoreML infer failed: \(error.localizedDescription, privacy: .public)")
+    /// Silero v5 CoreML: audio=[64 context + 512 chunk], carrying LSTM h/c across calls.
+    private func inferSilero(model: MLModel, chunk: [Float]) -> Float? {
+        guard chunk.count == VADService.chunkSamples else { return nil }
+        if sileroH == nil || sileroC == nil {
+            resetSileroStateLocked()
+        }
+        guard let h = sileroH, let c = sileroC else {
+            SpeechPipelineLog.vad.error("Silero LSTM state arrays unavailable")
             return nil
         }
+        do {
+            let total = VADService.contextSamples + VADService.chunkSamples // 576
+            let audio = try MLMultiArray(shape: [1, 1, NSNumber(value: total)], dataType: .float16)
+            let audioPtr = audio.dataPointer.bindMemory(to: Float16.self, capacity: total)
+            for index in 0..<VADService.contextSamples {
+                audioPtr[index] = Float16(sileroContext[index])
+            }
+            for index in 0..<VADService.chunkSamples {
+                audioPtr[VADService.contextSamples + index] = Float16(chunk[index])
+            }
+
+            let provider = try MLDictionaryFeatureProvider(dictionary: [
+                "audio": MLFeatureValue(multiArray: audio),
+                "h": MLFeatureValue(multiArray: h),
+                "c": MLFeatureValue(multiArray: c),
+            ])
+            let out = try model.prediction(from: provider)
+
+            if let hOut = out.featureValue(for: "h_out")?.multiArrayValue {
+                sileroH = hOut
+            }
+            if let cOut = out.featureValue(for: "c_out")?.multiArrayValue {
+                sileroC = cOut
+            }
+            // Next chunk's context = last 64 samples of this chunk.
+            sileroContext = Array(chunk.suffix(VADService.contextSamples))
+
+            guard let prob = out.featureValue(for: "probability")?.multiArrayValue else {
+                return nil
+            }
+            return readFloat(prob, at: 0)
+        } catch {
+            SpeechPipelineLog.vad.error("Silero infer failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    private func readFloat(_ array: MLMultiArray, at index: Int) -> Float {
+        if array.dataType == .float16 {
+            let ptr = array.dataPointer.bindMemory(to: Float16.self, capacity: array.count)
+            return Float(ptr[index])
+        }
+        return Float(truncating: array[index])
     }
 
     /// Energy + zero-crossing heuristic approximating speech probability for Silero-sized windows.
@@ -173,8 +231,8 @@ final class VADService: @unchecked Sendable {
         let meanSquare = window.reduce(Float.zero) { $0 + $1 * $1 } / Float(window.count)
         let rms = sqrt(meanSquare)
         let db = 20 * log10(max(rms, 1e-6))
-        // Quieter mics / Voice Processing: map roughly -55…-12 dBFS → 0…1
-        let energyScore = max(0, min(1, (db + 55) / 43))
+        // Quieter mics: map roughly -60…-12 dBFS → 0…1
+        let energyScore = max(0, min(1, (db + 60) / 48))
 
         var crossings = 0
         for index in 1..<window.count {
