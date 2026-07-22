@@ -9,7 +9,7 @@ final class RecordingHUDController {
     init(appState: AppState) {
         self.appState = appState
         panel = RecordingPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 380),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 460),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -79,7 +79,7 @@ final class RecordingHUDController {
                 return !appState.partialTranscript.isEmpty
             }
         }()
-        let size = NSSize(width: 640, height: showingCaption ? 380 : 220)
+        let size = NSSize(width: 640, height: showingCaption ? 460 : 220)
         var frame = panel.frame
         frame.size = size
         panel.setFrame(frame, display: false)
@@ -514,11 +514,16 @@ private struct RecordingHUDView: View {
     /// Secondary Copy is intentionally smaller than primary Stop.
     private let copyButtonSize: CGFloat = 50
     private let stopButtonSize: CGFloat = 60
-    /// Live caption shows up to 3 lines; overflow scrolls.
-    private let captionLineCount = 3
-    private let captionFontSize: CGFloat = 16
-    private var captionLineHeight: CGFloat { captionFontSize * 1.35 }
+    /// Live caption fills most of the glass display panel; overflow scrolls.
+    private let captionLineCount = 8
+    private let captionFontSize: CGFloat = 19
+    private var captionLineHeight: CGFloat { captionFontSize * 1.4 }
     private var captionBodyHeight: CGFloat { captionLineHeight * CGFloat(captionLineCount) }
+    /// Status chrome + caption body + tight edge insets for the glass bubble.
+    private var displayBubbleHeight: CGFloat {
+        // status row (~22) + gap (6) + caption + top/bottom padding (10+12)
+        22 + 6 + captionBodyHeight + 22
+    }
     /// Extra inset so soft shadows are not clipped by the panel bounds.
     private let shadowBleed: CGFloat = 36
 
@@ -546,6 +551,7 @@ private struct RecordingHUDView: View {
                         secondary: secondary,
                         phase: phase
                     )
+                    .frame(height: displayBubbleHeight)
                     .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
                 }
 
@@ -585,7 +591,7 @@ private struct RecordingHUDView: View {
         .padding(shadowBleed)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel(primary: primary, secondary: secondary, phase: phase, partial: partial))
-        .frame(width: 640, height: showDisplay ? 380 : 220)
+        .frame(width: 640, height: showDisplay ? 460 : 220)
     }
 
     @ViewBuilder
@@ -638,7 +644,7 @@ private struct RecordingHUDView: View {
         phase: AppState.Phase,
         showStatusChrome: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             if showStatusChrome {
                 TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1.0 / 20.0, paused: reduceMotion)) { timeline in
                     let time = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
@@ -650,24 +656,26 @@ private struct RecordingHUDView: View {
             if waiting {
                 if !showStatusChrome {
                     Text(statusCaption(phase: phase, time: 0, primary: primary, secondary: secondary))
-                        .font(.system(size: captionFontSize, weight: .medium, design: .rounded))
+                        .font(.system(size: captionFontSize, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.white.opacity(0.7))
                         .lineLimit(captionLineCount)
-                        .frame(maxWidth: .infinity, minHeight: captionBodyHeight, maxHeight: captionBodyHeight, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 } else {
                     Text(waitingBodyHint(phase: phase))
-                        .font(.system(size: 15, weight: .regular, design: .rounded))
+                        .font(.system(size: 17, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.white.opacity(0.6))
                         .lineLimit(captionLineCount)
-                        .frame(maxWidth: .infinity, minHeight: captionBodyHeight, maxHeight: captionBodyHeight, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             } else {
                 subtitleText(partial: display, stable: stable)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 22)
-        .padding(.vertical, 14)
+        // Flush status chrome to the top edge of the glass panel; keep a bit more bottom inset.
+        .padding(.top, 10)
+        .padding(.bottom, 12)
     }
 
     @ViewBuilder
@@ -688,6 +696,7 @@ private struct RecordingHUDView: View {
                 primary: primary, secondary: secondary,
                 phase: phase, showStatusChrome: showStatusChrome
             )
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .glassEffect(
                 .regular.interactive(),
                 in: .rect(cornerRadius: 32)
@@ -695,7 +704,7 @@ private struct RecordingHUDView: View {
         } else {
             let glassShape = RoundedRectangle(cornerRadius: 32, style: .continuous)
 
-            ZStack {
+            ZStack(alignment: .topLeading) {
                 glassShape
                     .fill(Color.black.opacity(0.001))
                     .shadow(color: Color.black.opacity(0.28), radius: 40, y: 18)
@@ -729,6 +738,7 @@ private struct RecordingHUDView: View {
                     phase: phase, showStatusChrome: showStatusChrome
                 )
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -889,27 +899,30 @@ private struct RecordingHUDView: View {
         }
     }
 
-    /// Up to 3 lines of live caption; longer text scrolls (newest stays in view).
+    /// Live caption fills the display panel; longer text scrolls (newest stays in view).
+    /// Sentence-ending punctuation inserts a visual line break so each sentence starts on a new line.
     private func subtitleText(partial: String, stable: String) -> some View {
-        let unstable: String
-        if !stable.isEmpty, partial.hasPrefix(stable) {
-            unstable = String(partial.dropFirst(stable.count))
-        } else {
-            unstable = ""
-        }
+        let formattedPartial = SemanticFormatter.insertSentenceLineBreaks(partial)
+        let formattedStable = SemanticFormatter.insertSentenceLineBreaks(stable)
 
-        let stablePart = stable.isEmpty || !partial.hasPrefix(stable) ? partial : stable
-        let stableVisible = stablePart
-        let unstableVisible = unstable
+        let stableVisible: String
+        let unstableVisible: String
+        if !formattedStable.isEmpty, formattedPartial.hasPrefix(formattedStable) {
+            stableVisible = formattedStable
+            unstableVisible = String(formattedPartial.dropFirst(formattedStable.count))
+        } else {
+            stableVisible = formattedPartial
+            unstableVisible = ""
+        }
 
         return ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: true) {
                 (Text(stableVisible)
                     .foregroundColor(Color.white.opacity(0.95))
                 + Text(unstableVisible)
-                    .foregroundColor(Color.white.opacity(0.5)))
-                    .font(.system(size: captionFontSize, weight: .medium, design: .rounded))
-                    .lineSpacing(2)
+                    .foregroundColor(Color.white.opacity(0.55)))
+                    .font(.system(size: captionFontSize, weight: .semibold, design: .rounded))
+                    .lineSpacing(4)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -918,7 +931,7 @@ private struct RecordingHUDView: View {
             .scrollContentBackground(.hidden)
             .scrollBounceBehavior(.basedOnSize)
             .background(Color.clear)
-            .frame(height: captionBodyHeight, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .clipped()
             .onChange(of: partial) { _, _ in
                 if reduceMotion {
@@ -933,6 +946,7 @@ private struct RecordingHUDView: View {
                 proxy.scrollTo("caption-bottom", anchor: .bottom)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .contentTransition(.interpolate)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: partial)
     }

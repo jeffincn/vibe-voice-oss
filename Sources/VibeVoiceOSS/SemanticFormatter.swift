@@ -108,12 +108,94 @@ enum SemanticFormatter {
         return hitCount >= 2 || newlines >= 2
     }
 
+    /// Insert a newline after sentence terminators so the next sentence starts on a new line.
+    /// Used for live HUD captions, LLM input preparation, and final-output fallback.
+    static func insertSentenceLineBreaks(_ text: String) -> String {
+        guard !text.isEmpty else { return text }
+
+        var out = String()
+        out.reserveCapacity(text.count + 8)
+        let chars = Array(text)
+        let cjkTerminators: Set<Character> = ["。", "！", "？", "；"]
+        let latinTerminators: Set<Character> = [".", "!", "?"]
+        let trailingClosers: Set<Character> = ["\"", "'", "”", "’", "）", ")", "」", "』", "》", "›", "»"]
+
+        var i = 0
+        while i < chars.count {
+            let ch = chars[i]
+            out.append(ch)
+
+            let isTerminator: Bool
+            if cjkTerminators.contains(ch) {
+                isTerminator = true
+            } else if latinTerminators.contains(ch) {
+                // Keep decimals like 3.14 on one line.
+                let prevIsDigit = i > 0 && chars[i - 1].isNumber
+                let nextIsDigit = i + 1 < chars.count && chars[i + 1].isNumber
+                isTerminator = !(ch == "." && prevIsDigit && nextIsDigit)
+            } else {
+                isTerminator = false
+            }
+
+            guard isTerminator else {
+                i += 1
+                continue
+            }
+
+            var j = i + 1
+            while j < chars.count, trailingClosers.contains(chars[j]) {
+                out.append(chars[j])
+                j += 1
+            }
+            // Collapse a single space after Latin ". " into the line break.
+            if j < chars.count, chars[j] == " " || chars[j] == "\u{00A0}" {
+                j += 1
+            }
+            if j < chars.count, chars[j] != "\n" {
+                out.append("\n")
+            }
+            i = j
+        }
+        return out
+    }
+
+    /// When the model collapses multi-sentence text into one line, restore readable breaks.
+    /// If the model already produced newlines, keep its layout.
+    static func ensureParagraphOutput(_ text: String, mode: StructureMode) -> String {
+        let trimmed = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return trimmed }
+
+        if trimmed.contains(where: \.isNewline) {
+            return trimmed
+        }
+
+        let broken = insertSentenceLineBreaks(trimmed)
+        guard broken.contains(where: \.isNewline) else { return trimmed }
+
+        switch mode {
+        case .clean:
+            // Light cleanup: one sentence per line, no extra blank lines.
+            return broken
+        case .ultraConcise, .structured, .rewrite:
+            // Paragraph feel for longer multi-sentence paste targets.
+            let lines = broken.split(whereSeparator: \.isNewline).map(String.init)
+            if lines.count >= 2, trimmed.count >= 40 || lines.count >= 3 {
+                return lines.joined(separator: "\n\n")
+            }
+            return broken
+        }
+    }
+
     /// Shared chat-reading layout with decorative emoji (when enabled).
     private static let chatLayoutRulesWithEmoji = """
-    对话阅读排版（内容整理 / 超精简 / 深度整理均必须遵守）：
+    对话阅读排版（内容整理 / 超精简 / 深度整理均必须遵守，最终粘贴文本也必须带换行）：
+    - 禁止把多句内容挤成没有换行的一整段。
     - 短段 + 空行：避免大段堆砌；一句一事更易扫读。
-    - 长文换行：正文超过约 100 字且含多句时，必须用换行拆开；尽量让每一行/每一句约 20 个汉字，一句一事、一句一行。
-    - 语义相关的短句之间用空行分段；清单仍用 - 或编号，每条一行。
+    - 长文分段：正文超过约 40 字或含 2 句以上时，必须用换行拆开；每一句单独成行，语义相关的短句之间用空行分段。
+    - 清单仍用 - 或编号，每条一行。
     - 不要为凑行宽硬拆专有名词、路径、代码标识符或英文专名。
     - 必须使用修饰性 emoji：每个分区标题或关键要点行前加 1 个 macOS / 聊天输入法常规 Unicode emoji（如 ✅ 📌 💡 ⚠️ 📝 🎯 ✨ 🚀 🔍 💬）。
     - 纯文字、毫无 emoji 的输出视为不合格；至少出现 1–3 个 emoji，让读起来更轻松有趣。
@@ -123,10 +205,11 @@ enum SemanticFormatter {
 
     /// Same layout without decorative emoji (default).
     private static let chatLayoutRulesPlain = """
-    对话阅读排版（内容整理 / 超精简 / 深度整理均必须遵守）：
+    对话阅读排版（内容整理 / 超精简 / 深度整理均必须遵守，最终粘贴文本也必须带换行）：
+    - 禁止把多句内容挤成没有换行的一整段。
     - 短段 + 空行：避免大段堆砌；一句一事更易扫读。
-    - 长文换行：正文超过约 100 字且含多句时，必须用换行拆开；尽量让每一行/每一句约 20 个汉字，一句一事、一句一行。
-    - 语义相关的短句之间用空行分段；清单仍用 - 或编号，每条一行。
+    - 长文分段：正文超过约 40 字或含 2 句以上时，必须用换行拆开；每一句单独成行，语义相关的短句之间用空行分段。
+    - 清单仍用 - 或编号，每条一行。
     - 不要为凑行宽硬拆专有名词、路径、代码标识符或英文专名。
     - 可用简短中文小标题（如「结论」「待办」「问题」），不要使用 emoji。
     - 不要用 [NOTE]、[TODO]、[OK] 这类方括号单词标签。
@@ -136,6 +219,38 @@ enum SemanticFormatter {
     private static func chatLayoutRules(useEmoji: Bool) -> String {
         useEmoji ? chatLayoutRulesWithEmoji : chatLayoutRulesPlain
     }
+
+    /// Light-cleanup few-shots: one sentence per line, no titles/lists.
+    static let layoutFewShotsClean: [FewShotExample] = [
+        FewShotExample(
+            input: "嗯那个明天下午三点跟产品开个会吧，主要聊一下首页改版，还有就是埋点可能要补一下，另外设计稿我可能周五才能给到你们，你们先看看现有的交互。",
+            output: """
+            明天下午三点跟产品开个会。
+            主要聊一下首页改版。
+            埋点可能要补一下。
+            设计稿我可能周五才能给到你们。
+            你们先看看现有的交互。
+            """
+        ),
+        FewShotExample(
+            input: "今天把登录超时修了，然后导出 CSV 还没做，哦对了文档也要更新一下，接口那块小王说可能下周才有空。",
+            output: """
+            今天把登录超时修了。
+            导出 CSV 还没做。
+            文档也要更新一下。
+            接口那块小王说可能下周才有空。
+            """
+        ),
+        FewShotExample(
+            input: "我觉得这个页面加载有点慢，用户一进来就转圈，可能是接口慢也可能是前端渲染问题，你帮我看看吧。",
+            output: """
+            这个页面加载有点慢。
+            用户一进来就转圈。
+            可能是接口慢，也可能是前端渲染问题。
+            你帮我看看吧。
+            """
+        ),
+    ]
 
     /// Layout few-shots with emoji.
     static let layoutFewShotsStructuredEmoji: [FewShotExample] = [
@@ -346,7 +461,7 @@ enum SemanticFormatter {
     static func fewShots(for mode: StructureMode, useEmoji: Bool = false) -> [FewShotExample] {
         switch mode {
         case .clean:
-            return []
+            return layoutFewShotsClean
         case .ultraConcise:
             return useEmoji ? layoutFewShotsUltraEmoji : layoutFewShotsUltraPlain
         case .structured:
@@ -374,6 +489,7 @@ enum SemanticFormatter {
         - 不要解释你做了哪些修改。
         - 只输出整理完成的正文。
         - 使用 Markdown，但不要输出 Markdown 代码块。
+        - 最终输出必须是可直接粘贴的多行正文；禁止把多句挤成一整段无换行文本。
         - 绝对不要在正文中写出任何元指令、提示词或语言要求标签
           （例如「输出语言」「要求的输出语言」「REQUIRED OUTPUT LANGUAGE」及带方括号的同类说明）。
         """
@@ -400,13 +516,19 @@ enum SemanticFormatter {
             \(languageBlock)
 
             当前强度：轻度整理（clean）
+            排版（必须遵守，最终粘贴文本也必须带换行）：
+            - 多句内容必须一句一行；句号 / 问号 / 感叹号结束后换行，下一句从新行开始。
+            - 超过约 40 字或含 2 句以上时，禁止输出没有换行的一整段。
+            - 单句短文本可保持一行。
+            - 输入若已按句号预分段，必须保留这些换行，只在各行内做轻度修正。
+
             只做：
-            - 标点与断句修正；
+            - 标点与断句修正；每一句末尾补全句号、问号或感叹号；
             - 修复语音识别造成的明显错词；
-            - 删除无实际意义的口头语（嗯、啊、就是、然后、那个、我觉得吧等）；
-            - 合并明显重复或自我修正的表述，以最后确认的意思为准；
-            - 基本分段。
-            不要调整论述顺序，不要加标题，不要改成清单或步骤，不要大幅改写措辞。
+            - 删除无实际意义的口头语（嗯、啊、就是、然后、那个、我觉得吧等），删完后仍保持一句一行；
+            - 合并明显重复或自我修正的表述，以最后确认的意思为准。
+
+            不要调整论述顺序，不要加标题，不要改成清单或步骤，不要大幅改写措辞，不要插入空行制造段落标题感。
             一般不加 emoji；除非原文本身已带 emoji，可原样保留。
             """
         case .ultraConcise:
@@ -426,13 +548,13 @@ enum SemanticFormatter {
             - 只保留关键事实、决定、待办与约束；
             - 删掉铺垫、口头复述、同义反复与无效细节；
             - 能一行说清就不要两行；能三点说清就不要七点；
+            - 每个要点单独成行；要点之间用空行分段；
             - 不确定处保留为「可能 / 待确认」，勿升格为定论。
 
             \(layoutClose)
             """
         case .structured:
             let formHints: String
-            let closing: String
             if useEmoji {
                 formHints = """
                 输出形式由语义决定，不要机械地为所有内容增加「摘要、重点、结论」：
@@ -444,9 +566,8 @@ enum SemanticFormatter {
                 - 技术内容 → 📌 背景 / 🔍 问题 / 💡 方案；
                 - 混乱的灵感 → ✨ 主题分组。
 
-                请严格对照样例：有分区就要有修饰性 emoji，不要输出干巴巴的纯文字。
+                请严格对照样例：有分区就要有修饰性 emoji；段落之间必须空行；不要输出干巴巴的一整段纯文字。
                 """
-                closing = ""
             } else {
                 formHints = """
                 输出形式由语义决定，不要机械地为所有内容增加「摘要、重点、结论」：
@@ -458,9 +579,8 @@ enum SemanticFormatter {
                 - 技术内容 → 背景 / 问题 / 方案；
                 - 混乱的灵感 → 主题分组。
 
-                请严格对照样例：短段换行、可用中文小标题；不要使用 emoji。
+                请严格对照样例：短段换行、主题之间空行分段；可用中文小标题；不要使用 emoji；不要输出一整段无换行正文。
                 """
-                closing = ""
             }
             return """
             \(shared)
@@ -470,17 +590,18 @@ enum SemanticFormatter {
 
             当前强度：内容整理（structured）
             在轻度整理基础上，额外允许：
-            - 理解段落与信息关系；
+            - 理解段落与信息关系，并按语义重组为可读段落；
             - 根据语义关系调整表达顺序，但不得改变原有结论；
             - 使用标题、项目符号或编号步骤（仅在内容确实需要时）；
-            - 提取明确的结论与待办（仅当原文已经表达这些内容时）。
+            - 提取明确的结论与待办（仅当原文已经表达这些内容时）；
+            - 长文必须段落化：相关句子组成段，段与段之间空行。
 
-            \(formHints)\(closing)
+            \(formHints)
             """
         case .rewrite:
             let layoutClose = useEmoji
-                ? "排版仍按对话阅读习惯与样例：短段、空行，且必须带修饰性 emoji。"
-                : "排版仍按对话阅读习惯与样例：短段、空行；不要使用 emoji。"
+                ? "排版仍按对话阅读习惯与样例：正式短段、空行分段，且必须带修饰性 emoji。"
+                : "排版仍按对话阅读习惯与样例：正式短段、空行分段；不要使用 emoji。"
             return """
             \(shared)
             \(languageBlock)
@@ -491,8 +612,10 @@ enum SemanticFormatter {
             在内容整理基础上，额外允许：
             - 更明显地改写措辞，使其更正式、紧凑；
             - 压缩冗余；
-            - 重构文章组织；
-            - 转换为适合邮件、报告或方案文档的表达。
+            - 重构文章组织为清晰段落；
+            - 转换为适合邮件、报告或方案文档的表达；
+            - 长文必须分段输出：每个段落表达一个完整意思，段与段之间空行。
+
             仍须保留原意与决策边界，不得把不确定说法写成定论。
             \(layoutClose)
             """
@@ -504,23 +627,66 @@ enum SemanticFormatter {
         mode: StructureMode? = nil,
         useEmoji: Bool = false
     ) -> String {
+        // Pre-segment by sentence so the model sees the intended line structure
+        // (ASR transcripts are usually one continuous line).
+        let prepared = insertSentenceLineBreaks(
+            transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
         var body = """
-        原始语音转写如下：
+        原始语音转写如下（已按句末标点预分段；请在整理时保留并强化换行，最终输出禁止合并成一整段）：
 
-        \(transcript)
+        \(prepared)
         """
-        if let mode, mode != .clean {
+
+        guard let mode else { return body }
+
+        switch mode {
+        case .clean:
+            body += """
+
+
+            请按「轻度整理」输出：修正标点与口头语；多句必须一句一行；超过约 40 字或含 2 句以上时禁止无换行整段；不要加标题或清单。
+            """
+        case .ultraConcise:
             if useEmoji {
                 body += """
 
 
-                请整理后输出：分区标题必须带常规修饰性 emoji；短段换行；长文尽量每行约 20 字、一句一行；不要纯文字干巴输出。
+                请按「超精简」输出：只保留关键要点；每个要点单独成行；要点之间空行；分区标题带常规修饰性 emoji；不要纯文字干巴一整段。
                 """
             } else {
                 body += """
 
 
-                请整理后输出：短段换行；长文尽量每行约 20 字、一句一行；可用中文小标题；不要使用 emoji。
+                请按「超精简」输出：只保留关键要点；每个要点单独成行；要点之间空行；不要使用 emoji；不要纯文字干巴一整段。
+                """
+            }
+        case .structured:
+            if useEmoji {
+                body += """
+
+
+                请按「内容整理」输出：按语义重组为短段 / 清单 / 步骤；多句必须换行；主题之间空行分段；分区标题带常规修饰性 emoji；不要纯文字干巴一整段。
+                """
+            } else {
+                body += """
+
+
+                请按「内容整理」输出：按语义重组为短段 / 清单 / 步骤；多句必须换行；主题之间空行分段；可用中文小标题；不要使用 emoji；不要纯文字干巴一整段。
+                """
+            }
+        case .rewrite:
+            if useEmoji {
+                body += """
+
+
+                请按「深度整理」输出：改写成正式短段；长文必须段落化；段与段之间空行；分区标题带常规修饰性 emoji；不要纯文字干巴一整段。
+                """
+            } else {
+                body += """
+
+
+                请按「深度整理」输出：改写成正式短段；长文必须段落化；段与段之间空行；不要使用 emoji；不要纯文字干巴一整段。
                 """
             }
         }
@@ -679,7 +845,8 @@ struct SemanticFormatterClient: Sendable {
         let cleaned = TranslationClient.sanitizeModelOutput(raw)
         let stripped = Self.stripLanguageMetaLines(Self.stripWrappingCodeFence(cleaned))
         guard !stripped.isEmpty else { throw SemanticFormatterError.emptyText }
-        return stripped
+        // Models often ignore layout instructions and return one long line; restore breaks.
+        return SemanticFormatter.ensureParagraphOutput(stripped, mode: configuration.mode)
     }
 
     /// Drop leaked prompt meta such as `[要求的输出语言：简体中文]`.

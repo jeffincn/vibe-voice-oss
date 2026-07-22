@@ -43,6 +43,8 @@ final class SemanticFormatterTests: XCTestCase {
         XCTAssertTrue(prompt.contains("不要加标题"))
         XCTAssertTrue(prompt.contains("不能把「可能、考虑、倾向、建议」改写成已经确定的结论"))
         XCTAssertTrue(prompt.contains("与原始转写保持同一语言"))
+        XCTAssertTrue(prompt.contains("一句一行") || prompt.contains("禁止输出没有换行"))
+        XCTAssertTrue(prompt.contains("最终输出必须是可直接粘贴的多行正文") || prompt.contains("最终粘贴文本"))
     }
 
     func testCleanPromptHonorsOutputLanguageDirective() {
@@ -62,6 +64,7 @@ final class SemanticFormatterTests: XCTestCase {
         XCTAssertTrue(prompt.contains("对话阅读排版") || prompt.contains("短段"))
         XCTAssertTrue(prompt.contains("必须使用修饰性 emoji") || prompt.contains("不合格"))
         XCTAssertTrue(prompt.contains("Unicode emoji") || prompt.contains("✅") || prompt.contains("📌"))
+        XCTAssertTrue(prompt.contains("段落化") || prompt.contains("空行"))
     }
 
     func testStructuredPromptWithoutEmojiOmitsEmojiRequirement() {
@@ -69,6 +72,12 @@ final class SemanticFormatterTests: XCTestCase {
         XCTAssertTrue(prompt.contains("内容整理"))
         XCTAssertTrue(prompt.contains("不要使用 emoji"))
         XCTAssertFalse(prompt.contains("必须使用修饰性 emoji"))
+    }
+
+    func testRewritePromptRequiresParagraphs() {
+        let prompt = SemanticFormatter.systemPrompt(for: .rewrite, useEmoji: false)
+        XCTAssertTrue(prompt.contains("深度整理"))
+        XCTAssertTrue(prompt.contains("段落化") || prompt.contains("空行分段"))
     }
 
     func testUltraConciseIsStricterRuleNotSeparateLayoutSystem() {
@@ -97,14 +106,23 @@ final class SemanticFormatterTests: XCTestCase {
             XCTAssertEqual(s.input, u.input)
             XCTAssertLessThan(u.output.count, s.output.count)
         }
+
+        let clean = SemanticFormatter.layoutFewShotsClean
+        XCTAssertFalse(clean.isEmpty)
+        XCTAssertTrue(clean.allSatisfy { $0.output.contains("\n") })
+        XCTAssertTrue(clean.allSatisfy { !$0.output.contains("📌") && !$0.output.contains("✅") })
     }
 
     func testStructuredUserPromptRequiresEmoji() {
-        let prompt = SemanticFormatter.userPrompt(transcript: "测试", mode: .structured, useEmoji: true)
+        let prompt = SemanticFormatter.userPrompt(transcript: "测试。第二句。", mode: .structured, useEmoji: true)
         XCTAssertTrue(prompt.contains("emoji"))
-        let plain = SemanticFormatter.userPrompt(transcript: "测试", mode: .structured, useEmoji: false)
+        XCTAssertTrue(prompt.contains("内容整理"))
+        XCTAssertTrue(prompt.contains("\n"), "user prompt should pre-segment sentences")
+        let plain = SemanticFormatter.userPrompt(transcript: "测试。第二句。", mode: .structured, useEmoji: false)
         XCTAssertTrue(plain.contains("不要使用 emoji"))
-        let clean = SemanticFormatter.userPrompt(transcript: "测试", mode: .clean)
+        let clean = SemanticFormatter.userPrompt(transcript: "测试。第二句。", mode: .clean)
+        XCTAssertTrue(clean.contains("轻度整理"))
+        XCTAssertTrue(clean.contains("一句一行"))
         XCTAssertFalse(clean.contains("emoji"))
     }
 
@@ -130,10 +148,46 @@ final class SemanticFormatterTests: XCTestCase {
         XCTAssertFalse(withEmoji)
     }
 
-    func testCleanFormattingMessagesSkipFewShots() {
-        let messages = SemanticFormatter.formattingMessages(transcript: "你好", mode: .clean)
-        // Bailian-compatible system + user; no trailing assistant prefill.
-        XCTAssertEqual(messages.count, 2)
+    func testCleanFormattingMessagesIncludeFewShots() {
+        let messages = SemanticFormatter.formattingMessages(transcript: "你好。世界。", mode: .clean)
+        // system + (user/assistant) * few-shots + final user
+        XCTAssertGreaterThan(messages.count, 2)
+        XCTAssertEqual(messages.first?["role"], "system")
+        XCTAssertEqual(messages.last?["role"], "user")
+        XCTAssertTrue(messages.contains(where: { $0["role"] == "assistant" && ($0["content"] ?? "").contains("\n") }))
+        XCTAssertTrue(messages.last?["content"]?.contains("你好。") == true)
+        XCTAssertTrue(messages.last?["content"]?.contains("世界。") == true)
+    }
+
+    func testInsertSentenceLineBreaksSplitsChineseSentences() {
+        let input = "第一句。第二句！第三句？"
+        let output = SemanticFormatter.insertSentenceLineBreaks(input)
+        XCTAssertEqual(output, "第一句。\n第二句！\n第三句？")
+    }
+
+    func testInsertSentenceLineBreaksKeepsDecimals() {
+        let input = "版本是 3.14 发布了。"
+        let output = SemanticFormatter.insertSentenceLineBreaks(input)
+        XCTAssertTrue(output.contains("3.14"))
+        XCTAssertFalse(output.contains("3.\n14"))
+    }
+
+    func testEnsureParagraphOutputRestoresCleanLineBreaks() {
+        let oneLine = "今天把登录超时修了。导出 CSV 还没做。文档也要更新一下。"
+        let clean = SemanticFormatter.ensureParagraphOutput(oneLine, mode: .clean)
+        XCTAssertEqual(clean, "今天把登录超时修了。\n导出 CSV 还没做。\n文档也要更新一下。")
+
+        let structured = SemanticFormatter.ensureParagraphOutput(oneLine, mode: .structured)
+        XCTAssertTrue(structured.contains("\n\n"))
+        XCTAssertTrue(structured.contains("登录超时"))
+    }
+
+    func testEnsureParagraphOutputKeepsExistingLayout() {
+        let already = "结论。\n\n待办：\n- 一项"
+        XCTAssertEqual(
+            SemanticFormatter.ensureParagraphOutput(already, mode: .structured),
+            already
+        )
     }
 
     func testCustomSystemPromptIsAppendedToFormatterSystemMessage() {
