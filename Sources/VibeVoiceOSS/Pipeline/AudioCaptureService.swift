@@ -46,15 +46,36 @@ final class AudioCaptureService: @unchecked Sendable {
 
     func start(deviceUID: String = "", enableVoiceProcessing: Bool = true) async throws {
         preferVoiceProcessing = enableVoiceProcessing
+        AudioInputDevices.ensureDeviceChangeSubscription()
         guard await requestMicrophoneAccess() else {
             throw AudioCaptureServiceError.microphoneDenied
         }
 
         let requestedName = deviceUID.isEmpty ? "系统默认麦克风" : deviceUID
-        guard let device = AudioInputDevices.resolve(uid: deviceUID) else {
-            throw AudioInputDeviceError.unavailable(requestedName)
-        }
 
+        // Same stale-HAL defense as AudioRecorder: re-resolve a live AudioDeviceID
+        // on each attempt and retry binds that hit a dead handle after USB replug.
+        var lastError: Error?
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+            guard let device = AudioInputDevices.resolveLive(uid: deviceUID) else {
+                lastError = AudioInputDeviceError.unavailable(requestedName)
+                continue
+            }
+            do {
+                try await startSession(device: device)
+                return
+            } catch {
+                lastError = error
+                sessionLock.withLock { tearDownEngineLocked() }
+            }
+        }
+        throw lastError ?? AudioInputDeviceError.unavailable(requestedName)
+    }
+
+    private func startSession(device: AudioInputDevice) async throws {
         let preservedOutput = AudioInputDevices.captureOutputRoute()
         _ = AudioInputDevices.setDefaultInputDevice(device.id)
         _ = AudioInputDevices.restoreOutputRoute(preservedOutput)

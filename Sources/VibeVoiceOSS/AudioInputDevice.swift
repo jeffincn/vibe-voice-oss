@@ -35,6 +35,46 @@ struct AudioOutputRouteSnapshot: Sendable {
 }
 
 enum AudioInputDevices {
+    /// One-time subscription to system-object device changes. Menu-bar agents that
+    /// never subscribe can be left with a stale HAL device table after a USB replug
+    /// or sleep/wake (App Nap suspends notification delivery); stale AudioDeviceIDs
+    /// then fail every operation with 'nope' (1852797029) until the app restarts.
+    private static let halSubscription: Void = {
+        let queue = DispatchQueue(label: "app.vibevoice.oss.hal-listener")
+        let selectors: [AudioObjectPropertySelector] = [
+            kAudioHardwarePropertyDevices,
+            kAudioHardwarePropertyDefaultInputDevice,
+        ]
+        for selector in selectors {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectAddPropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject),
+                &address,
+                queue
+            ) { _, _ in
+                // Subscription itself is the point — it keeps this process's HAL
+                // state current so later enumerations return live device IDs.
+            }
+        }
+    }()
+
+    static func ensureDeviceChangeSubscription() {
+        _ = halSubscription
+    }
+
+    /// Resolve by UID and confirm the HAL object is actually alive — a stale ID can
+    /// pass enumeration but fails every subsequent operation.
+    static func resolveLive(uid: String) -> AudioInputDevice? {
+        guard let device = resolve(uid: uid), isAlive(deviceID: device.id) else {
+            return nil
+        }
+        return device
+    }
+
     static func all() -> [AudioInputDevice] {
         deviceIDs().compactMap { id in
             guard hasStreams(id, scope: kAudioDevicePropertyScopeInput),

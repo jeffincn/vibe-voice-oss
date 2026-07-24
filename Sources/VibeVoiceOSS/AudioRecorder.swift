@@ -52,6 +52,9 @@ final class AudioRecorder: @unchecked Sendable {
     /// Bumped on every tear-down so a delayed start won't installTap on a replaced engine.
     private var engineGeneration = 0
     private var boundDeviceID: AudioDeviceID?
+    init() {
+        AudioInputDevices.ensureDeviceChangeSubscription()
+    }
 
     func deviceName(for uid: String) -> String {
         AudioInputDevices.resolve(uid: uid)?.name ?? "未连接的麦克风"
@@ -63,10 +66,31 @@ final class AudioRecorder: @unchecked Sendable {
         }
 
         let requestedName = deviceUID.isEmpty ? "系统默认麦克风" : deviceUID
-        guard let device = AudioInputDevices.resolve(uid: deviceUID) else {
-            throw AudioInputDeviceError.unavailable(requestedName)
-        }
 
+        // A USB device that just reconnected (or woke from sleep) briefly exposes a
+        // dead or transitioning HAL object. Re-resolve by UID on every attempt so a
+        // fresh AudioDeviceID is used, and retry binds that fail with a stale handle.
+        var lastError: Error?
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+            guard let device = AudioInputDevices.resolveLive(uid: deviceUID) else {
+                lastError = AudioInputDeviceError.unavailable(requestedName)
+                continue
+            }
+            do {
+                try await startSession(device: device)
+                return
+            } catch {
+                lastError = error
+                sessionLock.withLock { tearDownEngineLocked() }
+            }
+        }
+        throw lastError ?? AudioInputDeviceError.unavailable(requestedName)
+    }
+
+    private func startSession(device: AudioInputDevice) async throws {
         // Bluetooth HFP mics (e.g. DJI Mic Mini) often steal system output when opened.
         // Capture headphones first, then restore after binding input + starting the engine.
         let preservedOutput = AudioInputDevices.captureOutputRoute()
