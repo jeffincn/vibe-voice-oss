@@ -9,7 +9,7 @@ The app does not ship a mandatory cloud backend and does not upload recordings t
 ## What stays local
 
 - Temporary audio buffers are kept in memory for the active session; the client does not write temporary recordings to disk for the normal path.
-- API keys are stored in the macOS Keychain (`app.vibevoice.macos`), not in plaintext UserDefaults after migration.
+- API keys are stored in the macOS Keychain (service `app.vibevoice.oss.macos`) when the app carries a certificate-backed code signature (the default for Homebrew / release builds and builds signed with an Apple Development identity). Ad-hoc-signed developer builds fall back to UserDefaults, because ad-hoc signatures change on every rebuild and would trigger a Keychain password prompt each time. Existing plaintext values migrate into the Keychain automatically on first launch of a signed build.
 - Non-secret preferences (endpoints, model names, hotkeys, feature toggles) use UserDefaults.
 
 ## Permissions

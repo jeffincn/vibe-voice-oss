@@ -68,8 +68,11 @@ if [[ -z "$IDENTITY" ]]; then
         | head -n 1)
 fi
 if [[ -z "$IDENTITY" ]]; then
+    # Sort so the same certificate is always picked when several are installed;
+    # a drifting identity re-triggers Keychain/Accessibility permission prompts.
     IDENTITY=$(security find-identity -v -p codesigning \
         | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' \
+        | sort \
         | head -n 1)
 fi
 

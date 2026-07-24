@@ -1,13 +1,14 @@
 import Foundation
 import Security
 
-/// Stores API keys and non-secret preferences in UserDefaults.
+/// Stores API keys in the macOS Keychain when the app has a stable code-signing
+/// identity, falling back to UserDefaults otherwise.
 ///
-/// Previously backed by the macOS Keychain (service: ``service``). With ad-hoc
-/// or local-cert code signing the Keychain ACL changes on every rebuild and
-/// triggers a login-password dialog. Since this is a local-only dev tool we
-/// now keep everything in UserDefaults to avoid that prompt entirely. The
-/// public API is unchanged so the rest of the codebase needs no edits.
+/// Keychain item ACLs are bound to the app's designated requirement. With a
+/// persistent certificate (Apple Development / local self-signed, see
+/// scripts/build-app.sh) the requirement survives rebuilds, so reads never
+/// trigger the login-password dialog. Ad-hoc signatures change on every build
+/// and would prompt each time, so those builds keep secrets in UserDefaults.
 enum KeychainStore {
     static let service = "app.vibevoice.oss.macos"
     /// Preference domain used by the pre-open-source local build.
@@ -21,32 +22,49 @@ enum KeychainStore {
         case llmAPIKey = "llm.apiKey"
     }
 
+    /// True when secrets should live in the Keychain: the running binary carries a
+    /// certificate-backed (non-ad-hoc) signature and we're not inside a unit test.
+    /// Tests stay on UserDefaults so they never touch the developer's real keychain.
+    static let usesKeychain: Bool = isRunningInTests ? false : hasStableCodeSignature
+
     // MARK: - Primary API
 
     static func get(_ account: Account) -> String? {
-        if let value = storedValue(account) {
-            return value
-        }
-        // One-time migration from the old keychain-era UserDefaults backup key.
-        for suffix in [account.rawValue] + previousServices.map({ "\($0).\(account.rawValue)" }) {
-            let key = "\(service).backup.\(suffix)"
-            if let v = UserDefaults.standard.string(forKey: key)?
-                .trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
-                set(v, account: account)
-                return v
+        if usesKeychain {
+            if let value = keychainGet(account) {
+                return value
             }
+            // One-time migration: pull any plaintext value left by UserDefaults-era
+            // builds into the Keychain and scrub the plaintext copy.
+            if let plaintext = defaultsValue(account) {
+                if keychainSet(plaintext, account: account) {
+                    removeDefaultsCopies(account)
+                }
+                return plaintext
+            }
+            return nil
         }
-        return nil
+        return defaultsValue(account)
     }
 
     @discardableResult
     static func set(_ value: String, account: Account) -> Bool {
+        if usesKeychain {
+            let ok = keychainSet(value, account: account)
+            if ok {
+                removeDefaultsCopies(account)
+            }
+            return ok
+        }
         UserDefaults.standard.set(value, forKey: defaultsKey(account))
         return true
     }
 
     @discardableResult
     static func delete(_ account: Account) -> Bool {
+        if usesKeychain {
+            keychainDelete(account)
+        }
         UserDefaults.standard.removeObject(forKey: defaultsKey(account))
         return true
     }
@@ -98,18 +116,119 @@ enum KeychainStore {
         return fallback
     }
 
-    // MARK: - Private
+    // MARK: - Signature inspection
+
+    private static var isRunningInTests: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil
+    }
+
+    /// Ad-hoc signatures carry no certificate chain; anything with a leaf
+    /// certificate has a designated requirement that survives rebuilds.
+    private static var hasStableCodeSignature: Bool {
+        var codeRef: SecCode?
+        guard SecCodeCopySelf([], &codeRef) == errSecSuccess, let code = codeRef else {
+            return false
+        }
+        var staticRef: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, [], &staticRef) == errSecSuccess,
+              let staticCode = staticRef else {
+            return false
+        }
+        var infoRef: CFDictionary?
+        let flags = SecCSFlags(rawValue: kSecCSSigningInformation)
+        guard SecCodeCopySigningInformation(staticCode, flags, &infoRef) == errSecSuccess,
+              let info = infoRef as? [String: Any] else {
+            return false
+        }
+        if let certificates = info[kSecCodeInfoCertificates as String] as? [AnyObject],
+           !certificates.isEmpty {
+            return true
+        }
+        return false
+    }
+
+    // MARK: - Keychain backend
+
+    private static func baseQuery(_ account: Account) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account.rawValue,
+        ]
+    }
+
+    private static func keychainGet(_ account: Account) -> String? {
+        var query = baseQuery(account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    @discardableResult
+    private static func keychainSet(_ value: String, account: Account) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return keychainDelete(account)
+        }
+        guard let data = trimmed.data(using: .utf8) else { return false }
+        let update: [String: Any] = [kSecValueData as String: data]
+        let status = SecItemUpdate(baseQuery(account) as CFDictionary, update as CFDictionary)
+        if status == errSecSuccess {
+            return true
+        }
+        guard status == errSecItemNotFound else { return false }
+        var add = baseQuery(account)
+        add[kSecValueData as String] = data
+        add[kSecAttrLabel as String] = "Vibe Voice OSS"
+        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
+    }
+
+    @discardableResult
+    private static func keychainDelete(_ account: Account) -> Bool {
+        let status = SecItemDelete(baseQuery(account) as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+    }
+
+    // MARK: - UserDefaults backend
 
     private static func defaultsKey(_ account: Account) -> String {
         "\(service).secure.\(account.rawValue)"
     }
 
-    private static func storedValue(_ account: Account) -> String? {
-        guard let v = UserDefaults.standard.string(forKey: defaultsKey(account))?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else {
-            return nil
+    /// Current plaintext value, or one from keychain-era backup keys (migrating it forward).
+    private static func defaultsValue(_ account: Account) -> String? {
+        if let v = UserDefaults.standard.string(forKey: defaultsKey(account))?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
+            return v
         }
-        return v
+        for suffix in [account.rawValue] + previousServices.map({ "\($0).\(account.rawValue)" }) {
+            let key = "\(service).backup.\(suffix)"
+            if let v = UserDefaults.standard.string(forKey: key)?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
+                if !usesKeychain {
+                    UserDefaults.standard.set(v, forKey: defaultsKey(account))
+                }
+                return v
+            }
+        }
+        return nil
+    }
+
+    /// Scrub every plaintext copy once the value is safely in the Keychain.
+    private static func removeDefaultsCopies(_ account: Account) {
+        UserDefaults.standard.removeObject(forKey: defaultsKey(account))
+        for suffix in [account.rawValue] + previousServices.map({ "\($0).\(account.rawValue)" }) {
+            UserDefaults.standard.removeObject(forKey: "\(service).backup.\(suffix)")
+        }
     }
 
     private static func preferenceValue(domain: String, key: String) -> String {
@@ -127,13 +246,17 @@ enum KeychainStore {
 
     // MARK: - Legacy Keychain Cleanup
 
-    /// Delete old Keychain entries left over from builds that used SecItem storage.
+    /// Delete Keychain entries left over from pre-rename builds. When the current
+    /// build stores secrets in the Keychain itself, only the previous services are
+    /// purged; UserDefaults-mode builds also clear the current service (reads by an
+    /// ad-hoc build would prompt, so those entries are unusable anyway).
     /// `SecItemDelete` does NOT trigger the login-password dialog — only reads do.
-    /// Called once on first launch after migration; the flag prevents repeat work.
     static func cleanupLegacyKeychainEntries() {
-        let doneKey = "\(service).keychain-cleanup-v2"
+        let doneKey = usesKeychain
+            ? "\(service).keychain-cleanup-v3-keychain"
+            : "\(service).keychain-cleanup-v2"
         guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
-        let services = [service] + previousServices
+        let services = usesKeychain ? previousServices : [service] + previousServices
         for svc in services {
             let query: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
