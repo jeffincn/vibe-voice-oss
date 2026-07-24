@@ -43,6 +43,34 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.effectiveTargetLanguage.id, "zh-Hans")
     }
 
+    func testHFEndpointPersistsAndFlowsIntoConfiguration() {
+        let defaults = isolatedDefaults()
+        let settings = AppSettings(defaults: defaults)
+
+        XCTAssertTrue(settings.hfEndpoint.isEmpty)
+        XCTAssertNil(settings.configuration.normalizedHFEndpoint)
+
+        settings.hfEndpoint = "https://hf-mirror.com/"
+        XCTAssertEqual(settings.configuration.normalizedHFEndpoint, "https://hf-mirror.com")
+        XCTAssertEqual(defaults.string(forKey: "hfEndpoint"), "https://hf-mirror.com/")
+    }
+
+    func testNormalizedHFEndpointRejectsInvalidValues() {
+        var config = AppSettings(defaults: isolatedDefaults()).configuration
+
+        config.hfEndpoint = "   "
+        XCTAssertNil(config.normalizedHFEndpoint)
+
+        config.hfEndpoint = "hf-mirror.com"
+        XCTAssertNil(config.normalizedHFEndpoint, "缺少 scheme 应视为无效")
+
+        config.hfEndpoint = "ftp://hf-mirror.com"
+        XCTAssertNil(config.normalizedHFEndpoint)
+
+        config.hfEndpoint = "https://hf-mirror.com///"
+        XCTAssertEqual(config.normalizedHFEndpoint, "https://hf-mirror.com")
+    }
+
     func testWhisperKitModelMigrationDropsRepoPrefix() {
         let defaults = isolatedDefaults()
         defaults.set("openai_whisper-large-v3-v20240930_626MB", forKey: "whisperKitModel")

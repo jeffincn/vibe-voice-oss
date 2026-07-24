@@ -11,6 +11,23 @@ struct TranscriptionConfiguration: Sendable {
     let language: String
     let prompt: String
     let apiKey: String
+    /// Optional Hugging Face endpoint override (e.g. https://hf-mirror.com).
+    /// Empty means the default https://huggingface.co.
+    var hfEndpoint: String = ""
+
+    /// Normalized HF endpoint, or nil when the default should be used.
+    var normalizedHFEndpoint: String? {
+        var trimmed = hfEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        while trimmed.hasSuffix("/") {
+            trimmed = String(trimmed.dropLast())
+        }
+        guard let url = URL(string: trimmed), let scheme = url.scheme,
+              ["http", "https"].contains(scheme.lowercased()), url.host != nil else {
+            return nil
+        }
+        return trimmed
+    }
 }
 
 enum TranscriptionError: LocalizedError {

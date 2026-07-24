@@ -149,7 +149,8 @@ final class StreamingTranscriptionSession {
             model: config.model,
             language: config.language,
             prompt: config.prompt,
-            apiKey: config.apiKey
+            apiKey: config.apiKey,
+            hfEndpoint: config.hfEndpoint
         )
     }
 

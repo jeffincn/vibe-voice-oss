@@ -138,6 +138,7 @@ final class AppState: ObservableObject {
     @Published private(set) var launchAtLoginEnabled = false
     @Published private(set) var launchAtLoginMessage = ""
     @Published private(set) var lastCapabilities = OMLXCapabilities.unknown
+    @Published private(set) var isPreparingLocalASRModel = false
     let settings = AppSettings()
     let stageTiming = StageTimingStore()
     let tokenUsage = TokenUsageStore()
@@ -1102,10 +1103,16 @@ final class AppState: ObservableObject {
             connectionMessage = "API 模式不需要下载本地 ASR 模型"
             return
         }
+        guard !isPreparingLocalASRModel else {
+            connectionMessage = "模型正在准备中，请等待完成或点「取消下载」。"
+            return
+        }
         let guidance = NativeASRClient.downloadGuidance(configuration: configuration)
+        isPreparingLocalASRModel = true
         connectionMessage = "正在准备本地 ASR 模型…"
         capabilityMessage = localASRPreparationMessage(configuration: configuration, guidance: guidance)
         Task {
+            defer { isPreparingLocalASRModel = false }
             do {
                 let result = try await NativeASRClient.shared.prepareRuntime(
                     configuration: configuration,
@@ -1123,10 +1130,20 @@ final class AppState: ObservableObject {
                 let caps = await OMLXCapabilityProbe.probe(configuration: settings.configuration)
                 lastCapabilities = caps
                 capabilityMessage = caps.summary
+            } catch is CancellationError {
+                connectionMessage = "已取消模型下载。已完成的部分会保留，下次可断点续传。"
             } catch {
                 connectionMessage = "准备本地 ASR 失败：\(error.localizedDescription)"
                 capabilityMessage = localASRFailureHelp(error: error, guidance: guidance)
             }
+        }
+    }
+
+    func cancelLocalASRModelPreparation() {
+        guard isPreparingLocalASRModel else { return }
+        connectionMessage = "正在取消模型下载…"
+        Task {
+            await NativeASRClient.shared.cancelPreparation()
         }
     }
 

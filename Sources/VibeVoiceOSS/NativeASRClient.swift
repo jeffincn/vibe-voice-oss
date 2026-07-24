@@ -30,6 +30,11 @@ actor NativeASRClient {
     /// Separate WhisperKit instance for streaming to avoid reloading the primary model.
     private var streamingWhisperKit: WhisperKit?
     private var streamingWhisperModel = ""
+    /// Single-flight preparation state: repeated clicks join the in-flight download of the
+    /// same model instead of spawning a second writer into the same cache folder.
+    private var preparationTask: Task<NativeASRPreparationResult, Error>?
+    private var preparationKey = ""
+    private var preparationID = UUID()
 
     func transcribe(wav: Data, configuration: TranscriptionConfiguration) async throws -> String {
         let audioURL = try writeJobWAV(wav)
@@ -126,6 +131,95 @@ actor NativeASRClient {
         configuration: TranscriptionConfiguration,
         onProgress: (@Sendable (String) -> Void)? = nil
     ) async throws -> NativeASRPreparationResult {
+        let key = Self.preparationTaskKey(configuration)
+        if let existing = preparationTask {
+            if preparationKey == key {
+                // Same model already downloading — join instead of racing it.
+                return try await existing.value
+            }
+            // Different model requested — stop the stale download before starting.
+            existing.cancel()
+            _ = try? await existing.value
+        }
+
+        let id = UUID()
+        let task = Task {
+            try await self.performPreparation(configuration: configuration, onProgress: onProgress)
+        }
+        preparationTask = task
+        preparationKey = key
+        preparationID = id
+
+        do {
+            let result = try await task.value
+            clearPreparation(id: id)
+            return result
+        } catch {
+            clearPreparation(id: id)
+            throw error
+        }
+    }
+
+    /// Cancels the in-flight model preparation, if any.
+    func cancelPreparation() {
+        preparationTask?.cancel()
+    }
+
+    var isPreparing: Bool {
+        preparationTask != nil
+    }
+
+    private func clearPreparation(id: UUID) {
+        guard preparationID == id else { return }
+        preparationTask = nil
+        preparationKey = ""
+    }
+
+    nonisolated private static func preparationTaskKey(_ configuration: TranscriptionConfiguration) -> String {
+        switch configuration.integratedEngine {
+        case .qwen3MLX:
+            "qwen|\(configuration.qwenModelRepo)|\(configuration.normalizedHFEndpoint ?? "")"
+        case .whisperMLX:
+            "whisper|\(configuration.whisperKitModel)|\(configuration.normalizedHFEndpoint ?? "")"
+        }
+    }
+
+    /// Retries transient download failures; auth errors and cancellation propagate immediately.
+    private func withDownloadRetries<T: Sendable>(
+        attempts: Int = 3,
+        onProgress: (@Sendable (String) -> Void)?,
+        _ operation: @Sendable () async throws -> T
+    ) async throws -> T {
+        var lastError: Error?
+        for attempt in 1...attempts {
+            try Task.checkCancellation()
+            do {
+                return try await operation()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as URLError where error.code == .cancelled {
+                throw CancellationError()
+            } catch {
+                let text = error.localizedDescription.lowercased()
+                if text.contains("401") || text.contains("403")
+                    || text.contains("unauthorized") || text.contains("forbidden")
+                    || text.contains("gated") {
+                    throw error
+                }
+                lastError = error
+                if attempt < attempts {
+                    onProgress?("下载中断（第 \(attempt) 次）：\(error.localizedDescription)。正在自动重试…")
+                    try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+                }
+            }
+        }
+        throw lastError ?? TranscriptionError.localRuntime("模型下载失败，请检查网络后重试。")
+    }
+
+    private func performPreparation(
+        configuration: TranscriptionConfiguration,
+        onProgress: (@Sendable (String) -> Void)? = nil
+    ) async throws -> NativeASRPreparationResult {
         switch configuration.integratedEngine {
         case .qwen3MLX:
             let directory: URL
@@ -149,13 +243,23 @@ actor NativeASRClient {
             removeCorruptWhisperKitCacheIfNeeded(modelName: modelName)
             let localFolder = localWhisperKitFolder(modelName: modelName)
             let folder: URL
+            let hfEndpoint = configuration.normalizedHFEndpoint ?? Constants.defaultRemoteEndpoint
             if hasRequiredWhisperKitFiles(in: localFolder) {
                 folder = localFolder
                 onProgress?("已找到本机 WhisperKit \(modelName)，正在加载…")
             } else {
                 let variant = Self.whisperKitVariant(modelName)
-                folder = try await WhisperKit.download(variant: variant) { progress in
-                    onProgress?(Self.formatProgress(progress, prefix: "正在下载 WhisperKit \(modelName)"))
+                folder = try await withDownloadRetries(onProgress: onProgress) {
+                    try await WhisperKit.download(variant: variant, endpoint: hfEndpoint) { progress in
+                        onProgress?(Self.formatProgress(progress, prefix: "正在下载 WhisperKit \(modelName)"))
+                    }
+                }
+                // A cancelled download can still return a folder with partial files.
+                try Task.checkCancellation()
+                guard hasRequiredWhisperKitFiles(in: folder) else {
+                    throw TranscriptionError.localRuntime(
+                        "WhisperKit \(modelName) 下载不完整，请重新点「准备模型」。"
+                    )
                 }
                 onProgress?("WhisperKit \(modelName) 下载完成，正在加载…")
             }
@@ -170,9 +274,12 @@ actor NativeASRClient {
                 if !hasRequiredWhisperKitFiles(in: streamFolder) {
                     onProgress?("正在下载流式字幕模型 \(streamingModel)…")
                     let variant = Self.whisperKitVariant(streamingModel)
-                    _ = try await WhisperKit.download(variant: variant) { progress in
-                        onProgress?(Self.formatProgress(progress, prefix: "下载流式模型 \(streamingModel)"))
+                    _ = try await withDownloadRetries(onProgress: onProgress) {
+                        try await WhisperKit.download(variant: variant, endpoint: hfEndpoint) { progress in
+                            onProgress?(Self.formatProgress(progress, prefix: "下载流式模型 \(streamingModel)"))
+                        }
                     }
+                    try Task.checkCancellation()
                     onProgress?("流式字幕模型 \(streamingModel) 已准备。")
                 }
             }
@@ -264,7 +371,12 @@ actor NativeASRClient {
         if hasRequiredWhisperKitFiles(in: localFolder) {
             config = WhisperKitConfig(modelFolder: localFolder.path, load: true, download: false)
         } else {
-            config = WhisperKitConfig(model: Self.whisperKitVariant(modelName), load: true, download: true)
+            config = WhisperKitConfig(
+                model: Self.whisperKitVariant(modelName),
+                modelEndpoint: configuration.normalizedHFEndpoint,
+                load: true,
+                download: true
+            )
         }
         let kit = try await WhisperKit(config)
         streamingWhisperKit = kit
@@ -301,7 +413,12 @@ actor NativeASRClient {
         if hasRequiredWhisperKitFiles(in: localFolder) {
             config = WhisperKitConfig(modelFolder: localFolder.path, load: true, download: false)
         } else {
-            config = WhisperKitConfig(model: Self.whisperKitVariant(modelName), load: true, download: true)
+            config = WhisperKitConfig(
+                model: Self.whisperKitVariant(modelName),
+                modelEndpoint: configuration.normalizedHFEndpoint,
+                load: true,
+                download: true
+            )
         }
         do {
             let kit = try await WhisperKit(config)
@@ -367,11 +484,21 @@ actor NativeASRClient {
     ) async throws -> URL {
         let repoID = configuration.qwenModelRepo.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
             ?? "mlx-community/Qwen3-ASR-0.6B-6bit"
-        let hub = HubApiWrapper.shared
-        let repo = HubApiWrapper.Repo(id: repoID, type: .models)
-        let snapshot = try await hub.snapshot(from: repo) { progress in
-            onProgress?(Self.formatProgress(progress, prefix: "正在下载 \(repoID)"))
+        let hub: HubApiWrapper
+        if let endpoint = configuration.normalizedHFEndpoint {
+            hub = HubApiWrapper(endpoint: endpoint)
+        } else {
+            hub = HubApiWrapper.shared
         }
+        let repo = HubApiWrapper.Repo(id: repoID, type: .models)
+        let snapshot = try await withDownloadRetries(onProgress: onProgress) {
+            try await hub.snapshot(from: repo) { progress in
+                onProgress?(Self.formatProgress(progress, prefix: "正在下载 \(repoID)"))
+            }
+        }
+        // snapshot() returns the directory even when cancelled mid-way — never
+        // accept a partial snapshot as a complete model.
+        try Task.checkCancellation()
         let directory = snapshot.appendingPathComponent(repoID.components(separatedBy: "/").last ?? "Qwen3-ASR", isDirectory: true)
         if FileManager.default.fileExists(atPath: directory.path) {
             return directory
@@ -507,7 +634,8 @@ private extension TranscriptionConfiguration {
             model: model,
             language: language,
             prompt: prompt,
-            apiKey: apiKey
+            apiKey: apiKey,
+            hfEndpoint: hfEndpoint
         )
     }
 }

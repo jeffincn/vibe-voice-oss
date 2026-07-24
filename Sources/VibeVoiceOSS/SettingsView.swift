@@ -308,6 +308,8 @@ private struct SettingsForm: View {
                         caption("当前模型：WhisperKit · \(settings.whisperKitModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "tiny" : settings.whisperKitModel)")
                         caption("例如 tiny 或 large-v3-v20240930_626MB；点「准备模型」会下载缺失文件并修复不完整缓存。")
                     }
+                    field("HF 镜像端点（可选）", text: $settings.hfEndpoint)
+                    caption("直连 huggingface.co 不稳定时可填镜像，例如 https://hf-mirror.com；留空使用官方源。")
                 } else {
                     field("API 地址", text: $settings.endpoint)
                     secureField("API Key（未启用可留空）", text: $settings.apiKey)
@@ -346,7 +348,11 @@ private struct SettingsForm: View {
 
             HStack(spacing: 10) {
                 if settings.asrBackend == .integrated {
-                    secondaryPill(L10n.t(.settingsPrepareModel)) { appState.prepareLocalASRModel() }
+                    if appState.isPreparingLocalASRModel {
+                        secondaryPill("取消下载") { appState.cancelLocalASRModelPreparation() }
+                    } else {
+                        secondaryPill(L10n.t(.settingsPrepareModel)) { appState.prepareLocalASRModel() }
+                    }
                 }
                 secondaryPill(settings.asrBackend == .integrated ? "检查本地 ASR" : "测试 ASR") {
                     appState.testConnection()

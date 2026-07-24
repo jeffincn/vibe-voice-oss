@@ -255,6 +255,7 @@ final class AppSettings: ObservableObject {
         static let integratedASRModelPath = "integratedASRModelPath"
         static let qwenModelRepo = "qwenModelRepo"
         static let whisperKitModel = "whisperKitModel"
+        static let hfEndpoint = "hfEndpoint"
         static let model = "model"
         static let language = "language"
         static let prompt = "prompt"
@@ -311,6 +312,9 @@ final class AppSettings: ObservableObject {
     }
     @Published var whisperKitModel: String {
         didSet { save(whisperKitModel, for: Key.whisperKitModel) }
+    }
+    @Published var hfEndpoint: String {
+        didSet { save(hfEndpoint, for: Key.hfEndpoint) }
     }
     @Published var model: String { didSet { save(model, for: Key.model) } }
     @Published var language: String { didSet { save(language, for: Key.language) } }
@@ -495,6 +499,11 @@ final class AppSettings: ObservableObject {
         if normalizedWhisperKitModel != storedWhisperKitModel {
             defaults.set(normalizedWhisperKitModel, forKey: Key.whisperKitModel)
         }
+        hfEndpoint = KeychainStore.coalesceString(
+            defaults: defaults,
+            key: Key.hfEndpoint,
+            fallback: ""
+        )
         model = KeychainStore.coalesceString(
             defaults: defaults,
             key: Key.model,
@@ -697,7 +706,8 @@ final class AppSettings: ObservableObject {
             model: model,
             language: language,
             prompt: prompt,
-            apiKey: apiKey
+            apiKey: apiKey,
+            hfEndpoint: hfEndpoint
         )
     }
 
