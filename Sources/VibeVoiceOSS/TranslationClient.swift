@@ -78,18 +78,54 @@ struct TranslationClient: Sendable {
             .appendingPathComponent("models")
     }
 
-    /// Probe `/v1/models` from a chat-completions URL and confirm `model` is listed.
+    /// Probe reachability: optional `/v1/models` list, then a real `chat/completions` ping.
+    ///
+    /// NVIDIA Integrate and similar hosts often allow `GET /v1/models` while rejecting
+    /// `POST /v1/chat/completions` with 401/403 (missing inference permission or gated model).
+    /// A list-only probe therefore gives false confidence — the chat ping is authoritative.
     func checkServer(configuration: TranslationConfiguration) async throws -> String {
         let model = Self.sanitizeModelName(configuration.model)
+        guard !model.isEmpty else {
+            throw TranslationError.server(status: 404, message: "未配置翻译模型名。")
+        }
         guard let chatURL = URL(string: configuration.endpoint) else {
             throw TranslationError.invalidEndpoint
         }
+        let apiKey = configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let profile = LLMProviderProfile.resolve(
+            endpoint: configuration.endpoint, model: model
+        )
+
+        // Soft check: confirm model appears in the catalog when the host exposes one.
         let modelsURL = Self.modelsProbeURL(from: chatURL)
+        if let ids = try? await fetchModelIDs(from: modelsURL, apiKey: apiKey, profile: profile) {
+            let matched = ids.contains { $0.caseInsensitiveCompare(model) == .orderedSame }
+            if !matched {
+                let preview = ids.prefix(6).joined(separator: ", ")
+                let suffix = ids.count > 6 ? "…" : ""
+                throw TranslationError.server(
+                    status: 404,
+                    message: "当前模型「\(model)」不在服务列表中。可用示例：\(preview)\(suffix)"
+                )
+            }
+        }
+
+        // Hard check: same path + same provider payload as recording / translation.
+        try await probeChatCompletion(
+            url: chatURL, model: model, apiKey: apiKey, profile: profile
+        )
+        return "翻译模型可用：\(model)（\(profile.kind.label)）"
+    }
+
+    private func fetchModelIDs(
+        from modelsURL: URL,
+        apiKey: String,
+        profile: LLMProviderProfile
+    ) async throws -> [String] {
         var request = URLRequest(url: modelsURL)
         request.timeoutInterval = 12
-        if !configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        }
+        Self.applyBearerIfNeeded(apiKey, to: &request)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -97,26 +133,87 @@ struct TranslationClient: Sendable {
         }
         guard (200..<300).contains(http.statusCode) else {
             let message = String(data: data, encoding: .utf8) ?? "未知错误"
-            throw TranslationError.server(status: http.statusCode, message: message)
+            throw TranslationError.server(
+                status: http.statusCode,
+                message: profile.authHint(status: http.statusCode, host: modelsURL.host, body: message)
+            )
         }
-
         guard let decoded = try? JSONDecoder().decode(ModelsResponse.self, from: data) else {
-            return "翻译接口可达（\(modelsURL.host ?? "server")），但无法解析模型列表"
+            throw TranslationError.invalidResponse
         }
-        let ids = decoded.data.map(\.id)
-        let matched = ids.contains { $0.caseInsensitiveCompare(model) == .orderedSame }
-        if matched {
-            return "翻译模型可用：\(model)"
-        }
-        if model.isEmpty {
-            throw TranslationError.server(status: 404, message: "未配置翻译模型名。")
-        }
-        let preview = ids.prefix(6).joined(separator: ", ")
-        let suffix = ids.count > 6 ? "…" : ""
-        throw TranslationError.server(
-            status: 404,
-            message: "当前模型「\(model)」不在服务列表中。可用示例：\(preview)\(suffix)"
+        return decoded.data.map(\.id)
+    }
+
+    /// Minimal non-streaming completion — verifies inference auth, not just model listing.
+    private func probeChatCompletion(
+        url: URL,
+        model: String,
+        apiKey: String,
+        profile: LLMProviderProfile
+    ) async throws {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        Self.applyBearerIfNeeded(apiKey, to: &request)
+
+        let probe = profile.probeSampling
+        let payload = profile.chatCompletionPayload(
+            model: model,
+            messages: [["role": "user", "content": "ping"]],
+            temperature: probe.temperature,
+            topP: probe.topP,
+            maxTokens: probe.maxTokens
         )
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw TranslationError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = String(data: data, encoding: .utf8) ?? "未知错误"
+            throw TranslationError.server(
+                status: http.statusCode,
+                message: profile.authHint(status: http.statusCode, host: url.host, body: message)
+            )
+        }
+    }
+
+    static func applyBearerIfNeeded(_ apiKey: String, to request: inout URLRequest) {
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        request.setValue("Bearer \(trimmed)", forHTTPHeaderField: "Authorization")
+    }
+
+    /// Resolve provider profile then build the chat body (shared by translate + format).
+    static func chatCompletionPayload(
+        model: String,
+        messages: [[String: String]],
+        temperature: Double,
+        topP: Double,
+        maxTokens: Int,
+        endpoint: String? = nil
+    ) -> [String: Any] {
+        LLMProviderProfile.resolve(endpoint: endpoint, model: model).chatCompletionPayload(
+            model: model,
+            messages: messages,
+            temperature: temperature,
+            topP: topP,
+            maxTokens: maxTokens
+        )
+    }
+
+    /// Append actionable guidance for auth / unsupported-parameter failures.
+    static func authHintIfNeeded(
+        status: Int,
+        host: String?,
+        body: String,
+        model: String = "",
+        endpoint: String? = nil
+    ) -> String {
+        LLMProviderProfile.resolve(endpoint: endpoint, model: model)
+            .authHint(status: status, host: host, body: body)
     }
 
     func translate(
@@ -156,9 +253,7 @@ struct TranslationClient: Sendable {
         request.httpMethod = "POST"
         request.timeoutInterval = TimeInterval(Self.requestTimeoutSeconds)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if !configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        }
+        Self.applyBearerIfNeeded(configuration.apiKey, to: &request)
 
         let styleBlock = configuration.styleHint.isEmpty
             ? ""
@@ -220,17 +315,15 @@ struct TranslationClient: Sendable {
                 to: messages, custom: configuration.customSystemPrompt
             )
             : messages
-        let payload: [String: Any] = [
-            "model": Self.sanitizeModelName(configuration.model),
-            "temperature": temperature,
-            "top_p": 0.8,
-            "max_tokens": maxTokens,
-            "enable_thinking": false,
-            "chat_template_kwargs": [
-                "enable_thinking": false
-            ],
-            "messages": effectiveMessages
-        ]
+        let model = Self.sanitizeModelName(configuration.model)
+        let payload = Self.chatCompletionPayload(
+            model: model,
+            messages: effectiveMessages,
+            temperature: temperature,
+            topP: 0.8,
+            maxTokens: maxTokens,
+            endpoint: configuration.endpoint
+        )
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -239,7 +332,16 @@ struct TranslationClient: Sendable {
         }
         guard (200..<300).contains(http.statusCode) else {
             let message = String(data: data, encoding: .utf8) ?? "未知错误"
-            throw TranslationError.server(status: http.statusCode, message: message)
+            throw TranslationError.server(
+                status: http.statusCode,
+                message: Self.authHintIfNeeded(
+                    status: http.statusCode,
+                    host: url.host,
+                    body: message,
+                    model: model,
+                    endpoint: configuration.endpoint
+                )
+            )
         }
         guard let chat = try? JSONDecoder().decode(ChatResponse.self, from: data),
               let message = chat.choices.first?.message else {

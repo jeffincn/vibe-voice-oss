@@ -784,9 +784,7 @@ struct SemanticFormatterClient: Sendable {
         request.httpMethod = "POST"
         request.timeoutInterval = TimeInterval(Self.requestTimeoutSeconds)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if !configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        }
+        TranslationClient.applyBearerIfNeeded(configuration.apiKey, to: &request)
 
         let temperature: Double
         let maxTokens: Int
@@ -805,23 +803,20 @@ struct SemanticFormatterClient: Sendable {
             maxTokens = 3072
         }
 
-        let payload: [String: Any] = [
-            "model": configuration.model,
-            "temperature": temperature,
-            "top_p": 0.85,
-            "max_tokens": maxTokens,
-            "enable_thinking": false,
-            "chat_template_kwargs": [
-                "enable_thinking": false
-            ],
-            "messages": SemanticFormatter.formattingMessages(
+        let payload = TranslationClient.chatCompletionPayload(
+            model: configuration.model,
+            messages: SemanticFormatter.formattingMessages(
                 transcript: text,
                 mode: configuration.mode,
                 outputLanguageDirective: configuration.outputLanguageDirective,
                 useEmoji: configuration.useEmoji,
                 customSystemPrompt: configuration.customSystemPrompt
-            )
-        ]
+            ),
+            temperature: temperature,
+            topP: 0.85,
+            maxTokens: maxTokens,
+            endpoint: configuration.endpoint
+        )
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -830,7 +825,16 @@ struct SemanticFormatterClient: Sendable {
         }
         guard (200..<300).contains(http.statusCode) else {
             let message = String(data: data, encoding: .utf8) ?? "未知错误"
-            throw SemanticFormatterError.server(status: http.statusCode, message: message)
+            throw SemanticFormatterError.server(
+                status: http.statusCode,
+                message: TranslationClient.authHintIfNeeded(
+                    status: http.statusCode,
+                    host: url.host,
+                    body: message,
+                    model: configuration.model,
+                    endpoint: configuration.endpoint
+                )
+            )
         }
         guard let chat = try? JSONDecoder().decode(ChatResponse.self, from: data),
               let message = chat.choices.first?.message else {

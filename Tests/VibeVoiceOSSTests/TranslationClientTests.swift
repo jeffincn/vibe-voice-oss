@@ -61,4 +61,63 @@ final class TranslationClientTests: XCTestCase {
         XCTAssertTrue(result.contains("Base instructions"))
         XCTAssertTrue(result.contains("Use my writing style"))
     }
+
+    func testAuthHintAppendsNVIDIAGuidance() {
+        let body = #"{"status":"401","title":"Unauthorized"}"#
+        let hint = TranslationClient.authHintIfNeeded(
+            status: 401,
+            host: "integrate.api.nvidia.com",
+            body: body,
+            model: "nvidia/nemotron-3-ultra-550b-a55b"
+        )
+        XCTAssertTrue(hint.contains(body))
+        XCTAssertTrue(hint.contains("NVIDIA"))
+        XCTAssertTrue(hint.contains("Public API Endpoints"))
+    }
+
+    func testAuthHintSkipsNonAuthStatuses() {
+        let body = "rate limited"
+        XCTAssertEqual(
+            TranslationClient.authHintIfNeeded(
+                status: 429,
+                host: "integrate.api.nvidia.com",
+                body: body,
+                model: "gpt-4o-mini"
+            ),
+            body
+        )
+    }
+
+    func testApplyBearerTrimsWhitespace() {
+        var request = URLRequest(url: URL(string: "https://example.com")!)
+        TranslationClient.applyBearerIfNeeded("  nvapi-abc  \n", to: &request)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer nvapi-abc")
+    }
+
+    func testChatPayloadDelegatesToNemotronProfile() {
+        let payload = TranslationClient.chatCompletionPayload(
+            model: "nvidia/nemotron-3-ultra-550b-a55b",
+            messages: [["role": "user", "content": "hi"]],
+            temperature: 0.2,
+            topP: 0.8,
+            maxTokens: 1024
+        )
+        XCTAssertNil(payload["enable_thinking"])
+        let kwargs = payload["chat_template_kwargs"] as? [String: Any]
+        XCTAssertEqual(kwargs?["enable_thinking"] as? Bool, true)
+        XCTAssertEqual(payload["reasoning_budget"] as? Int, 1024)
+    }
+
+    func testChatPayloadDelegatesToQwenProfile() {
+        let payload = TranslationClient.chatCompletionPayload(
+            model: "Qwen3.5-35B",
+            messages: [["role": "user", "content": "hi"]],
+            temperature: 0.2,
+            topP: 0.8,
+            maxTokens: 64
+        )
+        XCTAssertEqual(payload["enable_thinking"] as? Bool, false)
+        let kwargs = payload["chat_template_kwargs"] as? [String: Any]
+        XCTAssertEqual(kwargs?["enable_thinking"] as? Bool, false)
+    }
 }
