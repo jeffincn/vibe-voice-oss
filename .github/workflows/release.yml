@@ -1,0 +1,79 @@
+name: Release
+
+# Push a tag like v0.8.0 to build, package, and publish a GitHub Release,
+# then refresh the Homebrew cask (Casks/vibe-voice-oss.rb) on main.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: macos-15
+    outputs:
+      zip_sha256: ${{ steps.package.outputs.zip_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      # Xcode 26+ ships the Metal compiler as a separate component; older
+      # Xcode bundles it, in which case this is a no-op.
+      - name: Install Metal Toolchain if needed
+        run: |
+          if ! xcrun -f metal >/dev/null 2>&1; then
+            sudo xcodebuild -downloadComponent MetalToolchain
+          fi
+
+      - name: Build app bundle
+        env:
+          VIBE_VOICE_SKIP_INSTALL: "1"
+        run: zsh scripts/build-app.sh
+
+      - name: Package zip
+        id: package
+        run: |
+          ZIP="VibeVoiceOSS-${GITHUB_REF_NAME}.zip"
+          ditto -c -k --sequesterRsrc --keepParent "dist/Vibe Voice OSS.app" "dist/$ZIP"
+          SHA=$(shasum -a 256 "dist/$ZIP" | cut -d' ' -f1)
+          echo "$SHA  $ZIP" > "dist/$ZIP.sha256"
+          echo "zip_sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/VibeVoiceOSS-*.zip
+            dist/VibeVoiceOSS-*.zip.sha256
+          generate_release_notes: true
+
+  update-cask:
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Update cask version and sha256
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA="${{ needs.build-release.outputs.zip_sha256 }}"
+          sed -i "s/^  version \".*\"$/  version \"$VERSION\"/" Casks/vibe-voice-oss.rb
+          sed -i "s/^  sha256 .*$/  sha256 \"$SHA\"/" Casks/vibe-voice-oss.rb
+
+      - name: Commit cask update
+        run: |
+          if git diff --quiet; then
+            echo "Cask already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/vibe-voice-oss.rb
+          git commit -m "chore: update Homebrew cask to ${GITHUB_REF_NAME}"
+          git push origin main

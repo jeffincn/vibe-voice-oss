@@ -86,6 +86,14 @@ rm -rf "$APP"
 mkdir -p "${APP:h}"
 ditto "$STAGED_APP" "$APP"
 
+# CI packaging only needs dist/; set VIBE_VOICE_SKIP_INSTALL=1 to skip /Applications.
+if [[ -n "${VIBE_VOICE_SKIP_INSTALL:-}" ]]; then
+    xattr -cr "$APP"
+    codesign --verify --deep --strict "$APP"
+    echo "$APP"
+    exit 0
+fi
+
 # Keep /Applications copy in sync for Launch-at-Login and menu-bar daily use.
 APPLICATIONS_APP="/Applications/${APP_NAME}.app"
 if [[ -d "$APPLICATIONS_APP" || -L "$APPLICATIONS_APP" ]]; then

@@ -11,7 +11,31 @@ Licensed under the [MIT License](LICENSE).
 - Xcode 16+
 - Optional: a local (or otherwise trusted) OpenAI-compatible ASR / LLM endpoint
 
-## Quick start
+## Install
+
+### Option A: Homebrew (recommended)
+
+```bash
+brew tap jeffincn/vibe-voice-oss https://github.com/jeffincn/vibe-voice-oss
+brew install --cask vibe-voice-oss
+```
+
+The app is not notarized by Apple yet. If macOS reports the app is damaged or can't be opened, install with:
+
+```bash
+brew install --cask --no-quarantine vibe-voice-oss
+```
+
+If an old copy already exists at `/Applications/Vibe Voice OSS.app`, remove it first or force-overwrite:
+
+```bash
+rm -rf "/Applications/Vibe Voice OSS.app"
+brew install --cask vibe-voice-oss
+# or
+brew install --cask --force vibe-voice-oss
+```
+
+### Option B: Build from source
 
 1. Build and run:
 
@@ -36,7 +60,8 @@ Open Settings from the menu bar to configure:
 
 - ASR mode: integrated local MLX or OpenAI-compatible API
 - Integrated ASR engine: Qwen3-ASR / mlx-swift-asr or Whisper / WhisperKit
-- Prepare Model downloads or repairs local WhisperKit / Qwen3-ASR model files before first use
+- Prepare Model downloads or repairs local WhisperKit / Qwen3-ASR model files before first use (cancellable, resumes on retry)
+- Optional Hugging Face mirror endpoint (e.g. `https://hf-mirror.com`) when huggingface.co is unreachable
 - API ASR HTTP endpoint, optional API key, model name, language, hotspot prompt
 - API streaming mode and WebSocket URL
 - LLM API mode, endpoint / key / model for translation, structured cleanup, and prompt compile
