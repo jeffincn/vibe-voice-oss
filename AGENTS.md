@@ -12,7 +12,7 @@ After every code change, produce a correctly signed, launchable `.app` bundle in
 
 ## Context
 
-Vibe Voice OSS is a SwiftPM-based macOS menu-bar app (Apple Silicon, macOS 15+). It has no Xcode project; all builds go through `swift build` and a Zsh packaging script. The app requires **Microphone** and **Accessibility** permissions at runtime. Accessibility grants are tied to the code signature: when the signature changes, macOS revokes the grant and the user must re-authorize. A stable signing identity prevents this; ad-hoc signing (`codesign --sign -`) causes the grant to reset on every rebuild.
+Vibe Voice OSS contains a SwiftPM-based macOS menu-bar app (Apple Silicon, macOS 15+) and an iOS 17+ companion app with a custom keyboard extension. The macOS app has no Xcode project and continues to build through `swift build` plus the Zsh packaging script. The iOS project lives under `iOS/`, is generated from `iOS/project.yml`, and builds through Xcode because application extensions, entitlements, device signing, and Metal resources require the Xcode build system. The macOS app requires **Microphone** and **Accessibility** permissions at runtime. Accessibility grants are tied to the code signature: when the signature changes, macOS revokes the grant and the user must re-authorize. A stable signing identity prevents this; ad-hoc signing (`codesign --sign -`) causes the grant to reset on every rebuild.
 
 ### Key paths
 
@@ -24,6 +24,9 @@ Vibe Voice OSS is a SwiftPM-based macOS menu-bar app (Apple Silicon, macOS 15+).
 | Staging output | `dist/Vibe Voice OSS.app` |
 | System install | `/Applications/Vibe Voice OSS.app` |
 | MLX Metal shaders | `.build/release/default.metallib` |
+| iOS project specification | `iOS/project.yml` |
+| Generated iOS project | `iOS/VibeVoiceMobile.xcodeproj` |
+| iOS build/test script | `scripts/build-ios.sh` |
 
 ---
 
@@ -135,11 +138,21 @@ When a persistent identity is used (tiers 1–3), this warning is unnecessary.
 
 `scripts/build-app.sh` uses Zsh-specific syntax (`${0:A:h:h}` for script directory resolution). Always invoke it with `zsh`, never `bash` or `sh`.
 
+### R8A — iOS Build and Test
+
+After changing files under `iOS/` or the iOS build script, regenerate the project and run the installed simulator matrix:
+
+```zsh
+zsh scripts/build-ios.sh
+```
+
+The script must report a missing iOS runtime as `SKIPPED`, never as a pass. iOS 18 and iOS 26 are the immediate required simulator gates. iOS 17 remains the minimum deployment target and becomes a required runtime gate as soon as its simulator runtime is installed. Real microphone, model performance, background audio, thermal, and memory-pressure acceptance must run on the user's iPhone 14 Pro Max with iOS 26.
+
 ---
 
 ## Constraints
 
-- **No Xcode project.** All builds use SwiftPM (`swift build`) and the Zsh packaging script.
+- **No Xcode project for macOS.** The macOS app continues to use SwiftPM and the Zsh packaging script. The iOS app and keyboard extension are the only Xcode-project exception, and their project must be generated from `iOS/project.yml`.
 - **No `xcrun notarytool`.** The app is not notarized; it is intended for local or side-loaded use.
 - **No hardcoded paths.** The build script derives all paths from `$ROOT` (the repository root).
 - **Sandbox restrictions.** When running `swift build` inside a sandboxed AI agent, request `all` permissions to allow package resolution and compilation.

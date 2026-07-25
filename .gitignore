@@ -8,3 +8,5 @@ dist/
 .env.*
 .swiftpm/xcode/xcuserdata/
 .swiftpm/config/registries.json
+iOS/.derived/
+iOS/TestResults/

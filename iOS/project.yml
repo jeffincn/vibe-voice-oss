@@ -1,0 +1,65 @@
+name: VibeVoiceMobile
+options:
+  bundleIdPrefix: app.vibevoice.oss
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: 0.7.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_VERSION: 5.0
+    SWIFT_STRICT_CONCURRENCY: targeted
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    TARGETED_DEVICE_FAMILY: "1,2"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+targets:
+  VibeVoiceMobile:
+    type: application
+    platform: iOS
+    sources:
+      - path: VibeVoiceMobile
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios
+        INFOPLIST_FILE: Resources/AppInfo.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/VibeVoiceMobile.entitlements
+    dependencies:
+      - target: VibeVoiceKeyboard
+        embed: true
+  VibeVoiceKeyboard:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Keyboard
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios.keyboard
+        INFOPLIST_FILE: Resources/KeyboardInfo.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/VibeVoiceKeyboard.entitlements
+        SKIP_INSTALL: YES
+  VibeVoiceMobileTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: VibeVoiceMobile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  VibeVoiceMobile:
+    build:
+      targets:
+        VibeVoiceMobile: all
+        VibeVoiceKeyboard: all
+        VibeVoiceMobileTests: [test]
+    test:
+      gatherCoverageData: true
+      targets:
+        - VibeVoiceMobileTests

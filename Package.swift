@@ -23,7 +23,6 @@ let package = Package(
             name: "VibeVoiceOSS",
             dependencies: [
                 "ObjCExceptionCatcher",
-                .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),
                 .product(name: "MLXASR", package: "mlx-swift-asr"),
                 .product(name: "WhisperKit", package: "argmax-oss-swift"),
             ],

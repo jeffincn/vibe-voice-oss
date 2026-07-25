@@ -1,0 +1,552 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		04847ADB6E08C781224E2A63 /* KeyboardLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE0C2A494C272F8B49492CB /* KeyboardLanguage.swift */; };
+		2068B6E744A12656CF9DDBF2 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35E6CAFAEF8CA56D934557D0 /* KeyboardViewController.swift */; };
+		2812D991BF032A1BB12ACC59 /* MobileHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6809C0304A73253FB789ABB /* MobileHomeView.swift */; };
+		510F53CE645CBE3F1DBF1309 /* RimeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50A0126B03A1030F6E46B002 /* RimeEngine.swift */; };
+		692F6CA924BA2E0022303B88 /* VoiceBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4C5D723606A780712C071D /* VoiceBridge.swift */; };
+		7851485917C3185825018E4F /* VibeVoiceMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 137F62AA801D6091493C21B8 /* VibeVoiceMobileApp.swift */; };
+		877300F47E24899A1A15F850 /* VibeVoiceKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D0BBCAB54AF3692D449247B8 /* VibeVoiceKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		9C1DE629665008890F15A442 /* VoiceBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4C5D723606A780712C071D /* VoiceBridge.swift */; };
+		C1380DE268D836E3371FB249 /* KeyboardLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE0C2A494C272F8B49492CB /* KeyboardLanguage.swift */; };
+		E56E89E2E08E242725957E92 /* VoiceBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADFFC7C0BB341225AAE09403 /* VoiceBridgeTests.swift */; };
+		E8321E2B6FBCD21311F07646 /* RimeEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 250364B40436C8B4B1D1A4EC /* RimeEngineTests.swift */; };
+		F2958814E85895F4477113AC /* RimeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50A0126B03A1030F6E46B002 /* RimeEngine.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		015F585AA71E999ABD18AE2E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BD2F608A7DE194A1F89303E8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0385F1689EE042FF5C2D1F9B;
+			remoteInfo = VibeVoiceKeyboard;
+		};
+		6A0CA7BA39131C5CE15A0765 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BD2F608A7DE194A1F89303E8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 40A5AB38D7A9606AD09BEFEE;
+			remoteInfo = VibeVoiceMobile;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		61980EEC770D737CD1B2715E /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				877300F47E24899A1A15F850 /* VibeVoiceKeyboard.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		137F62AA801D6091493C21B8 /* VibeVoiceMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeVoiceMobileApp.swift; sourceTree = "<group>"; };
+		139D6044740AD3015D097DC8 /* VibeVoiceMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VibeVoiceMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		250364B40436C8B4B1D1A4EC /* RimeEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RimeEngineTests.swift; sourceTree = "<group>"; };
+		35E6CAFAEF8CA56D934557D0 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
+		4DE0C2A494C272F8B49492CB /* KeyboardLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardLanguage.swift; sourceTree = "<group>"; };
+		50A0126B03A1030F6E46B002 /* RimeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RimeEngine.swift; sourceTree = "<group>"; };
+		7B4C5D723606A780712C071D /* VoiceBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceBridge.swift; sourceTree = "<group>"; };
+		ADFFC7C0BB341225AAE09403 /* VoiceBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceBridgeTests.swift; sourceTree = "<group>"; };
+		CE848D3F50AA1FE3AF2C7291 /* VibeVoiceMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VibeVoiceMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D0BBCAB54AF3692D449247B8 /* VibeVoiceKeyboard.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VibeVoiceKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F6809C0304A73253FB789ABB /* MobileHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileHomeView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		103C22F32AFBF9C61EB4921F /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				250364B40436C8B4B1D1A4EC /* RimeEngineTests.swift */,
+				ADFFC7C0BB341225AAE09403 /* VoiceBridgeTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		2825B3665A747F02185C00B1 /* Keyboard */ = {
+			isa = PBXGroup;
+			children = (
+				35E6CAFAEF8CA56D934557D0 /* KeyboardViewController.swift */,
+			);
+			path = Keyboard;
+			sourceTree = "<group>";
+		};
+		32E9432324CB5941F9A02D4F /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				4DE0C2A494C272F8B49492CB /* KeyboardLanguage.swift */,
+				50A0126B03A1030F6E46B002 /* RimeEngine.swift */,
+				7B4C5D723606A780712C071D /* VoiceBridge.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		4483DE918906BDDF88C8CEBF /* VibeVoiceMobile */ = {
+			isa = PBXGroup;
+			children = (
+				F6809C0304A73253FB789ABB /* MobileHomeView.swift */,
+				137F62AA801D6091493C21B8 /* VibeVoiceMobileApp.swift */,
+			);
+			path = VibeVoiceMobile;
+			sourceTree = "<group>";
+		};
+		72B514060CF6B3A404657442 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D0BBCAB54AF3692D449247B8 /* VibeVoiceKeyboard.appex */,
+				CE848D3F50AA1FE3AF2C7291 /* VibeVoiceMobile.app */,
+				139D6044740AD3015D097DC8 /* VibeVoiceMobileTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AD88341DD41884479ECAC92B = {
+			isa = PBXGroup;
+			children = (
+				2825B3665A747F02185C00B1 /* Keyboard */,
+				32E9432324CB5941F9A02D4F /* Shared */,
+				103C22F32AFBF9C61EB4921F /* Tests */,
+				4483DE918906BDDF88C8CEBF /* VibeVoiceMobile */,
+				72B514060CF6B3A404657442 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0385F1689EE042FF5C2D1F9B /* VibeVoiceKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1D9EC26523B8B5779C3000C /* Build configuration list for PBXNativeTarget "VibeVoiceKeyboard" */;
+			buildPhases = (
+				6DF7361FBCDE64D8A74E124B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VibeVoiceKeyboard;
+			packageProductDependencies = (
+			);
+			productName = VibeVoiceKeyboard;
+			productReference = D0BBCAB54AF3692D449247B8 /* VibeVoiceKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		40A5AB38D7A9606AD09BEFEE /* VibeVoiceMobile */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 768E6685618029A3F4B24B4A /* Build configuration list for PBXNativeTarget "VibeVoiceMobile" */;
+			buildPhases = (
+				86EAF6722B0E6BFA94A6F433 /* Sources */,
+				61980EEC770D737CD1B2715E /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B68A70DCE316B6F1E3BA7297 /* PBXTargetDependency */,
+			);
+			name = VibeVoiceMobile;
+			packageProductDependencies = (
+			);
+			productName = VibeVoiceMobile;
+			productReference = CE848D3F50AA1FE3AF2C7291 /* VibeVoiceMobile.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CE54A0A0812E917050F25329 /* VibeVoiceMobileTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BD0E8207909D9930B730F43C /* Build configuration list for PBXNativeTarget "VibeVoiceMobileTests" */;
+			buildPhases = (
+				DCFB660F133449E60C550558 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CDDD508FE3D66AEF715C8956 /* PBXTargetDependency */,
+			);
+			name = VibeVoiceMobileTests;
+			packageProductDependencies = (
+			);
+			productName = VibeVoiceMobileTests;
+			productReference = 139D6044740AD3015D097DC8 /* VibeVoiceMobileTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BD2F608A7DE194A1F89303E8 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					0385F1689EE042FF5C2D1F9B = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					40A5AB38D7A9606AD09BEFEE = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					CE54A0A0812E917050F25329 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 139391150DAE29976A0BC1CF /* Build configuration list for PBXProject "VibeVoiceMobile" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = AD88341DD41884479ECAC92B;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 72B514060CF6B3A404657442 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				40A5AB38D7A9606AD09BEFEE /* VibeVoiceMobile */,
+				0385F1689EE042FF5C2D1F9B /* VibeVoiceKeyboard */,
+				CE54A0A0812E917050F25329 /* VibeVoiceMobileTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6DF7361FBCDE64D8A74E124B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				04847ADB6E08C781224E2A63 /* KeyboardLanguage.swift in Sources */,
+				2068B6E744A12656CF9DDBF2 /* KeyboardViewController.swift in Sources */,
+				F2958814E85895F4477113AC /* RimeEngine.swift in Sources */,
+				692F6CA924BA2E0022303B88 /* VoiceBridge.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		86EAF6722B0E6BFA94A6F433 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C1380DE268D836E3371FB249 /* KeyboardLanguage.swift in Sources */,
+				2812D991BF032A1BB12ACC59 /* MobileHomeView.swift in Sources */,
+				510F53CE645CBE3F1DBF1309 /* RimeEngine.swift in Sources */,
+				7851485917C3185825018E4F /* VibeVoiceMobileApp.swift in Sources */,
+				9C1DE629665008890F15A442 /* VoiceBridge.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DCFB660F133449E60C550558 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E8321E2B6FBCD21311F07646 /* RimeEngineTests.swift in Sources */,
+				E56E89E2E08E242725957E92 /* VoiceBridgeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B68A70DCE316B6F1E3BA7297 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0385F1689EE042FF5C2D1F9B /* VibeVoiceKeyboard */;
+			targetProxy = 015F585AA71E999ABD18AE2E /* PBXContainerItemProxy */;
+		};
+		CDDD508FE3D66AEF715C8956 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 40A5AB38D7A9606AD09BEFEE /* VibeVoiceMobile */;
+			targetProxy = 6A0CA7BA39131C5CE15A0765 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		44539547D1A88256C09333EE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.7.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = targeted;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6A44C98532D4E63EBD5A8B99 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Resources/VibeVoiceMobile.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Resources/AppInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.vibevoice.oss.ios;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		715DB9C2F305BB4E224B4D5B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Resources/VibeVoiceKeyboard.entitlements;
+				INFOPLIST_FILE = Resources/KeyboardInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.vibevoice.oss.ios.keyboard;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7A25BFA4D426E942827CAB9A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Resources/VibeVoiceKeyboard.entitlements;
+				INFOPLIST_FILE = Resources/KeyboardInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.vibevoice.oss.ios.keyboard;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		B129A5B5E356453CEDBBA3A0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Resources/VibeVoiceMobile.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = Resources/AppInfo.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.vibevoice.oss.ios;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		E01C508B4D61B0351A28F78A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.vibevoice.oss.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VibeVoiceMobile.app/VibeVoiceMobile";
+			};
+			name = Release;
+		};
+		F1A895581ECBC7CCD4AC5D91 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.7.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = targeted;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F9769D2D1986A5695518E4B8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = app.vibevoice.oss.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VibeVoiceMobile.app/VibeVoiceMobile";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		139391150DAE29976A0BC1CF /* Build configuration list for PBXProject "VibeVoiceMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				44539547D1A88256C09333EE /* Debug */,
+				F1A895581ECBC7CCD4AC5D91 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		768E6685618029A3F4B24B4A /* Build configuration list for PBXNativeTarget "VibeVoiceMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B129A5B5E356453CEDBBA3A0 /* Debug */,
+				6A44C98532D4E63EBD5A8B99 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BD0E8207909D9930B730F43C /* Build configuration list for PBXNativeTarget "VibeVoiceMobileTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F9769D2D1986A5695518E4B8 /* Debug */,
+				E01C508B4D61B0351A28F78A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D1D9EC26523B8B5779C3000C /* Build configuration list for PBXNativeTarget "VibeVoiceKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				715DB9C2F305BB4E224B4D5B /* Debug */,
+				7A25BFA4D426E942827CAB9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = BD2F608A7DE194A1F89303E8 /* Project object */;
+}
