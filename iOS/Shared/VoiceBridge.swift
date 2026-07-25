@@ -75,6 +75,13 @@ final class VoiceBridgeStore {
         save(state)
     }
 
+    func setMode(_ mode: VoiceOutputMode) {
+        var state = load()
+        state.mode = mode
+        state.updatedAt = Date()
+        save(state)
+    }
+
     func markConsumed(requestID: UUID) {
         var state = load()
         guard state.requestID == requestID else { return }

@@ -12,6 +12,9 @@ final class VoiceBridgeTests: XCTestCase {
         XCTAssertEqual(request.status, .requested)
         XCTAssertEqual(request.mode, .translate)
 
+        bridge.setMode(.original)
+        XCTAssertEqual(bridge.load().mode, .original)
+
         bridge.publish(status: .ready, text: "Hello", message: "可插入")
         XCTAssertEqual(bridge.load().text, "Hello")
 

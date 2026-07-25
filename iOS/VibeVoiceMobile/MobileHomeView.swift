@@ -24,6 +24,7 @@ struct MobileHomeView: View {
                 prepareRime()
                 while !Task.isCancelled {
                     bridgeState = bridge.load()
+                    voiceController.synchronize(with: bridgeState)
                     try? await Task.sleep(for: .milliseconds(500))
                 }
             }
@@ -66,6 +67,15 @@ struct MobileHomeView: View {
             }
             Text(voiceController.phase.label)
                 .font(.subheadline.weight(.medium))
+            Picker("输出", selection: Binding(
+                get: { voiceController.outputMode },
+                set: { voiceController.selectOutputMode($0) }
+            )) {
+                ForEach(VoiceOutputMode.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
             ProgressView(value: Double(voiceController.level))
                 .tint(voiceController.phase == .recording ? .red : .accentColor)
             HStack {
@@ -88,6 +98,9 @@ struct MobileHomeView: View {
                     .textSelection(.enabled)
             }
             Text("iOS 不允许第三方键盘扩展直接使用麦克风。键盘发起请求后，请切到此页录音；转写完成再切回原输入框，结果会自动插入。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("“翻译”使用 Whisper 的语音转英文能力；“整理”在设备上清理空白并补齐句末标点，不上传文本。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

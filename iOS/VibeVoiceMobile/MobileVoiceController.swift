@@ -30,6 +30,7 @@ final class MobileVoiceController: ObservableObject {
     @Published private(set) var level: Float = 0
     @Published private(set) var transcript = ""
     @Published private(set) var modelStatus = "尚未准备"
+    @Published private(set) var outputMode: VoiceOutputMode
 
     private let bridge: VoiceBridgeStore
     private let asr: any MobileASRServing
@@ -41,6 +42,7 @@ final class MobileVoiceController: ObservableObject {
     ) {
         self.bridge = bridge
         self.asr = asr
+        outputMode = bridge.load().mode
     }
 
     func prepareModel() {
@@ -93,17 +95,30 @@ final class MobileVoiceController: ObservableObject {
         self.recorder = nil
         level = 0
         phase = .processing
-        bridge.publish(status: .processing, message: "WhisperKit 本地转写中")
+        let mode = bridge.load().mode
+        outputMode = mode
+        bridge.publish(status: .processing, message: "\(mode.label)模式处理中")
 
         Task {
             do {
-                let text = try await asr.transcribe(samples: samples)
+                let text = try await asr.transcribe(samples: samples, mode: mode)
                 transcript = text
                 phase = .ready
                 bridge.publish(status: .ready, text: text, message: "可返回键盘插入")
             } catch {
                 fail(error)
             }
+        }
+    }
+
+    func selectOutputMode(_ mode: VoiceOutputMode) {
+        outputMode = mode
+        bridge.setMode(mode)
+    }
+
+    func synchronize(with state: VoiceBridgeState) {
+        if outputMode != state.mode {
+            outputMode = state.mode
         }
     }
 

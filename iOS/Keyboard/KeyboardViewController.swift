@@ -16,6 +16,7 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        voiceMode = bridge.load().mode
         view.backgroundColor = UIColor.systemGray6
         configureLayout()
         refreshComposition()
@@ -124,6 +125,7 @@ final class KeyboardViewController: UIInputViewController {
         style(button: voiceButton)
         voiceButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 72).isActive = true
         voiceButton.addAction(UIAction { [weak self] _ in self?.requestVoice() }, for: .touchUpInside)
+        configureVoiceMenu()
 
         let backspace = keyButton("⌫")
         backspace.widthAnchor.constraint(equalToConstant: 48).isActive = true
@@ -206,6 +208,29 @@ final class KeyboardViewController: UIInputViewController {
         }
         let state = bridge.request(mode: voiceMode)
         statusLabel.text = state.message
+    }
+
+    private func configureVoiceMenu() {
+        voiceButton.menu = UIMenu(
+            title: "语音输出模式",
+            children: VoiceOutputMode.allCases.map { mode in
+                UIAction(
+                    title: mode.label,
+                    state: mode == voiceMode ? .on : .off
+                ) { [weak self] _ in
+                    self?.selectVoiceMode(mode)
+                }
+            }
+        )
+        voiceButton.showsMenuAsPrimaryAction = false
+    }
+
+    private func selectVoiceMode(_ mode: VoiceOutputMode) {
+        voiceMode = mode
+        bridge.setMode(mode)
+        voiceButton.setTitle("🎙 \(mode.label)", for: .normal)
+        configureVoiceMenu()
+        statusLabel.text = "已选择\(mode.label)模式"
     }
 
     private func refreshComposition() {
