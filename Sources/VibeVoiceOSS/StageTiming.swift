@@ -14,13 +14,13 @@ enum PipelineStage: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .recording: "录音"
-        case .finalizing: "收敛识别"
-        case .transcribing: "转写"
-        case .structuring: "整理"
-        case .translating: "翻译"
-        case .optimizing: "输出 Prompt"
-        case .paste: "写入输入框"
+        case .recording: L10n.t(.stageRecording)
+        case .finalizing: L10n.t(.stageFinalizing)
+        case .transcribing: L10n.t(.stageTranscribing)
+        case .structuring: L10n.t(.stageStructuring)
+        case .translating: L10n.t(.stageTranslating)
+        case .optimizing: L10n.t(.stageOptimizing)
+        case .paste: L10n.t(.stagePaste)
         }
     }
 
@@ -53,10 +53,10 @@ enum PipelineRunOutcome: String, Codable, Sendable {
 
     var label: String {
         switch self {
-        case .success: "成功"
-        case .failed: "失败"
-        case .cancelled: "已取消"
-        case .superseded: "已覆盖"
+        case .success: L10n.t(.outcomeSuccess)
+        case .failed: L10n.t(.outcomeFailed)
+        case .cancelled: L10n.t(.outcomeCancelled)
+        case .superseded: L10n.t(.supersededByNewRecording)
         }
     }
 }
@@ -106,7 +106,7 @@ enum StageTimingFormatter {
                 .hour(.twoDigits(amPM: .omitted))
                 .minute(.twoDigits)
                 .second(.twoDigits)
-                .locale(Locale(identifier: "zh_CN"))
+                .locale(L10n.language.locale)
         )
     }
 }
@@ -152,7 +152,7 @@ final class StageTimingStore: ObservableObject {
     func beginSession(promptTarget: String? = nil) {
         // Supersede any open session (e.g. user re-triggered recording mid-pipeline).
         if sessionID != nil {
-            finishSession(outcome: .superseded, message: "新的录音覆盖了进行中的任务")
+            finishSession(outcome: .superseded, message: L10n.t(.supersededByNewRecording))
         }
         sessionID = UUID()
         sessionStartedAt = Date()
@@ -303,10 +303,10 @@ enum StageTimingExport {
             }.joined()
 
             let stageTable = session.stages.isEmpty
-                ? "<p class=\"muted\">无阶段数据</p>"
+                ? "<p class=\"muted\">\(htmlEscape(L10n.t(.timingHTMLNoStage)))</p>"
                 : """
                 <table>
-                  <thead><tr><th>阶段</th><th>毫秒</th><th>时长</th></tr></thead>
+                  <thead><tr><th>\(htmlEscape(L10n.t(.timingHTMLStage)))</th><th>\(htmlEscape(L10n.t(.timingHTMLMilliseconds)))</th><th>\(htmlEscape(L10n.t(.timingHTMLDuration)))</th></tr></thead>
                   <tbody>\(stageRows)</tbody>
                 </table>
                 """
@@ -315,10 +315,10 @@ enum StageTimingExport {
             <section class="run">
               <h2>\(htmlEscape(StageTimingFormatter.displayString(from: session.startedAt)))</h2>
               <p>
-                结果：<strong>\(htmlEscape(session.outcome.label))</strong>
-                · 合计 <strong>\(htmlEscape(session.formattedTotal))</strong>
-                \(session.promptTarget.map { "· 目标 Agent：<strong>\(htmlEscape($0))</strong>" } ?? "")
-                \(session.firstPartialMs.map { "· 首 partial：<strong>\(htmlEscape(StageTimingFormatter.formatMs($0)))</strong>" } ?? "")
+                \(htmlEscape(L10n.t(.timingHTMLResult)))：<strong>\(htmlEscape(session.outcome.label))</strong>
+                · \(htmlEscape(L10n.t(.timingHTMLTotal))) <strong>\(htmlEscape(session.formattedTotal))</strong>
+                \(session.promptTarget.map { "· \(htmlEscape(L10n.t(.timingHTMLTarget)))：<strong>\(htmlEscape($0))</strong>" } ?? "")
+                \(session.firstPartialMs.map { "· \(htmlEscape(L10n.t(.timingHTMLFirstPartial)))：<strong>\(htmlEscape(StageTimingFormatter.formatMs($0)))</strong>" } ?? "")
               </p>
               \(session.outcomeMessage.map { "<p class=\"muted\">\(htmlEscape($0))</p>" } ?? "")
               \(stageTable)
@@ -329,10 +329,10 @@ enum StageTimingExport {
         let generated = StageTimingFormatter.displayString(from: Date())
         return """
         <!DOCTYPE html>
-        <html lang="zh-CN">
+        <html lang="\(L10n.language.locale.identifier)">
         <head>
           <meta charset="utf-8"/>
-          <title>Vibe Voice OSS 阶段耗时报告</title>
+          <title>Vibe Voice OSS \(htmlEscape(L10n.t(.timingHeader)))</title>
           <style>
             :root { color-scheme: light dark; }
             body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 32px; line-height: 1.45; }
@@ -348,9 +348,9 @@ enum StageTimingExport {
           </style>
         </head>
         <body>
-          <h1>Vibe Voice OSS 阶段耗时报告</h1>
-          <p class="meta">生成于 \(htmlEscape(generated)) · 共 \(sessions.count) 次运行</p>
-          \(rows.isEmpty ? "<p class=\"muted\">暂无记录</p>" : rows)
+          <h1>Vibe Voice OSS \(htmlEscape(L10n.t(.timingHeader)))</h1>
+          <p class="meta">\(htmlEscape(L10n.t(.timingHTMLGenerated, generated, sessions.count)))</p>
+          \(rows.isEmpty ? "<p class=\"muted\">\(htmlEscape(L10n.t(.timingHTMLNoRecords)))</p>" : rows)
         </body>
         </html>
         """

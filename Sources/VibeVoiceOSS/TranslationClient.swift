@@ -19,6 +19,8 @@ enum TranslationError: LocalizedError {
     case emptyText
     case timedOut(seconds: Int)
     case promptCompile(String)
+    case insecureEndpoint
+    case japaneseModelTooOld
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +31,8 @@ enum TranslationError: LocalizedError {
         case let .timedOut(seconds):
             "LLM 处理超过 \(seconds) 秒，已自动中断。长内容可缩短后重试，或检查百炼模型的限流与上下文限制。"
         case let .promptCompile(detail): "Prompt 编译失败：\(detail)"
+        case .insecureEndpoint: "为保护 API Key，远程明文 HTTP 接口不可用；请改用 HTTPS，或仅在本机回环地址使用 HTTP。"
+        case .japaneseModelTooOld: L10n.t(.japaneseModelRequirement)
         }
     }
 }
@@ -69,6 +73,27 @@ struct TranslationClient: Sendable {
         return lines.first ?? raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Returns the first major/minor version-like number in a model identifier.
+    /// The first match avoids mistaking a parameter count such as 35B for a version.
+    static func modelVersion(_ raw: String) -> Double? {
+        let pattern = #"(?<![0-9])([0-9]+)(?:\.([0-9]+))?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: raw, range: NSRange(raw.startIndex..., in: raw)),
+              let majorRange = Range(match.range(at: 1), in: raw),
+              let major = Double(raw[majorRange]) else { return nil }
+        guard match.range(at: 2).location != NSNotFound,
+              let minorRange = Range(match.range(at: 2), in: raw),
+              let minor = Double("0." + raw[minorRange]) else {
+            return major
+        }
+        return major + minor
+    }
+
+    static func supportsJapaneseNaturalTranslation(model raw: String) -> Bool {
+        guard let version = modelVersion(raw) else { return false }
+        return version >= 5.6
+    }
+
     /// Derive OpenAI `/v1/models` from a chat-completions URL (`…/v1/chat/completions`).
     /// Mirrors ASR: strip two trailing segments (`chat` + `completions`), then append `models`.
     static func modelsProbeURL(from chatCompletionsURL: URL) -> URL {
@@ -88,10 +113,17 @@ struct TranslationClient: Sendable {
         guard !model.isEmpty else {
             throw TranslationError.server(status: 404, message: "未配置翻译模型名。")
         }
+        if configuration.targetLanguage == "Japanese",
+           !Self.supportsJapaneseNaturalTranslation(model: model) {
+            throw TranslationError.japaneseModelTooOld
+        }
         guard let chatURL = URL(string: configuration.endpoint) else {
             throw TranslationError.invalidEndpoint
         }
         let apiKey = configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard EndpointSecurity.allowsCredentialTransmission(to: chatURL, apiKey: apiKey) else {
+            throw TranslationError.insecureEndpoint
+        }
 
         let profile = LLMProviderProfile.resolve(
             endpoint: configuration.endpoint, model: model
@@ -248,6 +280,9 @@ struct TranslationClient: Sendable {
         guard let url = URL(string: configuration.endpoint) else {
             throw TranslationError.invalidEndpoint
         }
+        guard EndpointSecurity.allowsCredentialTransmission(to: url, apiKey: configuration.apiKey) else {
+            throw TranslationError.insecureEndpoint
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -316,6 +351,11 @@ struct TranslationClient: Sendable {
             )
             : messages
         let model = Self.sanitizeModelName(configuration.model)
+        if configuration.task == .translate,
+           configuration.targetLanguage == "Japanese",
+           !Self.supportsJapaneseNaturalTranslation(model: model) {
+            throw TranslationError.japaneseModelTooOld
+        }
         let payload = Self.chatCompletionPayload(
             model: model,
             messages: effectiveMessages,

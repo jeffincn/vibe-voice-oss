@@ -20,9 +20,9 @@ private struct StageTimingReportContent: View {
             Divider()
             if store.sessions.isEmpty {
                 ContentUnavailableView(
-                    "暂无耗时记录",
+                    L10n.t(.timingNoRecords),
                     systemImage: "stopwatch",
-                    description: Text("完成一次录音转写后，各阶段耗时会出现在这里。")
+                    description: Text(L10n.t(.timingNoRecordsCaption))
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -42,21 +42,21 @@ private struct StageTimingReportContent: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("阶段耗时报告")
+                Text(L10n.t(.timingHeader))
                     .font(.headline)
                 if let latest = store.latestSession {
-                    Text("最近一次合计 \(latest.formattedTotal) · \(latest.outcome.label)")
+                    Text(L10n.t(.timingLatest, latest.formattedTotal, latest.outcome.label))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("记录每次录音后的转写 / 整理 / 翻译 / Prompt 编译耗时")
+                    Text(L10n.t(.timingDescription))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             Spacer()
             if store.hasActiveSession {
-                Label("计时中", systemImage: "circle.fill")
+                Label(L10n.t(.timingActive), systemImage: "circle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -100,11 +100,11 @@ private struct StageTimingReportContent: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Button("导出 CSV…") { export(.csv) }
+            Button(L10n.t(.exportCSV)) { export(.csv) }
                 .disabled(store.sessions.isEmpty)
-            Button("导出 HTML…") { export(.html) }
+            Button(L10n.t(.exportHTML)) { export(.html) }
                 .disabled(store.sessions.isEmpty)
-            Button("清空记录", role: .destructive) {
+            Button(L10n.t(.clearRecords), role: .destructive) {
                 store.clearHistory()
                 exportMessage = ""
             }
@@ -124,8 +124,8 @@ private struct StageTimingReportContent: View {
 
         var title: String {
             switch self {
-            case .csv: "导出阶段耗时 CSV"
-            case .html: "导出阶段耗时 HTML"
+            case .csv: L10n.t(.exportTimingCSV)
+            case .html: L10n.t(.exportTimingHTML)
             }
         }
 
@@ -163,16 +163,16 @@ private struct StageTimingReportContent: View {
         panel.isExtensionHidden = false
 
         guard panel.runModal() == .OK, let url = panel.url else {
-            exportMessage = "已取消导出"
+            exportMessage = L10n.t(.exportCancelled)
             return
         }
 
         do {
             try content.data(using: .utf8)?.write(to: url, options: .atomic)
-            exportMessage = "已导出：\(url.lastPathComponent)"
+            exportMessage = L10n.t(.exportSuccess, url.lastPathComponent)
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } catch {
-            exportMessage = "导出失败：\(error.localizedDescription)"
+            exportMessage = L10n.t(.exportFailed, error.localizedDescription)
         }
     }
 }

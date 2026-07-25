@@ -41,9 +41,9 @@ final class AppState: ObservableObject {
 
         func pipelineLabel(hotKey: RecordingHotKey) -> String {
             switch self {
-            case .idle: "Voice Pipeline：按 \(hotKey.label) 开始聆听"
-            case .recording: "聆听中…说话自动切段转写，再按 \(hotKey.label) 结束"
-            case .transcribing: "正在转写切段…"
+            case .idle: L10n.t(.phaseIdleHotKey, hotKey.label)
+            case .recording: L10n.t(.phaseRecordingHotKey, hotKey.label)
+            case .transcribing: L10n.t(.phaseTranscribing)
             case let .success(text): text
             case let .failed(message): message
             default: label
@@ -99,10 +99,10 @@ final class AppState: ObservableObject {
         /// HUD primary when Voice Pipeline mode is active.
         var pipelineHUDPrimary: String {
             switch self {
-            case .recording: "聆听中"
-            case .transcribing: "切段转写"
-            case .success: "完成"
-            case .failed: "失败"
+            case .recording: L10n.t(.hudListening)
+            case .transcribing: L10n.t(.hudTranscribing)
+            case .success: L10n.t(.success)
+            case .failed: L10n.t(.failed)
             default: hudPrimary
             }
         }
@@ -182,7 +182,9 @@ final class AppState: ObservableObject {
         let transcript: String?
         let generation: Int
         let configuration: TranscriptionConfiguration
-        let targetLanguage: TargetLanguage
+        let targetLanguages: [TargetLanguage]
+        /// Normal workflows keep the cleaned source first; direct-English hotkey remains translation-only.
+        let includeOriginal: Bool
         let promptOptimizeEnabled: Bool
         let structuredOutputEnabled: Bool
         let structuredEmojiEnabled: Bool
@@ -317,7 +319,7 @@ final class AppState: ObservableObject {
         resultBanner.hide()
         phase = .transcribing // "starting" affordance while models/mic prepare
         recordingHUD.show()
-        connectionMessage = "Voice Pipeline 正在启动…"
+        connectionMessage = L10n.t(.phaseTranscribing)
         NSSound(named: "Tink")?.play()
 
         pipelineObservation?.cancel()
@@ -350,9 +352,7 @@ final class AppState: ObservableObject {
                 if self.voicePipeline.isListening, now.timeIntervalSince(lastStatusAt) >= 1.0 {
                     lastStatusAt = now
                     let pct = Int((self.voicePipeline.lastSpeechProbability * 100).rounded())
-                    self.connectionMessage = self.voicePipeline.vadUsesCoreML
-                        ? "聆听中 · Silero 语音概率 \(pct)% · 说完停半秒出字"
-                        : "聆听中 · VAD \(pct)% · 说完停半秒出字"
+                    self.connectionMessage = "\(L10n.t(.hudListening)) · \(self.voicePipeline.vadUsesCoreML ? "Silero" : "VAD") \(pct)%"
                 }
                 try? await Task.sleep(for: .milliseconds(50))
             }
@@ -368,9 +368,7 @@ final class AppState: ObservableObject {
             connectionMessage = message
         } else if voicePipeline.isListening {
             voicePipelineSessionActive = true
-            connectionMessage = voicePipeline.vadUsesCoreML
-                ? "Voice Pipeline 聆听中（Silero CoreML）"
-                : "Voice Pipeline 聆听中（能量 VAD；可运行 prepare-silero-vad.sh 启用 CoreML）"
+            connectionMessage = "\(L10n.t(.voicePipeline)) · \(L10n.t(.hudListening))（\(voicePipeline.vadUsesCoreML ? "Silero CoreML" : "VAD")）"
         }
     }
 
@@ -409,11 +407,11 @@ final class AppState: ObservableObject {
             if stageTiming.hasActiveSession {
                 stageTiming.finishSession(
                     outcome: .cancelled,
-                    message: text.isEmpty ? "已取消" : "已保留识别文字（未后处理）"
+                    message: text.isEmpty ? L10n.t(.cancelled) : L10n.t(.done)
                 )
             }
             phase = .idle
-            connectionMessage = text.isEmpty ? "" : "已保留识别文字（未后处理）"
+            connectionMessage = text.isEmpty ? "" : L10n.t(.done)
             recordingHUD.hide()
             return
         }
@@ -425,7 +423,7 @@ final class AppState: ObservableObject {
            settings.configuration.integratedEngine == .qwen3MLX,
            sessionPCM.count >= 8_000 {
             phase = .transcribing
-            connectionMessage = "正在整段重识别…"
+            connectionMessage = L10n.t(.phaseTranscribing)
             recordingHUD.show()
             do {
                 let coherent = try await NativeASRClient.shared.transcribe(
@@ -454,8 +452,8 @@ final class AppState: ObservableObject {
 
         guard !text.isEmpty else {
             sessionOutputMode = nil
-            phase = .failed("没有识别到有效内容")
-            connectionMessage = "没有识别到有效内容"
+            phase = .failed(L10n.t(.failed))
+            connectionMessage = L10n.t(.failed)
             recordingHUD.show()
             return
         }
@@ -463,7 +461,7 @@ final class AppState: ObservableObject {
         lastTranscript = text
         partialTranscript = text
         stableTranscript = text
-        connectionMessage = "正在按输出规则处理…"
+        connectionMessage = L10n.t(.phaseStructuring)
         recordingHUD.show()
 
         processingGeneration += 1
@@ -494,7 +492,9 @@ final class AppState: ObservableObject {
             prompt = false
             smart = llmEnabled
         case .none:
-            structured = llmEnabled && settings.structuredOutputEnabled
+            structured = llmEnabled && (
+                settings.structuredOutputEnabled || settings.hasCustomFormattingPrompt
+            )
             prompt = llmEnabled && settings.promptOptimizeEnabled
             smart = false
         }
@@ -503,9 +503,10 @@ final class AppState: ObservableObject {
             transcript: text,
             generation: processingGeneration,
             configuration: settings.configuration,
-            targetLanguage: outputMode == .english
-                ? TargetLanguage.resolve(id: "en")
-                : settings.effectiveTargetLanguage,
+            targetLanguages: outputMode == .english
+                ? [TargetLanguage.resolve(id: "en")]
+                : settings.effectiveTargetLanguages,
+            includeOriginal: outputMode != .english,
             promptOptimizeEnabled: prompt,
             structuredOutputEnabled: structured,
             structuredEmojiEnabled: settings.structuredEmojiEnabled,
@@ -571,7 +572,7 @@ final class AppState: ObservableObject {
             recordingHUD.show()
         case .processing:
             phase = .transcribing
-            connectionMessage = "正在识别这一段…"
+            connectionMessage = L10n.t(.phaseTranscribing)
         case let .completed(text):
             applyVoicePipelineCompletedText(text)
             phase = .recording
@@ -579,7 +580,7 @@ final class AppState: ObservableObject {
         case let .failed(message):
             // Segment ASR hiccups stay quiet if we are still listening; only pin hard start failures.
             if voicePipeline.isListening {
-                connectionMessage = "切段转写失败：\(message)"
+                connectionMessage = L10n.t(.asrFailed, message)
                 phase = .recording
                 recordingHUD.show()
             } else {
@@ -602,8 +603,8 @@ final class AppState: ObservableObject {
         stableTranscript = lastTranscript
         let n = voicePipeline.segmentTexts.count
         connectionMessage = n > 0
-            ? "第 \(n) 段已出字 · 继续说；结束时会整段重识别再按规则处理"
-            : "已出字 · 继续说，或再按热键结束"
+            ? "\(L10n.t(.stageTranscribing)) \(n) · \(L10n.t(.hudListening))"
+            : L10n.t(.hudListening)
         recordingHUD.show()
     }
 
@@ -623,7 +624,7 @@ final class AppState: ObservableObject {
             streamingSession?.cancel()
             streamingSession = nil
             if stageTiming.hasActiveSession {
-                stageTiming.finishSession(outcome: .superseded, message: "新的录音覆盖了进行中的任务")
+                stageTiming.finishSession(outcome: .superseded, message: L10n.t(.supersededByNewRecording))
             }
         default:
             break
@@ -736,7 +737,9 @@ final class AppState: ObservableObject {
                 prompt = false
                 smart = llmEnabled
             case .none:
-                structured = llmEnabled && settings.structuredOutputEnabled
+                structured = llmEnabled && (
+                    settings.structuredOutputEnabled || settings.hasCustomFormattingPrompt
+                )
                 prompt = llmEnabled && settings.promptOptimizeEnabled
                 smart = false
             }
@@ -746,9 +749,10 @@ final class AppState: ObservableObject {
                 transcript: nil,
                 generation: processingGeneration,
                 configuration: settings.configuration,
-                targetLanguage: outputMode == .english
-                    ? TargetLanguage.resolve(id: "en")
-                    : settings.effectiveTargetLanguage,
+                targetLanguages: outputMode == .english
+                    ? [TargetLanguage.resolve(id: "en")]
+                    : settings.effectiveTargetLanguages,
+                includeOriginal: outputMode != .english,
                 promptOptimizeEnabled: prompt,
                 structuredOutputEnabled: structured,
                 structuredEmojiEnabled: settings.structuredEmojiEnabled,
@@ -880,9 +884,8 @@ final class AppState: ObservableObject {
                         intensity: snapshot.structureIntensity
                     ),
                     customSystemPrompt: snapshot.translationConfiguration.customSystemPrompt,
-                    outputLanguageDirective: snapshot.targetLanguage.translates
-                        ? snapshot.targetLanguage.outputLanguageDirective
-                        : nil,
+                    // Keep the cleaned source in its original language. Translations run afterward.
+                    outputLanguageDirective: nil,
                     useEmoji: snapshot.structuredEmojiEnabled
                 )
                 working = try await formatter.format(
@@ -908,61 +911,60 @@ final class AppState: ObservableObject {
                 )
                 try Task.checkCancellation()
                 guard snapshot.generation == processingGeneration else { return }
-            } else if snapshot.targetLanguage.translates {
+            } else if !snapshot.targetLanguages.isEmpty {
                 stageTiming.enter(.translating)
                 phase = .translating
                 let baseTranslationConfig = snapshot.translationConfiguration
-                let activeTranslationConfig = TranslationConfiguration(
-                    endpoint: baseTranslationConfig.endpoint,
-                    model: baseTranslationConfig.model,
-                    targetLanguage: snapshot.targetLanguage.promptName,
-                    styleHint: snapshot.targetLanguage.styleHint,
-                    customSystemPrompt: baseTranslationConfig.customSystemPrompt,
-                    apiKey: baseTranslationConfig.apiKey,
-                    task: .translate,
-                    promptTarget: baseTranslationConfig.promptTarget
-                )
-                var translation = try await translator.translate(
-                    text: working,
-                    configuration: activeTranslationConfig,
-                    onUsage: usageRecorder(
-                        stage: .translation, model: activeTranslationConfig.model
+                var outputSections = snapshot.includeOriginal ? [working] : []
+                for language in snapshot.targetLanguages {
+                    let activeTranslationConfig = TranslationConfiguration(
+                        endpoint: baseTranslationConfig.endpoint,
+                        model: baseTranslationConfig.model,
+                        targetLanguage: language.promptName,
+                        styleHint: language.styleHint,
+                        customSystemPrompt: baseTranslationConfig.customSystemPrompt,
+                        apiKey: baseTranslationConfig.apiKey,
+                        task: .translate,
+                        promptTarget: baseTranslationConfig.promptTarget
                     )
-                )
-                // If the model ignored the target language, force one stricter retry.
-                if !snapshot.targetLanguage.outputLooksCompatible(translation) {
-                    var retryConfig = activeTranslationConfig
-                    // Strengthen directive in configuration only — never prepend meta tags to user text.
-                    retryConfig = TranslationConfiguration(
-                        endpoint: activeTranslationConfig.endpoint,
-                        model: activeTranslationConfig.model,
-                        targetLanguage: activeTranslationConfig.targetLanguage,
-                        styleHint: """
-                        \(activeTranslationConfig.styleHint)
-
-                        CRITICAL: Write the entire translation in \(snapshot.targetLanguage.promptName) only.
-                        Do not mention the required language in the output body.
-                        """,
-                        customSystemPrompt: activeTranslationConfig.customSystemPrompt,
-                        apiKey: activeTranslationConfig.apiKey,
-                        task: activeTranslationConfig.task,
-                        promptTarget: activeTranslationConfig.promptTarget
-                    )
-                    translation = try await translator.translate(
+                    var translation = try await translator.translate(
                         text: working,
-                        configuration: retryConfig,
-                        onUsage: usageRecorder(stage: .translation, model: retryConfig.model)
+                        configuration: activeTranslationConfig,
+                        onUsage: usageRecorder(
+                            stage: .translation, model: activeTranslationConfig.model
+                        )
                     )
+                    // If the model ignored the target language, force one stricter retry.
+                    if !language.outputLooksCompatible(translation) {
+                        let retryConfig = TranslationConfiguration(
+                            endpoint: activeTranslationConfig.endpoint,
+                            model: activeTranslationConfig.model,
+                            targetLanguage: activeTranslationConfig.targetLanguage,
+                            styleHint: """
+                            \(activeTranslationConfig.styleHint)
+
+                            CRITICAL: Write the entire translation in \(language.promptName) only.
+                            Do not mention the required language in the output body.
+                            """,
+                            customSystemPrompt: activeTranslationConfig.customSystemPrompt,
+                            apiKey: activeTranslationConfig.apiKey,
+                            task: activeTranslationConfig.task,
+                            promptTarget: activeTranslationConfig.promptTarget
+                        )
+                        translation = try await translator.translate(
+                            text: working,
+                            configuration: retryConfig,
+                            onUsage: usageRecorder(stage: .translation, model: retryConfig.model)
+                        )
+                    }
+                    guard language.outputLooksCompatible(translation) else {
+                        throw TranslationError.invalidResponse
+                    }
+                    try Task.checkCancellation()
+                    guard snapshot.generation == processingGeneration else { return }
+                    outputSections.append(translation)
                 }
-                if !snapshot.targetLanguage.outputLooksCompatible(translation) {
-                    throw TranslationError.invalidResponse
-                }
-                try Task.checkCancellation()
-                guard snapshot.generation == processingGeneration else { return }
-                output = snapshot.targetLanguage.formatOutput(
-                    transcript: working,
-                    translation: translation
-                )
+                output = outputSections.joined(separator: "\n\n")
             }
             } // end of non-smartRoute else block
 
@@ -981,10 +983,10 @@ final class AppState: ObservableObject {
             } catch {
                 stageTiming.finishSession(
                     outcome: .failed,
-                    message: "处理成功，但无法写入当前输入框"
+                    message: L10n.t(.pasteFailedNoFocus)
                 )
                 let detail = error.localizedDescription
-                phase = .failed("处理成功，但无法写入：\(detail)内容已复制，请手动粘贴。")
+                phase = .failed(L10n.t(.pasteFailedDetail, detail))
                 try? await Task.sleep(for: .milliseconds(650))
             }
             recordingHUD.hide()
@@ -997,9 +999,9 @@ final class AppState: ObservableObject {
             let cancelled = error is CancellationError
             stageTiming.finishSession(
                 outcome: cancelled ? .cancelled : .failed,
-                message: cancelled ? "已取消" : error.localizedDescription
+                message: cancelled ? L10n.t(.cancelled) : error.localizedDescription
             )
-            phase = .failed(cancelled ? "已取消。" : error.localizedDescription)
+                phase = .failed(cancelled ? L10n.t(.cancelledPeriod) : error.localizedDescription)
             try? await Task.sleep(for: .milliseconds(400))
             recordingHUD.hide()
             sessionOutputMode = nil
@@ -1066,14 +1068,14 @@ final class AppState: ObservableObject {
     func testConnection() {
         let configuration = settings.configuration
         if configuration.backend == .integrated {
-            connectionMessage = "正在检查本地 ASR…"
-            capabilityMessage = "本地原生 ASR：首次使用可能需要下载或加载模型。"
+            connectionMessage = L10n.t(.checkingLocalASR)
+            capabilityMessage = L10n.t(.localASRFirstUseHint)
             Task {
                 do {
                     try await client.checkServer(configuration: configuration)
-                    connectionMessage = "本地 ASR 已就绪"
+                    connectionMessage = L10n.t(.localASRReady)
                 } catch {
-                    connectionMessage = "本地 ASR 检查失败：\(error.localizedDescription)"
+                    connectionMessage = L10n.t(.localASRCheckFailed, error.localizedDescription)
                 }
                 let caps = await OMLXCapabilityProbe.probe(configuration: configuration)
                 lastCapabilities = caps
@@ -1082,14 +1084,14 @@ final class AppState: ObservableObject {
             return
         }
 
-        connectionMessage = "正在连接 ASR API…"
-        capabilityMessage = "正在探测 API Streaming 能力…"
+        connectionMessage = L10n.t(.connectingASRAPI)
+        capabilityMessage = L10n.t(.probingStreaming)
         Task {
             do {
                 try await client.checkServer(configuration: configuration)
-                connectionMessage = "ASR 连接成功"
+                connectionMessage = L10n.t(.asrConnectOK)
             } catch {
-                connectionMessage = "ASR 连接失败：\(error.localizedDescription)"
+                connectionMessage = L10n.t(.asrConnectFailed, error.localizedDescription)
             }
             let caps = await OMLXCapabilityProbe.probe(configuration: configuration)
             lastCapabilities = caps
@@ -1100,16 +1102,16 @@ final class AppState: ObservableObject {
     func prepareLocalASRModel() {
         let configuration = settings.configuration
         guard configuration.backend == .integrated else {
-            connectionMessage = "API 模式不需要下载本地 ASR 模型"
+            connectionMessage = L10n.t(.apiNoLocalModel)
             return
         }
         guard !isPreparingLocalASRModel else {
-            connectionMessage = "模型正在准备中，请等待完成或点「取消下载」。"
+            connectionMessage = L10n.t(.preparingLocalASR)
             return
         }
         let guidance = NativeASRClient.downloadGuidance(configuration: configuration)
         isPreparingLocalASRModel = true
-        connectionMessage = "正在准备本地 ASR 模型…"
+        connectionMessage = L10n.t(.preparingLocalASR)
         capabilityMessage = localASRPreparationMessage(configuration: configuration, guidance: guidance)
         Task {
             defer { isPreparingLocalASRModel = false }
@@ -1131,9 +1133,9 @@ final class AppState: ObservableObject {
                 lastCapabilities = caps
                 capabilityMessage = caps.summary
             } catch is CancellationError {
-                connectionMessage = "已取消模型下载。已完成的部分会保留，下次可断点续传。"
+                connectionMessage = L10n.t(.cancelled)
             } catch {
-                connectionMessage = "准备本地 ASR 失败：\(error.localizedDescription)"
+                connectionMessage = L10n.t(.prepareLocalASRFailed, error.localizedDescription)
                 capabilityMessage = localASRFailureHelp(error: error, guidance: guidance)
             }
         }
@@ -1141,7 +1143,7 @@ final class AppState: ObservableObject {
 
     func cancelLocalASRModelPreparation() {
         guard isPreparingLocalASRModel else { return }
-        connectionMessage = "正在取消模型下载…"
+        connectionMessage = L10n.t(.cancel)
         Task {
             await NativeASRClient.shared.cancelPreparation()
         }
@@ -1207,21 +1209,21 @@ final class AppState: ObservableObject {
     /// Probe translation / Prompt LLM endpoint and confirm the configured model is listed.
     func testLanguageModelConnection() {
         guard settings.llmBackend == .api else {
-            connectionMessage = "翻译/整理/Prompt 编译已关闭"
+            connectionMessage = L10n.t(.llmPostProcessOff)
             return
         }
         guard settings.llmFeaturesAvailable else {
-            connectionMessage = "请先配置 LLM API 地址和模型名"
+            connectionMessage = L10n.t(.configureLLMFirst)
             return
         }
         let configuration = settings.translationConfiguration
-        connectionMessage = "正在连接翻译模型…"
+        connectionMessage = L10n.t(.connectingTranslation)
         Task {
             do {
                 let detail = try await translator.checkServer(configuration: configuration)
                 connectionMessage = detail
             } catch {
-                connectionMessage = "翻译连接失败：\(error.localizedDescription)"
+                connectionMessage = L10n.t(.translationConnectFailed, error.localizedDescription)
             }
         }
     }
@@ -1230,27 +1232,27 @@ final class AppState: ObservableObject {
     func testConnections() {
         let asrConfig = settings.configuration
         let llmConfig = settings.translationConfiguration
-        connectionMessage = "正在测试连接…"
+        connectionMessage = L10n.t(.testingConnections)
         capabilityMessage = asrConfig.backend == .integrated
-            ? "正在检查本地原生 ASR…"
-            : "正在探测 API Streaming 能力…"
+            ? L10n.t(.checkingNativeASR)
+            : L10n.t(.probingStreaming)
         Task {
             var parts: [String] = []
             do {
                 try await client.checkServer(configuration: asrConfig)
-                parts.append(asrConfig.backend == .integrated ? "本地 ASR 正常" : "ASR API 正常")
+                parts.append(asrConfig.backend == .integrated ? L10n.t(.localASROK) : L10n.t(.asrAPIOK))
             } catch {
-                parts.append("ASR 失败：\(error.localizedDescription)")
+                parts.append(L10n.t(.asrFailed, error.localizedDescription))
             }
             do {
                 if settings.llmFeaturesAvailable {
                     let detail = try await translator.checkServer(configuration: llmConfig)
                     parts.append(detail)
                 } else {
-                    parts.append("LLM 后处理未启用")
+                    parts.append(L10n.t(.llmNotEnabled))
                 }
             } catch {
-                parts.append("翻译失败：\(error.localizedDescription)")
+                parts.append(L10n.t(.translationFailed, error.localizedDescription))
             }
             connectionMessage = parts.joined(separator: " · ")
             let caps = await OMLXCapabilityProbe.probe(configuration: asrConfig)
@@ -1295,7 +1297,7 @@ final class AppState: ObservableObject {
             break
         }
         guard settings.llmFeaturesAvailable else {
-            connectionMessage = "请先在翻译与整理中启用并配置 LLM API 模式"
+            connectionMessage = L10n.t(.enableLLMInSettings)
             return
         }
 
@@ -1328,10 +1330,10 @@ final class AppState: ObservableObject {
                 } catch {
                     stageTiming.finishSession(
                         outcome: .failed,
-                        message: "整理成功，但无法写入当前输入框"
+                        message: L10n.t(.reformatPasteFailed)
                     )
                     let detail = error.localizedDescription
-                    phase = .failed("整理成功，但无法写入：\(detail)内容已复制，请手动粘贴。")
+                    phase = .failed(L10n.t(.reformatPasteFailedDetail, detail))
                     try? await Task.sleep(for: .milliseconds(650))
                 }
                 recordingHUD.hide()
@@ -1341,9 +1343,9 @@ final class AppState: ObservableObject {
                 let cancelled = error is CancellationError
                 stageTiming.finishSession(
                     outcome: cancelled ? .cancelled : .failed,
-                    message: cancelled ? "已取消" : error.localizedDescription
+                    message: cancelled ? L10n.t(.cancelled) : error.localizedDescription
                 )
-                phase = .failed(cancelled ? "已取消。" : error.localizedDescription)
+                phase = .failed(cancelled ? L10n.t(.cancelledPeriod) : error.localizedDescription)
                 try? await Task.sleep(for: .milliseconds(400))
                 recordingHUD.hide()
             }
@@ -1376,7 +1378,7 @@ final class AppState: ObservableObject {
             stableTranscript = ""
             sessionOutputMode = nil
             if stageTiming.hasActiveSession {
-                stageTiming.finishSession(outcome: .cancelled, message: "已取消")
+                stageTiming.finishSession(outcome: .cancelled, message: L10n.t(.cancelled))
             }
             phase = .idle
             recordingHUD.hide()
@@ -1399,8 +1401,8 @@ final class AppState: ObservableObject {
         transcriptionTask = nil
         streamingSession?.cancel()
         streamingSession = nil
-        stageTiming.finishSession(outcome: .cancelled, message: "已取消")
-        phase = .failed("已取消。")
+        stageTiming.finishSession(outcome: .cancelled, message: L10n.t(.cancelled))
+        phase = .failed(L10n.t(.cancelledPeriod))
         recordingHUD.hide()
     }
 
@@ -1417,21 +1419,21 @@ final class AppState: ObservableObject {
             settings.launchAtLogin = enabled
             launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
             if enabled && !launchAtLoginEnabled {
-                launchAtLoginMessage = "需要在系统设置的登录项中允许 Vibe Voice OSS。"
+                launchAtLoginMessage = L10n.t(.launchAtLoginNeedAllow)
             } else {
-                launchAtLoginMessage = enabled ? "已启用" : "已关闭"
+                launchAtLoginMessage = enabled ? L10n.t(.launchAtLoginOn) : L10n.t(.launchAtLoginOff)
             }
         } catch {
             launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
-            launchAtLoginMessage = "设置失败：\(error.localizedDescription)"
+            launchAtLoginMessage = L10n.t(.launchAtLoginFailed, error.localizedDescription)
         }
     }
 
     func requestPermissions() {
         let trusted = PasteService.requestAccessibilityIfNeeded(prompt: true)
         capabilityMessage = trusted
-            ? "辅助使用权限已授权，可以自动写入当前输入框。"
-            : "已打开辅助使用授权提示；授权前会只复制到剪贴板，不会反复弹窗。"
+            ? L10n.t(.accessibilityGranted)
+            : L10n.t(.accessibilityPromptOpened)
         Task { @MainActor in
             guard !isStartingRecording, phase != .recording else { return }
             isStartingRecording = true

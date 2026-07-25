@@ -94,6 +94,21 @@ final class TranslationClientTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer nvapi-abc")
     }
 
+    func testCredentialEndpointPolicyAllowsTLSAndLocalhostOnlyForCleartext() {
+        XCTAssertTrue(EndpointSecurity.allowsCredentialTransmission(
+            to: URL(string: "https://api.example.com/v1/chat/completions")!, apiKey: "key"
+        ))
+        XCTAssertTrue(EndpointSecurity.allowsCredentialTransmission(
+            to: URL(string: "http://127.0.0.1:8000/v1/chat/completions")!, apiKey: "key"
+        ))
+        XCTAssertFalse(EndpointSecurity.allowsCredentialTransmission(
+            to: URL(string: "http://192.168.1.20:8000/v1/chat/completions")!, apiKey: "key"
+        ))
+        XCTAssertTrue(EndpointSecurity.allowsCredentialTransmission(
+            to: URL(string: "http://192.168.1.20:8000/v1/chat/completions")!, apiKey: ""
+        ))
+    }
+
     func testChatPayloadDelegatesToNemotronProfile() {
         let payload = TranslationClient.chatCompletionPayload(
             model: "nvidia/nemotron-3-ultra-550b-a55b",

@@ -273,16 +273,16 @@ private struct SettingsForm: View {
                     .pickerStyle(.menu)
                 }
                 caption(settings.asrBackend.caption)
-                Toggle("Voice Pipeline（VAD 切段）", isOn: $settings.voicePipelineEnabled)
+                Toggle(L10n.t(.voicePipeline), isOn: $settings.voicePipelineEnabled)
                     .toggleStyle(.switch)
                     .disabled(!settings.isVoicePipelineAvailable)
                 if settings.isVoicePipelineAvailable {
-                    caption("开启后按热键进入持续聆听：停顿自动切段识别并显示字幕；再按同一热键或点停止后，按当前输出规则（整理 / 翻译 / Prompt 优化 / 智能路由，与普通录音相同）处理后粘贴。会话中的字幕是原始识别，结束时才做后处理。")
+                    caption(L10n.t(.voicePipelineCaption))
                 } else {
-                    caption("Voice Pipeline 仅在「集成模式」下可用；当前为 API 模式，已强制关闭。")
+                    caption(L10n.t(.voicePipelineUnavailable))
                 }
                 if settings.asrBackend == .integrated {
-                    pickerRow("本地引擎") {
+                    pickerRow(L10n.t(.settingsEngine)) {
                         Picker("", selection: Binding(
                             get: { settings.integratedASREngine },
                             set: { settings.integratedASREngine = $0 }
@@ -296,35 +296,33 @@ private struct SettingsForm: View {
                     }
                     caption(settings.integratedASREngine.caption)
                     if settings.integratedASREngine == .qwen3MLX {
-                        field("Qwen 模型 Repo", text: $settings.qwenModelRepo)
-                        caption("默认 mlx-community/Qwen3-ASR-0.6B-6bit；也可改成 mlx-community/Qwen3-ASR-0.6B-4bit / 8bit。")
-                        directoryField("Qwen 模型目录", text: $settings.integratedASRModelPath)
-                        caption(settings.integratedASRModelPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? "当前模型：Qwen3-ASR · \(settings.qwenModelRepo)"
-                            : "当前模型：Qwen3-ASR · \(settings.qwenModelRepo) · \(settings.integratedASRModelPath)")
-                        caption("点「准备模型」会自动下载并填写目录；手动目录需包含 config.json、model.safetensors 以及 tokenizer 文件。")
+                        field(L10n.t(.settingsQwenRepo), text: $settings.qwenModelRepo)
+                        caption(L10n.t(.qwenRepoCaption))
+                        directoryField(L10n.t(.settingsModelPath), text: $settings.integratedASRModelPath)
+                        caption(L10n.t(.currentModel, settings.qwenModelRepo))
+                        caption(L10n.t(.modelFilesCaption))
                     } else {
-                        field("WhisperKit 模型", text: $settings.whisperKitModel)
-                        caption("当前模型：WhisperKit · \(settings.whisperKitModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "tiny" : settings.whisperKitModel)")
-                        caption("例如 tiny 或 large-v3-v20240930_626MB；点「准备模型」会下载缺失文件并修复不完整缓存。")
+                        field(L10n.t(.settingsWhisperKitModel), text: $settings.whisperKitModel)
+                        caption(L10n.t(.currentModel, "WhisperKit · \(settings.whisperKitModel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "tiny" : settings.whisperKitModel)"))
+                        caption(L10n.t(.modelFilesCaption))
                     }
-                    field("HF 镜像端点（可选）", text: $settings.hfEndpoint)
-                    caption("直连 huggingface.co 不稳定时可填镜像，例如 https://hf-mirror.com；留空使用官方源。")
+                    field("HF \(L10n.t(.settingsEndpoint))", text: $settings.hfEndpoint)
+                    caption(L10n.t(.hfEndpointCaption))
                 } else {
-                    field("API 地址", text: $settings.endpoint)
-                    secureField("API Key（未启用可留空）", text: $settings.apiKey)
-                    field("模型名", text: $settings.model)
+                    field(L10n.t(.settingsEndpoint), text: $settings.endpoint)
+                    secureField(L10n.t(.apiKeyOptional), text: $settings.apiKey)
+                    field(L10n.t(.settingsModel), text: $settings.model)
                 }
                 field(L10n.t(.recognitionLanguage), text: $settings.language)
                 caption(L10n.t(.recognitionLanguageCaption))
             }
 
             if settings.asrBackend == .api {
-                caption("模型名请与 oMLX / 远端已加载的 ASR 名称一致，可直接手输。")
-                caption("录音时会像字幕一样实时显示识别文字（重叠窗伪流式）。下方模式只影响停录后的最终收敛方式。")
+                caption(L10n.t(.modelNameMatchCaption))
+                caption(L10n.t(.liveCaptionCaption))
 
                 settingsCard {
-                    pickerRow("识别模式") {
+                    pickerRow(L10n.t(.recognitionMode)) {
                         Picker("", selection: Binding(
                             get: { settings.streamingMode },
                             set: { settings.streamingMode = $0 }
@@ -339,22 +337,22 @@ private struct SettingsForm: View {
                     caption(settings.streamingMode.caption)
                     if settings.streamingMode == .duplexStreaming {
                         field(L10n.t(.settingsDuplexWS), text: $settings.streamingWSURL)
-                        caption("连不上时自动降级为重叠窗伪流式（仍走本机转写接口）。")
+                        caption(L10n.t(.streamingFallbackCaption))
                     }
                 }
             } else {
-                caption("集成模式停录后直接在本机转写；实时字幕和 WebSocket 仅在 API 模式下可用。")
+                caption(L10n.t(.integratedNoStreamingCaption))
             }
 
             HStack(spacing: 10) {
                 if settings.asrBackend == .integrated {
                     if appState.isPreparingLocalASRModel {
-                        secondaryPill("取消下载") { appState.cancelLocalASRModelPreparation() }
+                        secondaryPill(L10n.t(.cancelDownload)) { appState.cancelLocalASRModelPreparation() }
                     } else {
                         secondaryPill(L10n.t(.settingsPrepareModel)) { appState.prepareLocalASRModel() }
                     }
                 }
-                secondaryPill(settings.asrBackend == .integrated ? "检查本地 ASR" : "测试 ASR") {
+                secondaryPill(settings.asrBackend == .integrated ? L10n.t(.checkLocalASR) : L10n.t(.settingsTestASR)) {
                     appState.testConnection()
                 }
                 Spacer(minLength: 0)
@@ -375,7 +373,7 @@ private struct SettingsForm: View {
     private var audioSection: some View {
         settingsStack {
             settingsCard {
-                pickerRow("转码配置") {
+                pickerRow(L10n.t(.settingsTranscodeProfile)) {
                     Picker("", selection: Binding(
                         get: { settings.transcodeProfile },
                         set: { settings.transcodeProfile = $0 }
@@ -388,16 +386,16 @@ private struct SettingsForm: View {
                     .pickerStyle(.menu)
                 }
                 caption(settings.transcodeProfile.caption)
-                labeledRow("采样率", "\(settings.transcodeProfile.sampleRate) Hz")
-                labeledRow("声道", "\(settings.transcodeProfile.channels)")
+                labeledRow(L10n.t(.sampleRate), "\(settings.transcodeProfile.sampleRate) Hz")
+                labeledRow(L10n.t(.channels), "\(settings.transcodeProfile.channels)")
                 labeledRow(
-                    "编码",
+                    L10n.t(.codec),
                     "\(settings.transcodeProfile.container) / \(settings.transcodeProfile.codec) · \(settings.transcodeProfile.bitDepth)-bit"
                 )
-                Toggle("自动增益 / 归一化", isOn: $settings.transcodeNormalize)
+                Toggle(L10n.t(.settingsNormalize), isOn: $settings.transcodeNormalize)
                     .toggleStyle(.switch)
                 HStack {
-                    Text("最大增益")
+                    Text(L10n.t(.maxGain))
                         .foregroundStyle(AppChrome.ink)
                     Spacer()
                     Text("\(Int(settings.transcodeMaxGainDb)) dB")
@@ -414,7 +412,7 @@ private struct SettingsForm: View {
     private var translationSection: some View {
         settingsStack {
             settingsCard {
-                pickerRow("LLM 后处理") {
+                pickerRow(L10n.t(.settingsLLMBackend)) {
                     Picker("", selection: Binding(
                         get: { settings.llmBackend },
                         set: { settings.llmBackend = $0 }
@@ -428,14 +426,14 @@ private struct SettingsForm: View {
                     .frame(width: 180)
                 }
                 caption(settings.llmBackend.caption)
-                field("API 地址", text: $settings.llmEndpoint)
+                field(L10n.t(.settingsLLMEndpoint), text: $settings.llmEndpoint)
                     .disabled(settings.llmBackend != .api)
-                secureField("API Key（未启用可留空）", text: $settings.llmApiKey)
+                secureField(L10n.t(.apiKeyOptional), text: $settings.llmApiKey)
                     .disabled(settings.llmBackend != .api)
-                field("模型名", text: $settings.translationModel)
+                field(L10n.t(.settingsLLMModel), text: $settings.translationModel)
                     .disabled(settings.llmBackend != .api)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("自定义 System Prompt")
+                    Text(L10n.t(.customPrompt))
                         .font(.system(size: 12, weight: .medium))
                     TextEditor(text: $settings.llmSystemPrompt)
                         .font(.system(size: 13))
@@ -445,33 +443,45 @@ private struct SettingsForm: View {
                         .background(AppChrome.canvas, in: RoundedRectangle(cornerRadius: 8))
                 }
                 .disabled(settings.llmBackend != .api)
-                caption("翻译/整理/Prompt 编译时作为附加指令；⌘⇧G 智能路由时作为唯一系统指令。")
-                pickerRow(L10n.t(.outputLanguage)) {
-                    Picker("", selection: $settings.targetLanguageID) {
-                        ForEach(TargetLanguage.all) { language in
-                            Text(language.label).tag(language.id)
+                caption(L10n.t(.customPromptCaption))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.t(.outputLanguageCombination))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppChrome.ink)
+                    caption(L10n.t(.outputLanguageCombinationCaption))
+                    LazyVGrid(
+                        columns: [GridItem(.flexible()), GridItem(.flexible())],
+                        alignment: .leading,
+                        spacing: 8
+                    ) {
+                        ForEach(TargetLanguage.translationOptions) { language in
+                            targetLanguageToggle(language)
                         }
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
+                    if settings.targetLanguages.contains(where: { $0.id == "ja" }) {
+                        caption(TranslationClient.supportsJapaneseNaturalTranslation(model: settings.translationModel)
+                            ? L10n.t(.japaneseNaturalCaption)
+                            : L10n.t(.japaneseModelRequirement))
+                    }
                 }
                 .disabled(!settings.llmFeaturesAvailable)
             }
 
             if settings.llmBackend == .api {
-                caption("模型名请填写 oMLX / 兼容服务端已加载的 chat 模型；可留空后按需填写。")
-                caption("按模型名自动选择 Provider Profile：含 qwen → Qwen；含 nemotron → NVIDIA Nemotron；其余 → OpenAI 兼容。")
-                caption("API Key 保存在 macOS 钥匙串；无稳定签名的临时构建会退回本机 UserDefaults。")
+                caption(L10n.t(.llmModelKeyCaption))
+                caption(L10n.t(.providerProfileCaption))
+                caption(L10n.t(.apiKeyStorageCaption))
             } else {
-                caption("关闭时只输出 ASR 原文，下面的翻译、整理和 Prompt 编译参数不会生效。")
+                caption(L10n.t(.llmFeaturesOffCaption))
             }
 
             settingsCard {
-                Toggle("使用结构化输出", isOn: $settings.structuredOutputEnabled)
+                Toggle(L10n.t(.useStructuredOutput), isOn: $settings.structuredOutputEnabled)
                     .toggleStyle(.switch)
                     .disabled(!settings.llmFeaturesAvailable)
                 if settings.structuredOutputEnabled {
-                    Toggle("使用 Emoji", isOn: $settings.structuredEmojiEnabled)
+                    Toggle(L10n.t(.useEmoji), isOn: $settings.structuredEmojiEnabled)
                         .toggleStyle(.switch)
                         .disabled(!settings.llmFeaturesAvailable)
                     pickerRow(L10n.t(.structureIntensity)) {
@@ -489,10 +499,10 @@ private struct SettingsForm: View {
                     .disabled(!settings.llmFeaturesAvailable)
                     caption(settings.structureIntensity.caption)
                     caption(settings.structuredEmojiEnabled
-                        ? "分区标题会带修饰性 emoji（如 ✅ 📌）。"
-                        : "默认不加 emoji，只用短段与中文小标题。")
+                        ? L10n.t(.structuredEmojiCaptionOn)
+                        : L10n.t(.structuredEmojiCaptionOff))
                 }
-                Toggle("Prompt 优化", isOn: $settings.promptOptimizeEnabled)
+                Toggle(L10n.t(.promptOptimize), isOn: $settings.promptOptimizeEnabled)
                     .toggleStyle(.switch)
                     .disabled(!settings.llmFeaturesAvailable)
                 if settings.promptOptimizeEnabled {
@@ -509,7 +519,7 @@ private struct SettingsForm: View {
                     caption(settings.promptTarget.caption)
                 }
             }
-            caption("翻译 / 结构化 / Prompt 编译只在 LLM API 模式且模型配置完整时启用，可与 ASR 完全不同。")
+            caption(L10n.t(.llmOnlyWhenConfiguredCaption))
             if !appState.connectionMessage.isEmpty {
                 Text(appState.connectionMessage)
                     .font(.system(size: 12, weight: .medium))
@@ -543,11 +553,11 @@ private struct SettingsForm: View {
                     }
                 }
             }
-            caption("全局快捷键均为「按一次开始，再按一次结束」。⌘⇧G 智能路由使用自定义 System Prompt 全权处理。")
+            caption(L10n.t(.shortcutsCaption))
 
             settingsCard {
                 HStack {
-                    Toggle("登录时自动启动", isOn: Binding(
+                    Toggle(L10n.t(.settingsLaunchAtLogin), isOn: Binding(
                         get: { appState.launchAtLoginEnabled },
                         set: { appState.setLaunchAtLogin($0) }
                     ))
@@ -558,7 +568,7 @@ private struct SettingsForm: View {
                         .foregroundStyle(AppChrome.muted)
                 }
 
-                pickerRow("录音输入") {
+                pickerRow(L10n.t(.recordingInput)) {
                     Picker("", selection: $settings.inputDeviceUID) {
                         Text(defaultDeviceLabel).tag("")
                         ForEach(inputDevices) { device in
@@ -569,13 +579,13 @@ private struct SettingsForm: View {
                     .pickerStyle(.menu)
                 }
 
-                labeledRow("当前系统播放输出", AudioInputDevices.defaultOutputName())
+                labeledRow(L10n.t(.currentPlaybackOutput), AudioInputDevices.defaultOutputName())
             }
 
-            caption("双蓝牙用法：输入选 DJI Mic（无听筒），播放输出保持 1MORE 等耳机。App 开麦时会尽量把被 HFP 抢走的输出抢回耳机。空闲时会对蓝牙麦做短暂保活，避免「蓝牙已连接但无声音」。")
+            caption(L10n.t(.bluetoothAudioCaption))
 
             HStack(spacing: 10) {
-                secondaryPill("刷新设备") { inputDevices = AudioInputDevices.all() }
+                secondaryPill(L10n.t(.bluetoothRefresh)) { inputDevices = AudioInputDevices.all() }
                 if !appState.connectionMessage.isEmpty {
                     Text(appState.connectionMessage)
                         .font(.system(size: 12))
@@ -653,12 +663,12 @@ private struct SettingsForm: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .stroke(AppChrome.hairline, lineWidth: 1)
                     )
-                secondaryPill("选择…") {
+                secondaryPill(L10n.t(.settingsEllipsis)) {
                     let panel = NSOpenPanel()
                     panel.canChooseFiles = false
                     panel.canChooseDirectories = true
                     panel.allowsMultipleSelection = false
-                    panel.prompt = "选择"
+                    panel.prompt = L10n.t(.choose)
                     if panel.runModal() == .OK, let url = panel.url {
                         text.wrappedValue = url.path
                     }
@@ -695,6 +705,20 @@ private struct SettingsForm: View {
             Spacer()
             content()
         }
+    }
+
+    private func targetLanguageToggle(_ language: TargetLanguage) -> some View {
+        let selected = settings.isTargetLanguageSelected(language)
+        return Toggle(isOn: Binding(
+            get: { settings.isTargetLanguageSelected(language) },
+            set: { settings.setTargetLanguageSelected(language, selected: $0) }
+        )) {
+            Text(language.label)
+                .font(.system(size: 13))
+                .foregroundStyle(AppChrome.ink)
+        }
+        .toggleStyle(.checkbox)
+        .disabled(!selected && !settings.canSelectMoreTargetLanguages)
     }
 
     private func labeledRow(_ title: String, _ value: String) -> some View {
@@ -734,6 +758,6 @@ private struct SettingsForm: View {
 
     private var defaultDeviceLabel: String {
         let name = AudioInputDevices.resolve(uid: "")?.name ?? "未找到输入设备"
-        return "跟随系统默认（\(name)）"
+        return "\(L10n.t(.settingsInputDevice))（\(name)）"
     }
 }

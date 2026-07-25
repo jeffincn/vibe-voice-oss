@@ -33,6 +33,9 @@ actor WebSocketStreamingASRClient: StreamingASRClient {
     }
 
     func connect() async throws {
+        guard EndpointSecurity.allowsCredentialTransmission(to: url, apiKey: apiKey) else {
+            throw TranscriptionError.insecureEndpoint
+        }
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
         if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

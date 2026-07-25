@@ -38,6 +38,7 @@ enum TranscriptionError: LocalizedError {
     case timedOut
     case localTimedOut(seconds: Int)
     case localRuntime(String)
+    case insecureEndpoint
 
     var errorDescription: String? {
         switch self {
@@ -49,6 +50,7 @@ enum TranscriptionError: LocalizedError {
         case let .localTimedOut(seconds):
             "本地 ASR 超过 \(seconds / 60) 分钟仍未完成，已自动中断。首次下载或加载模型可能较慢，请检查网络、模型名称或本地模型目录后重试。"
         case let .localRuntime(message): "本地 ASR 运行失败：\(message)"
+        case .insecureEndpoint: "为保护 API Key，远程明文 HTTP 接口不可用；请改用 HTTPS，或仅在本机回环地址使用 HTTP。"
         }
     }
 }
@@ -128,6 +130,9 @@ struct TranscriptionClient: Sendable {
 
         guard let url = URL(string: configuration.endpoint) else {
             throw TranscriptionError.invalidEndpoint
+        }
+        guard EndpointSecurity.allowsCredentialTransmission(to: url, apiKey: configuration.apiKey) else {
+            throw TranscriptionError.insecureEndpoint
         }
 
         let boundary = "VibeVoiceOSS-\(UUID().uuidString)"
@@ -305,6 +310,11 @@ struct TranscriptionClient: Sendable {
 
         guard let transcriptionURL = URL(string: configuration.endpoint) else {
             throw TranscriptionError.invalidEndpoint
+        }
+        guard EndpointSecurity.allowsCredentialTransmission(
+            to: transcriptionURL, apiKey: configuration.apiKey
+        ) else {
+            throw TranscriptionError.insecureEndpoint
         }
         let modelsURL = transcriptionURL
             .deletingLastPathComponent()

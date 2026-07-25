@@ -3,35 +3,45 @@ import Foundation
 struct TargetLanguage: Identifiable, Hashable {
     let id: String
     let label: String
-    /// Prompt name passed to the translation model. Empty means "no translation".
+    /// Prompt name passed to the translation model.
     let promptName: String
-    /// When true, insert both the original transcript and the translation.
-    let bilingual: Bool
     /// Extra instruction appended to the translation system prompt.
     let styleHint: String
 
     var translates: Bool { !promptName.isEmpty }
 
-    /// Whether the expected written output should contain CJK characters.
-    var expectsCJK: Bool {
+    /// Japanese copy editing is intentionally gated to models with the requested quality floor.
+    var minimumModelVersion: Double? { id == "ja" ? 5.6 : nil }
+
+    /// Scripts that provide a useful signal that the model honored this target language.
+    private var expectedScriptRanges: [ClosedRange<UInt32>] {
         switch id {
-        case "zh-Hans", "yue", "bi-zh-Hans", "bi-yue", "ja", "bi-ja":
-            return true
+        case "zh-Hans", "zh-Hant-TW", "yue", "ja":
+            return [0x4E00...0x9FFF, 0x3400...0x4DBF, 0x3040...0x30FF]
+        case "ko":
+            return [0xAC00...0xD7AF, 0x1100...0x11FF]
+        case "hi":
+            return [0x0900...0x097F]
+        case "th":
+            return [0x0E00...0x0E7F]
+        case "el":
+            return [0x0370...0x03FF, 0x1F00...0x1FFF]
+        case "he":
+            return [0x0590...0x05FF]
+        case "ar":
+            return [0x0600...0x06FF, 0x0750...0x077F, 0x08A0...0x08FF]
         default:
-            return false
+            return []
         }
     }
+
+    /// Backward-compatible name used by existing validation tests.
+    var expectsCJK: Bool { !expectedScriptRanges.isEmpty }
 
     /// Instruction injected into structure / translate prompts.
     var outputLanguageDirective: String {
         guard translates else {
             return "Keep the same language as the source transcript."
-        }
-        if bilingual {
-            return """
-            Final user-facing body must be written in \(promptName).
-            Do not leave the main narrative in the source language.
-            """
         }
         return """
         You MUST write the entire output in \(promptName).
@@ -46,31 +56,22 @@ struct TargetLanguage: Identifiable, Hashable {
     func outputLooksCompatible(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        guard expectsCJK else { return true }
-        let cjk = trimmed.unicodeScalars.filter { scalar in
-            let v = scalar.value
-            return (0x4E00...0x9FFF).contains(v)
-                || (0x3400...0x4DBF).contains(v)
-                || (0x3040...0x30FF).contains(v) // kana
-                || (0xAC00...0xD7AF).contains(v) // hangul (rare here)
+        guard !expectedScriptRanges.isEmpty else { return true }
+        let targetScriptCount = trimmed.unicodeScalars.filter { scalar in
+            expectedScriptRanges.contains { $0.contains(scalar.value) }
         }.count
         let letters = trimmed.unicodeScalars.filter { CharacterSet.letters.contains($0) }.count
-        // Require a meaningful CJK share once the string is long enough.
+        // Require a meaningful target-script share once the string is long enough.
         if trimmed.count < 12 {
-            return cjk >= 1
+            return targetScriptCount >= 1
         }
-        return Double(cjk) >= Double(max(letters, 1)) * 0.25 || cjk >= 8
-    }
-
-    var shortLabel: String {
-        label.replacingOccurrences(of: "双语 · 原文 + ", with: "")
+        return Double(targetScriptCount) >= Double(max(letters, 1)) * 0.25 || targetScriptCount >= 8
     }
 
     static let none = TargetLanguage(
         id: "none",
         label: "原文（不翻译）",
         promptName: "",
-        bilingual: false,
         styleHint: ""
     )
 
@@ -81,53 +82,64 @@ struct TargetLanguage: Identifiable, Hashable {
     If the source is spoken Cantonese already, normalize it into natural written Cantonese; do not convert it into Mandarin.
     """
 
-    static let all: [TargetLanguage] = [
-        .none,
-        TargetLanguage(id: "en", label: "English", promptName: "English", bilingual: false, styleHint: ""),
-        TargetLanguage(id: "zh-Hans", label: "简体中文", promptName: "Simplified Chinese", bilingual: false, styleHint: ""),
+    private static let taiwanMandarinHint = """
+    Write Taiwan Mandarin in Traditional Chinese, using natural Taiwan wording.
+    Add Bopomofo (Zhuyin) phonetic annotations in parentheses immediately after each Chinese phrase.
+    Do not use Simplified Chinese or Hanyu Pinyin in the main text.
+    """
+
+    private static let japaneseHint = """
+    Write natural, idiomatic Japanese as a native Japanese editor would.
+    Prefer context-appropriate polite or plain style; do not translate word for word.
+    Preserve natural Japanese particles, omitted subjects, sentence endings, and discourse flow.
+    Remove spoken fillers, repetition, and abandoned phrasing when the context clearly corrects them.
+    Keep names, product names, technical identifiers, paths, and code-like tokens unchanged.
+    Output Japanese narrative only. Do not add explanations, labels, or a translation note.
+    """
+
+    static let translationOptions: [TargetLanguage] = [
+        TargetLanguage(id: "en", label: "English", promptName: "English", styleHint: ""),
+        TargetLanguage(id: "zh-Hans", label: "简体中文", promptName: "Simplified Chinese", styleHint: ""),
         TargetLanguage(
             id: "yue",
             label: "粵語中文",
             promptName: "粵語中文 (written Cantonese)",
-            bilingual: false,
             styleHint: cantoneseHint
         ),
-        TargetLanguage(id: "ja", label: "日本語", promptName: "Japanese", bilingual: false, styleHint: ""),
-        TargetLanguage(id: "bi-en", label: "双语 · 原文 + English", promptName: "English", bilingual: true, styleHint: ""),
-        TargetLanguage(id: "bi-zh-Hans", label: "双语 · 原文 + 简体中文", promptName: "Simplified Chinese", bilingual: true, styleHint: ""),
         TargetLanguage(
-            id: "bi-yue",
-            label: "双语 · 原文 + 粵語中文",
-            promptName: "粵語中文 (written Cantonese)",
-            bilingual: true,
-            styleHint: cantoneseHint
+            id: "zh-Hant-TW",
+            label: "台湾国语（繁体＋注音）",
+            promptName: "Taiwan Mandarin in Traditional Chinese with Bopomofo (Zhuyin) annotations",
+            styleHint: taiwanMandarinHint
         ),
-        TargetLanguage(id: "bi-ja", label: "双语 · 原文 + 日本語", promptName: "Japanese", bilingual: true, styleHint: ""),
+        TargetLanguage(id: "ja", label: "日本語", promptName: "Japanese", styleHint: japaneseHint),
+        TargetLanguage(id: "ko", label: "韩语（한국어）", promptName: "Korean", styleHint: ""),
+        TargetLanguage(id: "fr", label: "法语（Français）", promptName: "French", styleHint: ""),
+        TargetLanguage(id: "es", label: "西班牙语（Español）", promptName: "Spanish", styleHint: ""),
+        TargetLanguage(id: "hi", label: "印地语（Hindi）", promptName: "Hindi", styleHint: ""),
+        TargetLanguage(id: "th", label: "泰语（ไทย）", promptName: "Thai", styleHint: ""),
+        TargetLanguage(id: "it", label: "义大利语（Italiano）", promptName: "Italian", styleHint: ""),
+        TargetLanguage(id: "el", label: "希腊语（Ελληνικά）", promptName: "Greek", styleHint: ""),
+        TargetLanguage(id: "he", label: "希伯来语（עברית）", promptName: "Hebrew", styleHint: ""),
+        TargetLanguage(id: "ar", label: "阿拉伯语（العربية）", promptName: "Arabic", styleHint: ""),
+        TargetLanguage(id: "vi", label: "越南语（Tiếng Việt）", promptName: "Vietnamese", styleHint: ""),
     ]
+
+    /// Original output is always available; translation choices are selected separately.
+    static var all: [TargetLanguage] { [.none] + translationOptions }
 
     static func resolve(id: String) -> TargetLanguage {
         switch id {
-        case "zh-Hant", "prompt":
-            // "prompt" used to live in this picker; migrate to 原文 and use the toggle instead.
-            return id == "prompt" ? .none : (all.first { $0.id == "yue" } ?? .none)
-        case "bi-zh-Hant":
-            return all.first { $0.id == "bi-yue" } ?? .none
+        case "zh-Hant": return all.first { $0.id == "zh-Hant-TW" } ?? .none
+        case "prompt": return .none // Migrate the retired picker option to original output.
+        case "bi-en": return all.first { $0.id == "en" } ?? .none
+        case "bi-zh-Hans": return all.first { $0.id == "zh-Hans" } ?? .none
+        case "bi-yue": return all.first { $0.id == "yue" } ?? .none
+        case "bi-zh-Hant": return all.first { $0.id == "zh-Hant-TW" } ?? .none
+        case "bi-ja": return all.first { $0.id == "ja" } ?? .none
         default:
             return all.first { $0.id == id } ?? .none
         }
-    }
-
-    func formatOutput(transcript: String, translation: String) -> String {
-        if bilingual {
-            return "\(transcript)\n\(translation)"
-        }
-        return translation
-    }
-
-    var menuCaption: String {
-        if !translates { return "仅转写原文" }
-        if bilingual { return "识别后输出原文与译文（两行）" }
-        return "识别后写成 \(label)"
     }
 }
 
@@ -263,6 +275,7 @@ final class AppSettings: ObservableObject {
         static let inputDeviceUID = "inputDeviceUID"
         static let launchAtLogin = "launchAtLogin"
         static let targetLanguageID = "targetLanguageID"
+        static let targetLanguageIDs = "targetLanguageIDs"
         static let translationModel = "translationModel"
         static let promptOptimizeEnabled = "promptOptimizeEnabled"
         static let promptTargetID = "promptTargetID"
@@ -329,7 +342,35 @@ final class AppSettings: ObservableObject {
     }
     @Published var inputDeviceUID: String { didSet { save(inputDeviceUID, for: Key.inputDeviceUID) } }
     @Published var launchAtLogin: Bool { didSet { defaults.set(launchAtLogin, forKey: Key.launchAtLogin) } }
-    @Published var targetLanguageID: String { didSet { save(targetLanguageID, for: Key.targetLanguageID) } }
+    /// Legacy single-language preference, retained so existing installations migrate cleanly.
+    @Published var targetLanguageID: String {
+        didSet {
+            let resolved = TargetLanguage.resolve(id: targetLanguageID).id
+            if targetLanguageID != resolved {
+                targetLanguageID = resolved
+                return
+            }
+            save(targetLanguageID, for: Key.targetLanguageID)
+            if resolved != TargetLanguage.none.id, targetLanguageIDs != [resolved] {
+                targetLanguageIDs = [resolved]
+            }
+        }
+    }
+    /// Translation targets emitted after the original transcript. Limited to three.
+    @Published var targetLanguageIDs: [String] {
+        didSet {
+            let normalized = Self.normalizedTargetLanguageIDs(targetLanguageIDs)
+            if targetLanguageIDs != normalized {
+                targetLanguageIDs = normalized
+                return
+            }
+            defaults.set(targetLanguageIDs, forKey: Key.targetLanguageIDs)
+            let first = targetLanguageIDs.first ?? TargetLanguage.none.id
+            if targetLanguageID != first {
+                targetLanguageID = first
+            }
+        }
+    }
     @Published var translationModel: String {
         didSet {
             let cleaned = TranslationClient.sanitizeModelName(translationModel)
@@ -443,7 +484,11 @@ final class AppSettings: ObservableObject {
     }
 
     var effectiveTargetLanguage: TargetLanguage {
-        llmFeaturesAvailable ? targetLanguage : .none
+        effectiveTargetLanguages.first ?? .none
+    }
+
+    var effectiveTargetLanguages: [TargetLanguage] {
+        llmFeaturesAvailable ? targetLanguages : []
     }
 
     var streamingMode: StreamingMode {
@@ -545,8 +590,16 @@ final class AppSettings: ObservableObject {
         let migratedFromPromptOption = storedTarget == "prompt"
         let resolvedTarget = TargetLanguage.resolve(id: storedTarget)
         targetLanguageID = resolvedTarget.id
+        let storedTargets = defaults.stringArray(forKey: Key.targetLanguageIDs)
+        let resolvedTargetIDs = Self.normalizedTargetLanguageIDs(
+            storedTargets ?? (resolvedTarget.translates ? [resolvedTarget.id] : [])
+        )
+        targetLanguageIDs = resolvedTargetIDs
         if storedTarget != resolvedTarget.id {
             defaults.set(resolvedTarget.id, forKey: Key.targetLanguageID)
+        }
+        if storedTargets == nil {
+            defaults.set(resolvedTargetIDs, forKey: Key.targetLanguageIDs)
         }
         let resolvedTranslationModel = TranslationClient.sanitizeModelName(
             KeychainStore.coalesceString(
@@ -692,7 +745,35 @@ final class AppSettings: ObservableObject {
     }
 
     var targetLanguage: TargetLanguage {
-        TargetLanguage.resolve(id: targetLanguageID)
+        targetLanguages.first ?? .none
+    }
+
+    var targetLanguages: [TargetLanguage] {
+        targetLanguageIDs.compactMap { id in
+            let language = TargetLanguage.resolve(id: id)
+            return language.translates ? language : nil
+        }
+    }
+
+    var outputLanguageSummary: String {
+        guard !targetLanguages.isEmpty else { return "仅原文" }
+        return "原文 + " + targetLanguages.map(\.label).joined(separator: "、")
+    }
+
+    var canSelectMoreTargetLanguages: Bool { targetLanguageIDs.count < 3 }
+
+    func isTargetLanguageSelected(_ language: TargetLanguage) -> Bool {
+        targetLanguageIDs.contains(language.id)
+    }
+
+    func setTargetLanguageSelected(_ language: TargetLanguage, selected: Bool) {
+        guard language.translates else { return }
+        if selected {
+            guard !targetLanguageIDs.contains(language.id), targetLanguageIDs.count < 3 else { return }
+            targetLanguageIDs.append(language.id)
+        } else {
+            targetLanguageIDs.removeAll { $0 == language.id }
+        }
     }
 
     var configuration: TranscriptionConfiguration {
@@ -731,12 +812,6 @@ final class AppSettings: ObservableObject {
             lines.append("""
             - Write all IR string fields in the same language as the source dictation.
             - Do not switch to English unless the source itself is English (image prompts may still use English visual terms in focus_areas).
-            """)
-        } else if language.bilingual {
-            lines.append("""
-            - Write all IR string fields in \(language.promptName).
-            - Keep short original terms in preserve_verbatim when needed — do not emit parallel bilingual IR.
-            \(language.styleHint.isEmpty ? "" : "Extra style for \(language.promptName):\n\(language.styleHint)")
             """)
         } else {
             lines.append("""
@@ -778,6 +853,9 @@ final class AppSettings: ObservableObject {
         !llmSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// A custom post-process instruction is actionable even when the structured-output switch is off.
+    var hasCustomFormattingPrompt: Bool { hasSmartRoutePrompt }
+
     func semanticFormatterConfiguration(for transcript: String) -> SemanticFormatterConfiguration {
         let mode = SemanticFormatter.resolveMode(for: transcript, intensity: structureIntensity)
         return SemanticFormatterConfiguration(
@@ -786,9 +864,7 @@ final class AppSettings: ObservableObject {
             apiKey: llmApiKey,
             mode: mode,
             customSystemPrompt: llmSystemPrompt,
-            outputLanguageDirective: effectiveTargetLanguage.translates
-                ? effectiveTargetLanguage.outputLanguageDirective
-                : nil,
+            outputLanguageDirective: nil,
             useEmoji: structuredEmojiEnabled
         )
     }
@@ -799,14 +875,7 @@ final class AppSettings: ObservableObject {
             parts.append(L10n.t(.captionASROnly))
         } else if promptOptimizeEnabled {
             let targetLabel = promptTarget.label
-            var suffix: String
-            if !targetLanguage.translates {
-                suffix = L10n.t(.followSpokenLanguage)
-            } else if targetLanguage.bilingual {
-                suffix = targetLanguage.shortLabel
-            } else {
-                suffix = targetLanguage.label
-            }
+            let suffix = targetLanguage.translates ? targetLanguage.label : L10n.t(.followSpokenLanguage)
             parts.append(L10n.t(.promptCompileArrow, targetLabel, suffix))
         } else if structuredOutputEnabled {
             var structured = L10n.t(.structuredPrefix, structureIntensity.label)
@@ -814,9 +883,9 @@ final class AppSettings: ObservableObject {
                 structured += " · Emoji"
             }
             parts.append(structured)
-            parts.append(targetLanguage.menuCaption)
+            parts.append(outputLanguageSummary)
         } else {
-            parts.append(targetLanguage.menuCaption)
+            parts.append(outputLanguageSummary)
         }
         return parts.joined(separator: " · ")
     }
@@ -826,7 +895,7 @@ final class AppSettings: ObservableObject {
         guard llmFeaturesAvailable else { return L10n.t(.captionASROnly) }
         switch mode {
         case .conversation:
-            return targetLanguage.menuCaption
+            return outputLanguageSummary
         case .english:
             return L10n.t(.captionDirectEnglish)
         case .structured:
@@ -834,14 +903,11 @@ final class AppSettings: ObservableObject {
             if structuredEmojiEnabled {
                 structured += " · Emoji"
             }
-            return "\(structured) · \(targetLanguage.menuCaption)"
+            return "\(structured) · \(outputLanguageSummary)"
         case .prompt:
             let targetLabel = promptTarget.label
             if !targetLanguage.translates {
                 return L10n.t(.promptCompileArrow, targetLabel, L10n.t(.followSpokenLanguage))
-            }
-            if targetLanguage.bilingual {
-                return L10n.t(.promptCompileArrow, targetLabel, targetLanguage.shortLabel)
             }
             return L10n.t(.promptCompileArrow, targetLabel, targetLanguage.label)
         case .smartRoute:
@@ -869,6 +935,17 @@ final class AppSettings: ObservableObject {
             components?.path = "/v1/chat/completions"
         }
         return components?.string ?? "http://127.0.0.1:8000/v1/chat/completions"
+    }
+
+    private static func normalizedTargetLanguageIDs(_ ids: [String]) -> [String] {
+        var result: [String] = []
+        for id in ids {
+            let language = TargetLanguage.resolve(id: id)
+            guard language.translates, !result.contains(language.id) else { continue }
+            result.append(language.id)
+            if result.count == 3 { break }
+        }
+        return result
     }
 
     /// Drop known placeholder prompts that ASR models tend to echo during silence.

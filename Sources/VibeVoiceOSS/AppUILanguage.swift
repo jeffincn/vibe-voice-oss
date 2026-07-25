@@ -4,6 +4,7 @@ import Foundation
 enum AppUILanguage: String, CaseIterable, Identifiable, Sendable {
     case zhHans = "zh-Hans"
     case english = "en"
+    case japanese = "ja"
 
     var id: String { rawValue }
 
@@ -12,6 +13,7 @@ enum AppUILanguage: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .zhHans: "简体中文"
         case .english: "English"
+        case .japanese: "日本語"
         }
     }
 

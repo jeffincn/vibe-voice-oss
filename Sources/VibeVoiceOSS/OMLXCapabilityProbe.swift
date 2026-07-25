@@ -54,6 +54,18 @@ enum OMLXCapabilityProbe {
                 detail: "转写接口地址无效"
             )
         }
+        guard EndpointSecurity.allowsCredentialTransmission(
+            to: transcriptionURL, apiKey: configuration.apiKey
+        ) else {
+            return OMLXCapabilities(
+                serverReachable: false,
+                openAPIVersion: nil,
+                transcriptionEndpointOK: false,
+                supportsResultSSE: false,
+                supportsRealtimeIngress: false,
+                detail: "为保护 API Key，远程明文 HTTP 探测已阻止；请改用 HTTPS。"
+            )
+        }
 
         let root = transcriptionURL
             .deletingLastPathComponent()

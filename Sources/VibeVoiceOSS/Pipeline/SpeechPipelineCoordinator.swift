@@ -25,6 +25,8 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
     private var configuration: TranscriptionConfiguration?
     private var sessionStartedAt: CFAbsoluteTime = 0
     private var asrTask: Task<Void, Never>?
+    /// Invalidates callbacks from ASR work belonging to a previous session.
+    private var sessionGeneration = 0
     /// Slow AGC so quiet mics still reach VAD/ASR (mirrors AudioRecorder export gain).
     private var agcGain: Float = 1
     /// Running transcript for ASR context across VAD cuts.
@@ -66,6 +68,7 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
         configuration: TranscriptionConfiguration
     ) async {
         guard !isRunningFlag else { return }
+        sessionGeneration += 1
         self.configuration = configuration
         state = .listening // optimistic UI while preparing; rolled back on failure
 
@@ -118,6 +121,7 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
 
     @MainActor
     func stop() {
+        sessionGeneration += 1
         asrTask?.cancel()
         asrTask = nil
         capture.stop()
@@ -208,6 +212,7 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
         let endToEndStart = sessionStartedAt
         let prior = accumulatedTranscript
         let segmentIndex = segmentTexts.count + 1
+        let generation = sessionGeneration
         // Do not cancel an in-flight segment — that drops captions the user already spoke.
         asrTask = Task { [weak self] in
             guard let self else { return }
@@ -220,9 +225,10 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
                 guard !Task.isCancelled else { return }
                 let e2e = CFAbsoluteTimeGetCurrent() - endToEndStart
                 SpeechPipelineLog.coordinator.info(
-                    "segment#\(segmentIndex) asr ok e2e=\(e2e, format: .fixed(precision: 2))s asr=\(result.inferenceLatency, format: .fixed(precision: 2))s chars=\(result.text.count) priorChars=\(prior.count) text=\(result.text, privacy: .public)"
+                    "segment#\(segmentIndex) asr ok e2e=\(e2e, format: .fixed(precision: 2))s asr=\(result.inferenceLatency, format: .fixed(precision: 2))s chars=\(result.text.count) priorChars=\(prior.count) text=\(result.text, privacy: .private)"
                 )
                 await MainActor.run {
+                    guard self.sessionGeneration == generation, self.isRunningFlag else { return }
                     self.segmentTexts.append(result.text)
                     if self.accumulatedTranscript.isEmpty {
                         self.accumulatedTranscript = result.text
@@ -237,7 +243,7 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
                 // assignments happen in one turn and the transcript never reaches the HUD.
                 try? await Task.sleep(for: .milliseconds(120))
                 await MainActor.run {
-                    if self.isRunningFlag {
+                    if self.sessionGeneration == generation, self.isRunningFlag {
                         self.state = .listening
                     }
                 }
@@ -248,7 +254,7 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
                 )
                 await MainActor.run {
                     // Empty / noise segments: stay listening without publishing .failed (avoids UI thrash).
-                    if self.isRunningFlag {
+                    if self.sessionGeneration == generation, self.isRunningFlag {
                         self.state = .listening
                     }
                 }

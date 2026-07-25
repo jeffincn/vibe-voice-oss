@@ -45,6 +45,8 @@ final class SemanticFormatterTests: XCTestCase {
         XCTAssertTrue(prompt.contains("与原始转写保持同一语言"))
         XCTAssertTrue(prompt.contains("一句一行") || prompt.contains("禁止输出没有换行"))
         XCTAssertTrue(prompt.contains("最终输出必须是可直接粘贴的多行正文") || prompt.contains("最终粘贴文本"))
+        XCTAssertTrue(prompt.contains("口述修正规则"))
+        XCTAssertTrue(prompt.contains("明天上午去看电影"))
     }
 
     func testCleanPromptHonorsOutputLanguageDirective() {

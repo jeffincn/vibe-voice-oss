@@ -21,6 +21,7 @@ final class StreamingTranscriptionSession {
     private var sawPartial = false
     private var pendingPCM: [Data] = []
     private var pcmDrainTask: Task<Void, Never>?
+    private var sessionGeneration = 0
 
     init(
         onUpdate: @escaping (TranscriptAccumulator) -> Void,
@@ -37,6 +38,7 @@ final class StreamingTranscriptionSession {
         streamingWSURL: URL?
     ) async {
         closeClients()
+        sessionGeneration += 1
         accumulator.reset()
         sawPartial = false
         pendingPCM.removeAll(keepingCapacity: false)
@@ -95,6 +97,7 @@ final class StreamingTranscriptionSession {
     /// without sacrificing final accuracy.
     func openLocal(configuration: TranscriptionConfiguration) async {
         closeClients()
+        sessionGeneration += 1
         accumulator.reset()
         sawPartial = false
         pendingPCM.removeAll(keepingCapacity: false)
@@ -177,8 +180,9 @@ final class StreamingTranscriptionSession {
         guard isOpen, client != nil else { return }
         pendingPCM.append(frame)
         guard pcmDrainTask == nil else { return }
+        let generation = sessionGeneration
         pcmDrainTask = Task { [weak self] in
-            await self?.drainPendingPCM()
+            await self?.drainPendingPCM(generation: generation)
         }
     }
 
@@ -204,18 +208,22 @@ final class StreamingTranscriptionSession {
     }
 
     func cancel() {
+        sessionGeneration += 1
         isOpen = false
         pendingPCM.removeAll(keepingCapacity: false)
         pcmDrainTask?.cancel()
         pcmDrainTask = nil
+        let clientToCancel = client
+        // Clear references before starting asynchronous cancellation. An old
+        // cancellation must never clear a client opened by a newer session.
+        clearClientRefs()
         Task {
-            await client?.cancel()
-            await MainActor.run { self.clearClientRefs() }
+            await clientToCancel?.cancel()
         }
     }
 
-    private func drainPendingPCM() async {
-        while isOpen, let client {
+    private func drainPendingPCM(generation: Int) async {
+        while isOpen, generation == sessionGeneration, let client {
             let batch = pendingPCM
             pendingPCM.removeAll(keepingCapacity: true)
             if batch.isEmpty { break }
@@ -224,11 +232,13 @@ final class StreamingTranscriptionSession {
                 try? await client.appendPCM(frame)
             }
         }
+        guard generation == sessionGeneration else { return }
         pcmDrainTask = nil
         // Frames may have arrived after the empty check but before clearing the task ref.
         if isOpen, client != nil, !pendingPCM.isEmpty, pcmDrainTask == nil {
+            let currentGeneration = sessionGeneration
             pcmDrainTask = Task { [weak self] in
-                await self?.drainPendingPCM()
+                await self?.drainPendingPCM(generation: currentGeneration)
             }
         }
     }

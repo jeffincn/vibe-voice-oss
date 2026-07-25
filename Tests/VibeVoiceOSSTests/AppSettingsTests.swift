@@ -43,6 +43,29 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.effectiveTargetLanguage.id, "zh-Hans")
     }
 
+    func testOutputLanguagesLimitTranslationsToThreeAndKeepOriginalSeparate() {
+        let settings = AppSettings(defaults: isolatedDefaults())
+        settings.setTargetLanguageSelected(TargetLanguage.resolve(id: "ko"), selected: true)
+        settings.setTargetLanguageSelected(TargetLanguage.resolve(id: "fr"), selected: true)
+        settings.setTargetLanguageSelected(TargetLanguage.resolve(id: "es"), selected: true)
+        settings.setTargetLanguageSelected(TargetLanguage.resolve(id: "hi"), selected: true)
+
+        XCTAssertEqual(settings.targetLanguageIDs, ["ko", "fr", "es"])
+        XCTAssertEqual(settings.targetLanguages.map(\.id), ["ko", "fr", "es"])
+        XCTAssertFalse(settings.canSelectMoreTargetLanguages)
+        XCTAssertTrue(settings.outputLanguageSummary.contains("原文 +"))
+    }
+
+    func testLegacyBilingualPreferenceMigratesToOneTranslationTarget() {
+        let defaults = isolatedDefaults()
+        defaults.set("bi-ja", forKey: "targetLanguageID")
+
+        let settings = AppSettings(defaults: defaults)
+
+        XCTAssertEqual(settings.targetLanguageIDs, ["ja"])
+        XCTAssertEqual(defaults.stringArray(forKey: "targetLanguageIDs"), ["ja"])
+    }
+
     func testHFEndpointPersistsAndFlowsIntoConfiguration() {
         let defaults = isolatedDefaults()
         let settings = AppSettings(defaults: defaults)

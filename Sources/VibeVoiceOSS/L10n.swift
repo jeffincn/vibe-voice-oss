@@ -2,7 +2,7 @@ import Foundation
 
 /// UI string catalog. LLM / ASR prompts stay in their original language.
 enum L10n {
-    enum Key: String {
+    enum Key: String, CaseIterable {
         // MARK: Common
         case copied
         case copyTranscript
@@ -203,6 +203,87 @@ enum L10n {
         case checkLocalASR
         case openStageTimingReport
         case openTokenUsageReport
+        case voicePipeline
+        case voicePipelineCaption
+        case voicePipelineUnavailable
+        case qwenRepoCaption
+        case currentModel
+        case modelFilesCaption
+        case hfEndpointCaption
+        case apiKeyOptional
+        case recognitionMode
+        case streamingFallbackCaption
+        case cancelDownload
+        case sampleRate
+        case channels
+        case codec
+        case maxGain
+        case customPrompt
+        case customPromptCaption
+        case outputLanguageCombination
+        case outputLanguageCombinationCaption
+        case providerProfileCaption
+        case apiKeyStorageCaption
+        case structuredEmojiCaptionOn
+        case structuredEmojiCaptionOff
+        case shortcutsCaption
+        case recordingInput
+        case currentPlaybackOutput
+        case bluetoothRefresh
+        case choose
+
+        // MARK: Reports
+        case timingNoRecords
+        case timingNoRecordsCaption
+        case timingHeader
+        case timingLatest
+        case timingDescription
+        case timingActive
+        case exportCSV
+        case exportHTML
+        case clearRecords
+        case exportTimingCSV
+        case exportTimingHTML
+        case exportCancelled
+        case exportSuccess
+        case exportFailed
+        case tokenUsageHeader
+        case tokenUsageCaption
+        case tokenNoData
+        case tokenNoDataCaption
+        case tokenCumulative
+        case tokenRecent
+        case tokenRecordCount
+        case tokenInput
+        case tokenCachedInput
+        case tokenOutput
+        case tokenReasoning
+        case tokenAudioInput
+        case tokenAudioOutput
+        case tokenAudioDuration
+        case tokenTotal
+        case stageRecording
+        case stageFinalizing
+        case stageTranscribing
+        case stageStructuring
+        case stageTranslating
+        case stageOptimizing
+        case stagePaste
+        case outcomeSuccess
+        case outcomeFailed
+        case outcomeCancelled
+        case timingHTMLNoStage
+        case timingHTMLGenerated
+        case timingHTMLTotal
+        case timingHTMLResult
+        case timingHTMLTarget
+        case timingHTMLFirstPartial
+        case timingHTMLStage
+        case timingHTMLMilliseconds
+        case timingHTMLDuration
+        case timingHTMLNoRecords
+        case japaneseModelRequirement
+        case japaneseNaturalCaption
 
         // MARK: Result banner
         case justNow
@@ -278,8 +359,21 @@ enum L10n {
     }
 
     static func string(_ key: Key, language: AppUILanguage) -> String {
-        let table = language == .english ? english : chinese
-        return table[key] ?? chinese[key] ?? key.rawValue
+        let table: [Key: String]
+        switch language {
+        case .zhHans: table = chinese
+        case .english: table = english
+        case .japanese: table = japanese
+        }
+        return table[key] ?? english[key] ?? chinese[key] ?? key.rawValue
+    }
+
+    static func hasTranslation(_ key: Key, language: AppUILanguage) -> Bool {
+        switch language {
+        case .zhHans: chinese[key] != nil
+        case .english: english[key] != nil
+        case .japanese: japanese[key] != nil
+        }
     }
 
     // MARK: - 简体中文
@@ -474,6 +568,85 @@ enum L10n {
         .checkLocalASR: "检查本地 ASR",
         .openStageTimingReport: "打开耗时报告",
         .openTokenUsageReport: "打开 Token 统计",
+        .voicePipeline: "Voice Pipeline（VAD 切段）",
+        .voicePipelineCaption: "开启后按热键持续聆听，停顿会自动切段并显示字幕；结束时再按当前输出规则处理并粘贴。",
+        .voicePipelineUnavailable: "Voice Pipeline 仅在集成模式下可用；当前为 API 模式，已强制关闭。",
+        .qwenRepoCaption: "默认 mlx-community/Qwen3-ASR-0.6B-6bit；也可使用 4bit / 8bit 版本。",
+        .currentModel: "当前模型：%@",
+        .modelFilesCaption: "模型目录需包含 config.json、model.safetensors 及 tokenizer 文件。",
+        .hfEndpointCaption: "直连 huggingface.co 不稳定时可填写镜像；留空使用官方源。",
+        .apiKeyOptional: "API Key（未启用可留空）",
+        .recognitionMode: "识别模式",
+        .streamingFallbackCaption: "连接失败时自动降级为重叠窗伪流式。",
+        .cancelDownload: "取消下载",
+        .sampleRate: "采样率",
+        .channels: "声道",
+        .codec: "编码",
+        .maxGain: "最大增益",
+        .customPrompt: "自定义整理 / 输出 Prompt",
+        .customPromptCaption: "用于规定信息结构、取舍和文案风格；整理会优先采纳最后一次明确的自我修正。",
+        .outputLanguageCombination: "输出语言组合",
+        .outputLanguageCombinationCaption: "原文始终排在第一段；最多再选 3 种翻译语言，共最多 4 段输出。",
+        .providerProfileCaption: "按模型名自动选择 Provider Profile：qwen → Qwen，nemotron → NVIDIA Nemotron，其余 → OpenAI 兼容。",
+        .apiKeyStorageCaption: "API Key 保存在 macOS 钥匙串；临时构建会退回本机 UserDefaults。",
+        .structuredEmojiCaptionOn: "分区标题会带修饰性 Emoji（如 ✅ 📌）。",
+        .structuredEmojiCaptionOff: "默认不加 Emoji，只用短段与小标题。",
+        .shortcutsCaption: "全局快捷键均为按一次开始、再按一次结束；⌘⇧G 使用自定义 System Prompt。",
+        .recordingInput: "录音输入",
+        .currentPlaybackOutput: "当前系统播放输出",
+        .bluetoothRefresh: "刷新设备",
+        .choose: "选择",
+        .timingNoRecords: "暂无耗时记录",
+        .timingNoRecordsCaption: "完成一次录音转写后，各阶段耗时会显示在这里。",
+        .timingHeader: "阶段耗时报告",
+        .timingLatest: "最近一次合计 %@ · %@",
+        .timingDescription: "记录每次录音后的转写 / 整理 / 翻译 / Prompt 编译耗时",
+        .timingActive: "计时中",
+        .exportCSV: "导出 CSV…",
+        .exportHTML: "导出 HTML…",
+        .clearRecords: "清空记录",
+        .exportTimingCSV: "导出阶段耗时 CSV",
+        .exportTimingHTML: "导出阶段耗时 HTML",
+        .exportCancelled: "已取消导出",
+        .exportSuccess: "已导出：%@",
+        .exportFailed: "导出失败：%@",
+        .tokenUsageHeader: "Token 用量统计",
+        .tokenUsageCaption: "仅统计接口实际返回的 usage；本地模型或未返回 usage 的接口不会估算。",
+        .tokenNoData: "暂无用量数据",
+        .tokenNoDataCaption: "完成一次返回 usage 的转写、整理、翻译或 Prompt 优化后会显示在这里。",
+        .tokenCumulative: "累计",
+        .tokenRecent: "最近请求",
+        .tokenRecordCount: "共 %@ 次 API 用量记录",
+        .tokenInput: "Input Token",
+        .tokenCachedInput: "Cached Input Token（Input 明细）",
+        .tokenOutput: "Output Token",
+        .tokenReasoning: "Reasoning Token（Output 明细）",
+        .tokenAudioInput: "Audio Input Token",
+        .tokenAudioOutput: "Audio Output Token",
+        .tokenAudioDuration: "Audio 时长",
+        .tokenTotal: "Total Token",
+        .stageRecording: "录音",
+        .stageFinalizing: "收敛识别",
+        .stageTranscribing: "转写",
+        .stageStructuring: "整理",
+        .stageTranslating: "翻译",
+        .stageOptimizing: "输出 Prompt",
+        .stagePaste: "写入输入框",
+        .outcomeSuccess: "完成",
+        .outcomeFailed: "失败",
+        .outcomeCancelled: "已取消",
+        .timingHTMLNoStage: "无阶段数据",
+        .timingHTMLGenerated: "生成于 %@ · 共 %@ 次运行",
+        .timingHTMLTotal: "合计",
+        .timingHTMLResult: "结果",
+        .timingHTMLTarget: "目标 Agent",
+        .timingHTMLFirstPartial: "首 partial",
+        .timingHTMLStage: "阶段",
+        .timingHTMLMilliseconds: "毫秒",
+        .timingHTMLDuration: "时长",
+        .timingHTMLNoRecords: "暂无记录",
+        .japaneseModelRequirement: "日语自然化输出需要 5.6 或更高版本的模型；当前模型未通过版本检查。",
+        .japaneseNaturalCaption: "日语会按自然的母语文体整理（需要 5.6 或更高版本模型）。",
 
         .justNow: "刚刚",
         .recognitionComplete: "识别完成",
@@ -712,6 +885,85 @@ enum L10n {
         .checkLocalASR: "Check local ASR",
         .openStageTimingReport: "Open timing report",
         .openTokenUsageReport: "Open token usage",
+        .voicePipeline: "Voice Pipeline (VAD segments)",
+        .voicePipelineCaption: "Hold the shortcut to listen continuously; pauses create caption segments. Final output follows the selected rules.",
+        .voicePipelineUnavailable: "Voice Pipeline is available only in Integrated mode; it is disabled in API mode.",
+        .qwenRepoCaption: "Default: mlx-community/Qwen3-ASR-0.6B-6bit; 4bit / 8bit variants are also supported.",
+        .currentModel: "Current model: %@",
+        .modelFilesCaption: "The folder must contain config.json, model.safetensors, and tokenizer files.",
+        .hfEndpointCaption: "Use a mirror if huggingface.co is unreliable; leave blank for the official source.",
+        .apiKeyOptional: "API Key (optional when disabled)",
+        .recognitionMode: "Recognition mode",
+        .streamingFallbackCaption: "Falls back to overlapping-window pseudo-streaming if the connection fails.",
+        .cancelDownload: "Cancel download",
+        .sampleRate: "Sample rate",
+        .channels: "Channels",
+        .codec: "Codec",
+        .maxGain: "Maximum gain",
+        .customPrompt: "Custom cleanup / output Prompt",
+        .customPromptCaption: "Defines structure, omissions, and writing style; the last explicit correction takes priority.",
+        .outputLanguageCombination: "Output language combination",
+        .outputLanguageCombinationCaption: "The original is always first; choose up to 3 translation languages for at most 4 sections.",
+        .providerProfileCaption: "Provider Profile is selected by model name: qwen → Qwen, nemotron → NVIDIA Nemotron, otherwise OpenAI-compatible.",
+        .apiKeyStorageCaption: "API keys are stored in the macOS Keychain; temporary builds fall back to local UserDefaults.",
+        .structuredEmojiCaptionOn: "Section headings may include decorative emoji (for example ✅ 📌).",
+        .structuredEmojiCaptionOff: "No decorative emoji; use short paragraphs and headings.",
+        .shortcutsCaption: "Global shortcuts toggle start/stop; ⌘⇧G uses the custom System Prompt.",
+        .recordingInput: "Recording input",
+        .currentPlaybackOutput: "Current system playback output",
+        .bluetoothRefresh: "Refresh devices",
+        .choose: "Choose",
+        .timingNoRecords: "No timing records",
+        .timingNoRecordsCaption: "Stage timings appear here after a recording is transcribed.",
+        .timingHeader: "Stage Timing Report",
+        .timingLatest: "Latest total %@ · %@",
+        .timingDescription: "Timing for transcription / formatting / translation / Prompt compile after each recording",
+        .timingActive: "Timing",
+        .exportCSV: "Export CSV…",
+        .exportHTML: "Export HTML…",
+        .clearRecords: "Clear records",
+        .exportTimingCSV: "Export stage timing CSV",
+        .exportTimingHTML: "Export stage timing HTML",
+        .exportCancelled: "Export cancelled",
+        .exportSuccess: "Exported: %@",
+        .exportFailed: "Export failed: %@",
+        .tokenUsageHeader: "Token Usage",
+        .tokenUsageCaption: "Only provider-reported usage is shown; local models and responses without usage are not estimated.",
+        .tokenNoData: "No usage data",
+        .tokenNoDataCaption: "Usage appears after a transcription, formatting, translation, or Prompt request returns usage.",
+        .tokenCumulative: "Cumulative",
+        .tokenRecent: "Recent requests",
+        .tokenRecordCount: "%@ API usage records",
+        .tokenInput: "Input Token",
+        .tokenCachedInput: "Cached Input Token (input detail)",
+        .tokenOutput: "Output Token",
+        .tokenReasoning: "Reasoning Token (output detail)",
+        .tokenAudioInput: "Audio Input Token",
+        .tokenAudioOutput: "Audio Output Token",
+        .tokenAudioDuration: "Audio duration",
+        .tokenTotal: "Total Token",
+        .stageRecording: "Recording",
+        .stageFinalizing: "Finalizing",
+        .stageTranscribing: "Transcribing",
+        .stageStructuring: "Formatting",
+        .stageTranslating: "Translating",
+        .stageOptimizing: "Prompt compile",
+        .stagePaste: "Insert into field",
+        .outcomeSuccess: "Done",
+        .outcomeFailed: "Failed",
+        .outcomeCancelled: "Cancelled",
+        .timingHTMLNoStage: "No stage data",
+        .timingHTMLGenerated: "Generated %@ · %@ runs",
+        .timingHTMLTotal: "Total",
+        .timingHTMLResult: "Result",
+        .timingHTMLTarget: "Target agent",
+        .timingHTMLFirstPartial: "First partial",
+        .timingHTMLStage: "Stage",
+        .timingHTMLMilliseconds: "Milliseconds",
+        .timingHTMLDuration: "Duration",
+        .timingHTMLNoRecords: "No records",
+        .japaneseModelRequirement: "Natural Japanese output requires model version 5.6 or later; the current model did not pass the version check.",
+        .japaneseNaturalCaption: "Japanese output uses natural native-language editing (requires model version 5.6 or later).",
 
         .justNow: "Just now",
         .recognitionComplete: "Recognition complete",
@@ -756,6 +1008,311 @@ enum L10n {
         .accessibilityPromptOpened: "Opened the Accessibility prompt. Until granted, text is copied only (no repeat prompts).",
         .structuredPrefix: "Structured: %@",
         .promptCompileArrow: "Prompt compile → %@ (%@)",
+    ]
+
+    // MARK: - 日本語
+
+    private static let japanese: [Key: String] = [
+        .copied: "コピーしました",
+        .copyTranscript: "認識テキストをコピー",
+        .copyCurrentText: "現在のテキストをコピー",
+        .settingsEllipsis: "設定…",
+        .cancel: "キャンセル",
+        .done: "完了",
+        .failed: "失敗",
+        .success: "完了",
+        .close: "閉じる",
+        .enabled: "オン",
+        .disabled: "オフ",
+        .detailsInSettings: "詳しくは設定を確認してください",
+        .followSpokenLanguage: "話し言葉に合わせる",
+        .startRecording: "録音を開始",
+        .stopAndTranscribe: "停止して文字起こし",
+        .cancelTranscribe: "文字起こしをキャンセル",
+        .cancelFinalize: "認識結果の確定をキャンセル",
+        .cancelStructure: "整理をキャンセル",
+        .cancelTranslate: "翻訳をキャンセル",
+        .cancelOptimize: "Prompt の最適化をキャンセル",
+        .cancelRoute: "スマートルートをキャンセル",
+        .outputLanguage: "出力言語",
+        .promptOptimize: "Prompt を最適化",
+        .targetAgent: "対象 Agent",
+        .moreOutputOptions: "その他の出力設定",
+        .useStructuredOutput: "構造化して出力",
+        .useEmoji: "Emoji を使う",
+        .structureIntensity: "整理の強さ",
+        .llmNotConfiguredASROnly: "LLM API 未設定のため、ASR 原文のみ出力します",
+        .testConnection: "接続をテスト",
+        .testConnectionHelp: "ASR と翻訳/LLM の接続を確認します",
+        .stageTiming: "処理時間",
+        .stageTimingHelp: "各工程の時間を確認し、CSV / HTML に書き出します",
+        .tokenUsage: "Token 使用量",
+        .tokenUsageHelp: "ASR と LLM API が返した使用量を確認します",
+        .quitApp: "Vibe Voice OSS を終了",
+        .windowStageTiming: "処理時間レポート",
+        .windowTokenUsage: "Token 使用量",
+        .phaseIdle: "ショートカットで開始し、もう一度押して停止",
+        .phaseIdleHotKey: "%@ で開始し、もう一度押して停止",
+        .phaseRecording: "録音中…もう一度押して停止",
+        .phaseRecordingHotKey: "録音中…%@ で停止",
+        .phaseRecordingMode: "録音中（%@）…%@ で停止",
+        .phaseFinalizing: "認識結果を確定中…",
+        .phaseTranscribing: "文字起こし中…",
+        .phaseStructuring: "内容を整理中…",
+        .phaseTranslating: "翻訳中…",
+        .phaseOptimizing: "Prompt を作成中…",
+        .phaseRouting: "スマートルーティング中…",
+        .hudRecording: "録音中",
+        .hudFinalizing: "確定中",
+        .hudTranscribing: "文字起こし中",
+        .hudStructuring: "整理中",
+        .hudTranslating: "翻訳中",
+        .hudOptimizing: "Prompt",
+        .hudRouting: "スマートルート",
+        .hudCustomSystemPrompt: "カスタム System Prompt",
+        .hudWaitingSpeak: "話してください。ここに字幕が表示されます",
+        .hudWaitingFinalizing: "認識結果を確定中…",
+        .hudWaitingTranscribing: "音声を文字起こし中…",
+        .hudWaitingStructuring: "内容の形式を整理中…",
+        .hudWaitingTranslating: "翻訳中…",
+        .hudWaitingOptimizing: "Prompt を作成中…",
+        .hudWaitingRouting: "スマートルーティング中…",
+        .hudWaitingFailed: "処理に失敗しました。もう一度お試しください",
+        .hudWaitingSuccess: "完了",
+        .hudListening: "聞き取り中",
+        .stopAndCancel: "停止してキャンセル",
+        .stopAccessibilityHint: "録音と処理をキャンセル",
+        .copyAccessibilityHint: "表示中のテキストをコピー",
+        .modeConversation: "会話",
+        .modeEnglish: "英語",
+        .modeStructured: "構造化",
+        .modePrompt: "Prompt",
+        .modeSmartRoute: "スマートルート",
+        .modeConversationCaption: "出力言語に合わせて翻訳または原文のまま処理",
+        .modeEnglishCaption: "既定の出力言語は変えず、英語へ翻訳",
+        .modeStructuredCaption: "整理の強さと Emoji 設定に従って整形",
+        .modePromptCaption: "対象 Agent 向けの Prompt に変換",
+        .modeSmartRouteCaption: "カスタム System Prompt が出力全体を決定",
+        .pressHotKey: "%@ を押してください",
+        .toggleHotKeyHint: "%@（1回で開始、もう1回で停止）",
+        .streamingBatch: "バッチ",
+        .streamingSSE: "結果ストリーム（SSE）",
+        .streamingDuplex: "双方向ストリーミング",
+        .streamingBatchCaption: "録音中は字幕を表示し、停止後に WAV 全体を最終処理します。",
+        .streamingSSECaption: "録音中は字幕を表示し、停止後に音声全体を送信して SSE 結果を段階的に表示します。",
+        .streamingDuplexCaption: "録音中に PCM を送り、WebSocket を優先して字幕のように表示します。",
+        .asrIntegrated: "統合 · デバイス上",
+        .asrAPI: "API · OpenAI 互換",
+        .asrIntegratedCaption: "既定は WhisperKit による端末内処理。Qwen3-ASR は MLX モデルが必要で、ASR API サーバーは不要です。",
+        .asrAPICaption: "oMLX またはリモートの OpenAI 互換 /v1/audio/transcriptions に接続します。",
+        .engineQwenCaption: "Python 不要の Swift 製 MLX 推論。ダウンロード済みの Qwen3-ASR MLX フォルダを選択します。",
+        .engineWhisperCaption: "WhisperKit / Core ML を使い、選択したモデルを端末内にダウンロードしてキャッシュします。",
+        .llmDisabled: "オフ",
+        .llmAPI: "API",
+        .llmDisabledCaption: "ASR 原文のみを出力し、翻訳・整理・Prompt 作成は行いません。",
+        .llmAPICaption: "OpenAI 互換 Chat Completions API で翻訳・整理・Prompt 作成を行います。",
+        .transcodeASR: "ASR 標準 · 16 kHz モノラル WAV",
+        .transcodeArchive: "アーカイブ · 48 kHz ステレオ WAV",
+        .transcodeASRCaption: "音声認識に使う既定の形式です。",
+        .transcodeArchiveCaption: "高音質保存用です。ASR へは直接送信しません。",
+        .intensityAuto: "自動",
+        .intensityClean: "軽く整理",
+        .intensityUltraConcise: "極めて簡潔",
+        .intensityStructured: "構成を整理",
+        .intensityRewrite: "大きく書き直す",
+        .intensityAutoCaption: "長さに応じて軽い整理か構成整理を選びます",
+        .intensityCleanCaption: "句読点、誤り、フィラー、基本的な段落分けを整えます",
+        .intensityUltraConciseCaption: "要点だけを残して、構成整理より強く圧縮します",
+        .intensityStructuredCaption: "関係性を読み取り、段落・リスト・手順に組み直します",
+        .intensityRewriteCaption: "重複を削り、読みやすい文書として書き直します",
+        .promptTargetChat: "一般チャット",
+        .promptTargetResearch: "Deep Research",
+        .promptTargetImage: "画像生成",
+        .promptTargetChatCaption: "会話型 LLM 向けの自己完結した指示",
+        .promptTargetCodexCaption: "Codex 向け：リポジトリを読み、編集し、コマンド/テストを実行",
+        .promptTargetClaudeCaption: "Claude Code 向け：リポジトリ規模のコーディング Agent",
+        .promptTargetGrokCaption: "Grok コーディング Agent 向け",
+        .promptTargetResearchCaption: "深掘り調査向け：根拠、出典、比較",
+        .promptTargetImageCaption: "画像生成向け：主題、構図、スタイル、制約",
+        .captionASROnly: "ASR 原文のみ",
+        .captionDirectEnglish: "翻訳 → English",
+        .captionSmartRoute: "スマートルート · カスタム System Prompt",
+        .paneGeneral: "一般",
+        .paneRecognition: "音声認識",
+        .paneAudio: "音声変換",
+        .paneTranslation: "翻訳と整理",
+        .panePrompt: "認識用 Prompt",
+        .paneShortcuts: "ショートカットとプライバシー",
+        .panePerformance: "パフォーマンス",
+        .uiLanguage: "インターフェース言語",
+        .uiLanguageCaption: "App の表示だけを変更します。認識言語と出力言語には影響しません。",
+        .settingsASRMode: "ASR モード",
+        .settingsEngine: "エンジン",
+        .settingsModel: "モデル",
+        .settingsEndpoint: "エンドポイント",
+        .settingsAPIKey: "API Key",
+        .settingsInputDevice: "入力デバイス",
+        .settingsLaunchAtLogin: "ログイン時に起動",
+        .settingsStreamingMode: "ストリーミングモード",
+        .settingsDuplexWS: "双方向 WebSocket",
+        .settingsLLMBackend: "LLM モード",
+        .settingsLLMEndpoint: "LLM エンドポイント",
+        .settingsLLMModel: "LLM モデル",
+        .settingsSystemPrompt: "System Prompt",
+        .settingsTranscodeProfile: "変換プロファイル",
+        .settingsNormalize: "音量を正規化",
+        .settingsCheckASR: "ローカル ASR を確認",
+        .settingsTestASR: "ASR をテスト",
+        .settingsTestTranslation: "翻訳モデルをテスト",
+        .settingsCheckPermissions: "権限を確認",
+        .settingsOpenTiming: "処理時間を開く",
+        .settingsQwenRepo: "Qwen モデルリポジトリ",
+        .settingsModelPath: "モデルフォルダ",
+        .settingsWhisperKitModel: "WhisperKit モデル",
+        .settingsPrepareModel: "モデルを準備",
+        .latestTotal: "最新の合計",
+        .stageTimingEmptyCaption: "録音処理が完了すると各工程の時間が表示されます。CSV / HTML にも書き出せます。",
+        .recognitionLanguage: "認識言語",
+        .recognitionLanguageCaption: "例：zh=中国語、yue=広東語、en=英語、auto=自動検出。Qwen3-ASR 用の言語指定に変換します。",
+        .modelNameMatchCaption: "oMLX またはリモートサーバーに読み込んだ ASR モデル名と一致させてください。",
+        .liveCaptionCaption: "録音中は字幕のように表示します。下のモードは停止後の最終処理だけに適用されます。",
+        .streamingModeAPIOnlyCaption: "接続できない場合は重複ウィンドウ方式に切り替えます。",
+        .integratedNoStreamingCaption: "統合モードでは停止後に端末内で確定します。ライブ字幕と WebSocket は API モードのみ対応します。",
+        .localAudioSpecCaption: "端末内で使う音声形式です。リモート API の設定ではありません。",
+        .llmSystemPromptCaption: "翻訳・整理・Prompt 作成への追加指示です。⌘⇧G のスマートルートでは唯一の System Prompt になります。",
+        .llmModelKeyCaption: "サーバーに読み込んだ chat モデル名を入力してください。API Key はこの Mac に保存されます。",
+        .llmFeaturesOffCaption: "オフにすると ASR 原文だけを出力し、下の翻訳・整理・Prompt 設定は無効になります。",
+        .emojiOnCaption: "構造化出力に装飾用 Emoji を許可します。",
+        .emojiOffCaption: "構造化出力に装飾用 Emoji を使いません。",
+        .llmOnlyWhenConfiguredCaption: "翻訳・整理・Prompt 作成は、LLM API とモデルが完全に設定されている場合だけ実行します。",
+        .promptHintWordsCaption: "人名、プロジェクト名、専門用語を入力し、日本語の読点で区切ります。",
+        .shortcutsToggleCaption: "グローバルショートカットは1回で開始、もう1回で停止します。⌘⇧G はカスタム System Prompt で処理します。",
+        .bluetoothAudioCaption: "Bluetooth を2台使う場合は DJI Mic を入力、ヘッドホンを出力にします。HFP に奪われた出力はできるだけ戻します。",
+        .prepareModel: "モデルを準備",
+        .checkLocalASR: "ローカル ASR を確認",
+        .openStageTimingReport: "処理時間レポートを開く",
+        .openTokenUsageReport: "Token 使用量を開く",
+        .justNow: "たった今",
+        .recognitionComplete: "認識完了",
+        .copyButtonTitle: "コピー",
+        .reformatButtonTitle: "整理し直す",
+        .supersededByNewRecording: "新しい録音によって処理中のタスクが置き換えられました",
+        .pasteFailedNoFocus: "完了しましたが、フォーカス中の入力欄へ挿入できませんでした",
+        .pasteFailedDetail: "挿入できませんでした：%@。テキストはコピー済みです。手動で貼り付けてください。",
+        .cancelled: "キャンセルしました",
+        .cancelledPeriod: "キャンセルしました。",
+        .checkingLocalASR: "ローカル ASR を確認中…",
+        .localASRFirstUseHint: "端末内 ASR は初回利用時にモデルのダウンロードまたは読み込みが必要な場合があります。",
+        .localASRReady: "ローカル ASR の準備ができました",
+        .localASRCheckFailed: "ローカル ASR の確認に失敗：%@",
+        .connectingASRAPI: "ASR API に接続中…",
+        .probingStreaming: "API のストリーミング対応を確認中…",
+        .asrConnectOK: "ASR に接続しました",
+        .asrConnectFailed: "ASR 接続に失敗：%@",
+        .apiNoLocalModel: "API モードではローカル ASR モデルは不要です",
+        .preparingLocalASR: "ローカル ASR モデルを準備中…",
+        .prepareLocalASRFailed: "ローカル ASR の準備に失敗：%@",
+        .llmPostProcessOff: "翻訳・整理・Prompt 作成はオフです",
+        .configureLLMFirst: "先に LLM API の URL とモデル名を設定してください",
+        .connectingTranslation: "翻訳モデルに接続中…",
+        .translationConnectFailed: "翻訳接続に失敗：%@",
+        .testingConnections: "接続をテスト中…",
+        .checkingNativeASR: "端末内 ASR を確認中…",
+        .localASROK: "ローカル ASR は正常です",
+        .asrAPIOK: "ASR API は正常です",
+        .asrFailed: "ASR に失敗：%@",
+        .llmNotEnabled: "LLM の後処理はオフです",
+        .translationFailed: "翻訳に失敗：%@",
+        .enableLLMInSettings: "先に「翻訳と整理」で LLM API を有効にして設定してください",
+        .reformatPasteFailed: "整理しましたが、フォーカス中の入力欄へ挿入できませんでした",
+        .reformatPasteFailedDetail: "整理結果を挿入できませんでした：%@。テキストはコピー済みです。",
+        .launchAtLoginNeedAllow: "システム設定のログイン項目で Vibe Voice OSS を許可してください。",
+        .launchAtLoginOn: "オン",
+        .launchAtLoginOff: "オフ",
+        .launchAtLoginFailed: "設定を更新できませんでした：%@",
+        .accessibilityGranted: "アクセシビリティが許可されています。フォーカス中の入力欄へ挿入できます。",
+        .accessibilityPromptOpened: "アクセシビリティ設定を開きました。許可されるまではテキストのみコピーします。",
+        .structuredPrefix: "構造化：%@",
+        .promptCompileArrow: "Prompt 作成 → %@（%@）",
+        .voicePipeline: "Voice Pipeline（VAD セグメント）",
+        .voicePipelineCaption: "ショートカットで連続して聞き取り、無音で字幕を区切ります。終了時は選択した出力ルールで処理します。",
+        .voicePipelineUnavailable: "Voice Pipeline は統合モードでのみ利用できます。API モードでは無効です。",
+        .qwenRepoCaption: "既定は mlx-community/Qwen3-ASR-0.6B-6bit。4bit / 8bit 版も利用できます。",
+        .currentModel: "現在のモデル：%@",
+        .modelFilesCaption: "フォルダには config.json、model.safetensors、tokenizer ファイルが必要です。",
+        .hfEndpointCaption: "huggingface.co が不安定な場合はミラーを指定し、空欄なら公式ソースを使います。",
+        .apiKeyOptional: "API Key（オフの場合は任意）",
+        .recognitionMode: "認識モード",
+        .streamingFallbackCaption: "接続できない場合は重複ウィンドウ方式に切り替えます。",
+        .cancelDownload: "ダウンロードをキャンセル",
+        .sampleRate: "サンプルレート",
+        .channels: "チャンネル",
+        .codec: "コーデック",
+        .maxGain: "最大ゲイン",
+        .customPrompt: "カスタム整理 / 出力 Prompt",
+        .customPromptCaption: "情報の構成、取捨選択、文章のスタイルを指定します。最後に明示した修正を優先します。",
+        .outputLanguageCombination: "出力言語の組み合わせ",
+        .outputLanguageCombinationCaption: "原文は常に最初に出力し、翻訳言語は最大3つ、合計4セクションまで選べます。",
+        .providerProfileCaption: "モデル名で Provider Profile を選択します：qwen → Qwen、nemotron → NVIDIA Nemotron、それ以外は OpenAI 互換です。",
+        .apiKeyStorageCaption: "API Key は macOS キーチェーンに保存します。仮署名ビルドでは UserDefaults に戻ります。",
+        .structuredEmojiCaptionOn: "見出しに装飾用 Emoji（例：✅ 📌）を付けます。",
+        .structuredEmojiCaptionOff: "装飾用 Emoji は使わず、短い段落と見出しだけにします。",
+        .shortcutsCaption: "グローバルショートカットは1回で開始、もう1回で停止します。⌘⇧G はカスタム System Prompt を使います。",
+        .recordingInput: "録音入力",
+        .currentPlaybackOutput: "現在のシステム再生出力",
+        .bluetoothRefresh: "デバイスを更新",
+        .choose: "選択",
+        .timingNoRecords: "処理時間の記録はありません",
+        .timingNoRecordsCaption: "録音の文字起こしが完了すると、各工程の時間がここに表示されます。",
+        .timingHeader: "処理時間レポート",
+        .timingLatest: "最新の合計 %@ · %@",
+        .timingDescription: "録音ごとの文字起こし / 整理 / 翻訳 / Prompt 作成の時間を記録します",
+        .timingActive: "計測中",
+        .exportCSV: "CSV を書き出す…",
+        .exportHTML: "HTML を書き出す…",
+        .clearRecords: "記録を消去",
+        .exportTimingCSV: "処理時間を CSV に書き出す",
+        .exportTimingHTML: "処理時間を HTML に書き出す",
+        .exportCancelled: "書き出しをキャンセルしました",
+        .exportSuccess: "書き出しました：%@",
+        .exportFailed: "書き出しに失敗：%@",
+        .tokenUsageHeader: "Token 使用量",
+        .tokenUsageCaption: "API が実際に返した usage だけを表示します。端末内モデルや usage のない応答は推定しません。",
+        .tokenNoData: "使用量データはありません",
+        .tokenNoDataCaption: "usage を返す文字起こし、整理、翻訳、Prompt 処理が完了すると表示されます。",
+        .tokenCumulative: "累計",
+        .tokenRecent: "最近のリクエスト",
+        .tokenRecordCount: "API 使用量の記録 %@ 件",
+        .tokenInput: "Input Token",
+        .tokenCachedInput: "Cached Input Token（入力詳細）",
+        .tokenOutput: "Output Token",
+        .tokenReasoning: "Reasoning Token（出力詳細）",
+        .tokenAudioInput: "Audio Input Token",
+        .tokenAudioOutput: "Audio Output Token",
+        .tokenAudioDuration: "音声の長さ",
+        .tokenTotal: "Total Token",
+        .stageRecording: "録音",
+        .stageFinalizing: "認識結果の確定",
+        .stageTranscribing: "文字起こし",
+        .stageStructuring: "整理",
+        .stageTranslating: "翻訳",
+        .stageOptimizing: "Prompt 作成",
+        .stagePaste: "入力欄へ挿入",
+        .outcomeSuccess: "完了",
+        .outcomeFailed: "失敗",
+        .outcomeCancelled: "キャンセル",
+        .timingHTMLNoStage: "工程データなし",
+        .timingHTMLGenerated: "%@ に生成 · %@ 回の実行",
+        .timingHTMLTotal: "合計",
+        .timingHTMLResult: "結果",
+        .timingHTMLTarget: "対象 Agent",
+        .timingHTMLFirstPartial: "最初の partial",
+        .timingHTMLStage: "工程",
+        .timingHTMLMilliseconds: "ミリ秒",
+        .timingHTMLDuration: "時間",
+        .timingHTMLNoRecords: "記録なし",
+        .japaneseModelRequirement: "自然な日本語の出力にはバージョン 5.6 以上のモデルが必要です。現在のモデルはバージョン確認を通過しませんでした。",
+        .japaneseNaturalCaption: "日本語は自然な母語の文体で整理します（バージョン 5.6 以上のモデルが必要です）。",
     ]
 }
 

@@ -65,6 +65,9 @@ Open Settings from the menu bar to configure:
 - API ASR HTTP endpoint, optional API key, model name, language, hotspot prompt
 - API streaming mode and WebSocket URL
 - LLM API mode, endpoint / key / model for translation, structured cleanup, and prompt compile
+- Multi-language output: always emit the cleaned original first, then select up to three translations (English, Simplified Chinese, written Cantonese, Taiwan Mandarin with Traditional Chinese and Bopomofo, Japanese, Korean, French, Spanish, Hindi, Thai, Italian, Greek, Hebrew, Arabic, or Vietnamese)
+- Interface languages: Simplified Chinese, English, and Japanese. Japanese translation uses a native-style editing prompt and requires a configured model version 5.6 or later.
+- Custom cleanup / output Prompt: define the desired information structure, editing rules, and writing style; spoken self-corrections are resolved to the final stated intent
 - Input device, hotkeys, launch-at-login
 
 API keys are stored in the macOS Keychain. See [docs/configuration.md](docs/configuration.md) and [docs/privacy.md](docs/privacy.md).

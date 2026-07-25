@@ -152,13 +152,28 @@ private struct MenuPanel: View {
             // L2 — frequent controls
             VStack(alignment: .leading, spacing: 10) {
                 menuPickerRow(L10n.t(.outputLanguage), systemImage: "globe") {
-                    Picker("", selection: $settings.targetLanguageID) {
-                        ForEach(TargetLanguage.all) { language in
-                            Text(language.label).tag(language.id)
+                    Menu {
+                    Text(L10n.t(.outputLanguageCombinationCaption))
+                        Divider()
+                        ForEach(TargetLanguage.translationOptions) { language in
+                            let selected = settings.isTargetLanguageSelected(language)
+                            Button {
+                                settings.setTargetLanguageSelected(language, selected: !selected)
+                            } label: {
+                                Label(
+                                    language.label,
+                                    systemImage: selected ? "checkmark.circle.fill" : "circle"
+                                )
+                            }
+                            .disabled(!selected && !settings.canSelectMoreTargetLanguages)
                         }
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
+                    label: {
+                        Text(settings.outputLanguageSummary)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(AppChrome.ink)
+                            .lineLimit(1)
+                    }
                 }
                 .disabled(!settings.llmFeaturesAvailable)
 
@@ -193,7 +208,7 @@ private struct MenuPanel: View {
                         appState.handleVoicePipelineSettingChanged(enabled: settings.effectiveVoicePipelineEnabled)
                     }
                 )) {
-                    Label("Voice Pipeline（VAD 切段）", systemImage: "waveform.badge.mic")
+                    Label(L10n.t(.voicePipeline), systemImage: "waveform.badge.mic")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(AppChrome.ink)
                 }
@@ -201,8 +216,8 @@ private struct MenuPanel: View {
                 .disabled(!settings.isVoicePipelineAvailable)
 
                 Text(settings.isVoicePipelineAvailable
-                    ? "热键开始/结束。聆听中停顿自动出字；结束后按菜单里的输出规则（整理/翻译/Prompt）处理并粘贴。"
-                    : "仅在「集成模式」可用；当前为 API 模式，已强制关闭。")
+                    ? L10n.t(.voicePipelineCaption)
+                    : L10n.t(.voicePipelineUnavailable))
                     .font(.system(size: 11))
                     .foregroundStyle(AppChrome.muted)
                     .lineLimit(2)

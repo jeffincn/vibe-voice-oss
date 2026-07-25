@@ -91,10 +91,10 @@ enum UsageStage: String, Codable, CaseIterable, Sendable {
 
     var label: String {
         switch self {
-        case .transcription: "语音转写"
-        case .structuring: "内容整理"
-        case .translation: "翻译"
-        case .promptOptimization: "Prompt 优化"
+        case .transcription: L10n.t(.stageTranscribing)
+        case .structuring: L10n.t(.stageStructuring)
+        case .translation: L10n.t(.stageTranslating)
+        case .promptOptimization: L10n.t(.stageOptimizing)
         }
     }
 }
