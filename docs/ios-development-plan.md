@@ -47,3 +47,7 @@ The first iOS 26 simulator cold run downloaded about 73 MB and completed downloa
 4. Increment the macOS `CFBundleVersion`.
 5. Build, sign, verify, and deploy the macOS app with `zsh scripts/build-app.sh`.
 6. Before a device milestone, install to the user's iPhone 14 Pro Max and retain `.xcresult`, performance, memory, power, and thermal evidence.
+
+The reproducible physical-device command is `zsh scripts/test-ios-device.sh`.
+Manual input-method, microphone, interruption, offline, and sustained-load evidence
+is recorded in `docs/ios-device-acceptance.md`.
