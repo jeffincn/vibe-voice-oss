@@ -43,6 +43,9 @@ final class MobileVoiceController: ObservableObject {
         self.bridge = bridge
         self.asr = asr
         outputMode = bridge.load().mode
+        if bridge.recoverInterruptedWork() {
+            phase = .failed("上次语音任务被系统中断，请重新录音")
+        }
     }
 
     func prepareModel() {
@@ -119,6 +122,16 @@ final class MobileVoiceController: ObservableObject {
     func synchronize(with state: VoiceBridgeState) {
         if outputMode != state.mode {
             outputMode = state.mode
+        }
+    }
+
+    func handleBackgroundTransition() {
+        guard phase != .recording,
+              phase != .processing,
+              phase != .preparingModel else { return }
+        Task {
+            await asr.releaseMemory()
+            modelStatus = "已释放内存，模型保留在本机"
         }
     }
 

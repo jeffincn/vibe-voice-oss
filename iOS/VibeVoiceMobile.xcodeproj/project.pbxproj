@@ -22,6 +22,7 @@
 		8BAD767057E154F855D34538 /* MobileVoiceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51B02D15FB67452AF1C7757 /* MobileVoiceController.swift */; };
 		9C1DE629665008890F15A442 /* VoiceBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B4C5D723606A780712C071D /* VoiceBridge.swift */; };
 		A3CFC5F999F2739AF2E7CF25 /* RimeData in Resources */ = {isa = PBXBuildFile; fileRef = E2F62A5B3B88887F922985B9 /* RimeData */; };
+		B4D40DCB51DDF6C819B1FBB9 /* MobilePerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4D7B12DB83A53999B5AE05 /* MobilePerformanceTests.swift */; };
 		C036DEE912C2B466DAE349EE /* VVRimeBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = C61CF9A3A182B84B08E8C524 /* VVRimeBridge.mm */; };
 		C1380DE268D836E3371FB249 /* KeyboardLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE0C2A494C272F8B49492CB /* KeyboardLanguage.swift */; };
 		E56E89E2E08E242725957E92 /* VoiceBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADFFC7C0BB341225AAE09403 /* VoiceBridgeTests.swift */; };
@@ -67,6 +68,7 @@
 		139D6044740AD3015D097DC8 /* VibeVoiceMobileTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VibeVoiceMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		250364B40436C8B4B1D1A4EC /* RimeEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RimeEngineTests.swift; sourceTree = "<group>"; };
 		35E6CAFAEF8CA56D934557D0 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
+		4D4D7B12DB83A53999B5AE05 /* MobilePerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePerformanceTests.swift; sourceTree = "<group>"; };
 		4DE0C2A494C272F8B49492CB /* KeyboardLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardLanguage.swift; sourceTree = "<group>"; };
 		50A0126B03A1030F6E46B002 /* RimeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RimeEngine.swift; sourceTree = "<group>"; };
 		7B4C5D723606A780712C071D /* VoiceBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceBridge.swift; sourceTree = "<group>"; };
@@ -108,6 +110,7 @@
 			isa = PBXGroup;
 			children = (
 				BE2B5B96D9E240201EEDE4B9 /* MobileASRServiceTests.swift */,
+				4D4D7B12DB83A53999B5AE05 /* MobilePerformanceTests.swift */,
 				250364B40436C8B4B1D1A4EC /* RimeEngineTests.swift */,
 				ADFFC7C0BB341225AAE09403 /* VoiceBridgeTests.swift */,
 			);
@@ -345,6 +348,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5E1CCA4178422215E9C0D519 /* MobileASRServiceTests.swift in Sources */,
+				B4D40DCB51DDF6C819B1FBB9 /* MobilePerformanceTests.swift in Sources */,
 				E8321E2B6FBCD21311F07646 /* RimeEngineTests.swift in Sources */,
 				E56E89E2E08E242725957E92 /* VoiceBridgeTests.swift in Sources */,
 			);
@@ -401,7 +405,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -579,7 +583,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;

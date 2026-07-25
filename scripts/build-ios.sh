@@ -66,7 +66,24 @@ for prefix in "${runtime_prefixes[@]}"; do
         -default-test-execution-time-allowance 60 \
         -maximum-test-execution-time-allowance 120 \
         -only-testing:VibeVoiceMobileTests
+
+    app_path="$DERIVED_ROOT/iOS${prefix}/Build/Products/Debug-iphonesimulator/VibeVoiceMobile.app"
+    xcrun simctl install "$simulator_id" "$app_path"
+    xcrun simctl launch --terminate-running-process \
+        "$simulator_id" app.vibevoice.oss.ios >/dev/null
+    xcrun simctl terminate "$simulator_id" app.vibevoice.oss.ios
+    print "SMOKE PASSED iOS $runtime_name — app installed and launched"
     (( passed += 1 ))
 done
+
+xcodebuild build \
+    -project "$PROJECT" \
+    -scheme "$SCHEME" \
+    -destination "generic/platform=iOS" \
+    -derivedDataPath "$DERIVED_ROOT/Device" \
+    -clonedSourcePackagesDirPath "$PACKAGE_ROOT" \
+    -onlyUsePackageVersionsFromResolvedFile \
+    CODE_SIGNING_ALLOWED=NO
+print "DEVICE BUILD PASSED — generic arm64 iOS"
 
 print "iOS simulator matrix complete: $passed passed, $skipped skipped"

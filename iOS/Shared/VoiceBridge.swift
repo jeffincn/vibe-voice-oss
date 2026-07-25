@@ -90,6 +90,20 @@ final class VoiceBridgeStore {
         save(state)
     }
 
+    @discardableResult
+    func recoverInterruptedWork() -> Bool {
+        var state = load()
+        guard state.status == .recording || state.status == .processing else {
+            return false
+        }
+        state.status = .failed
+        state.text = ""
+        state.message = "上次语音任务被系统中断，请重新录音"
+        state.updatedAt = Date()
+        save(state)
+        return true
+    }
+
     func reset() {
         save(.idle)
     }

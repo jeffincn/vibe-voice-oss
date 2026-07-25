@@ -34,4 +34,9 @@ final class MobileASRServiceTests: XCTestCase {
         XCTAssertEqual(VoiceTextProcessor.process("  raw text  ", mode: .original), "raw text")
         XCTAssertEqual(VoiceTextProcessor.process(" English result ", mode: .translate), "English result")
     }
+
+    func testReleaseMemoryBeforePreparationIsSafe() async {
+        let service = MobileASRService()
+        await service.releaseMemory()
+    }
 }

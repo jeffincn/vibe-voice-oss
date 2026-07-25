@@ -18,6 +18,7 @@ enum MobileASRError: LocalizedError {
 protocol MobileASRServing: Sendable {
     func prepare(model: String) async throws -> String
     func transcribe(samples: [Float], model: String, mode: VoiceOutputMode) async throws -> String
+    func releaseMemory() async
 }
 
 extension MobileASRServing {
@@ -86,6 +87,13 @@ actor MobileASRService: MobileASRServing {
             throw MobileASRError.emptyTranscript
         }
         return VoiceTextProcessor.process(rawText, mode: mode)
+    }
+
+    func releaseMemory() async {
+        guard let whisperKit else { return }
+        await whisperKit.unloadModels()
+        self.whisperKit = nil
+        loadedModel = ""
     }
 }
 

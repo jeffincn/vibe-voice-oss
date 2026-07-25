@@ -21,18 +21,23 @@ final class KeyboardViewController: UIInputViewController {
         configureLayout()
         refreshComposition()
         refreshBridge()
-        bridgeTimer = Timer.scheduledTimer(
-            withTimeInterval: 0.4,
-            repeats: true
-        ) { [weak self] _ in
-            self?.refreshBridge()
-        }
+        startBridgeTimer()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        refreshBridge()
+        startBridgeTimer()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         bridgeTimer?.invalidate()
         bridgeTimer = nil
+    }
+
+    deinit {
+        bridgeTimer?.invalidate()
     }
 
     private func configureLayout() {
@@ -85,6 +90,16 @@ final class KeyboardViewController: UIInputViewController {
             keyboard.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
             view.heightAnchor.constraint(greaterThanOrEqualToConstant: 286),
         ])
+    }
+
+    private func startBridgeTimer() {
+        guard bridgeTimer == nil else { return }
+        bridgeTimer = Timer.scheduledTimer(
+            withTimeInterval: 0.4,
+            repeats: true
+        ) { [weak self] _ in
+            self?.refreshBridge()
+        }
     }
 
     private func makeLetterRow(_ letters: String) -> UIView {

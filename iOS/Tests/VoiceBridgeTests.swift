@@ -21,4 +21,19 @@ final class VoiceBridgeTests: XCTestCase {
         bridge.markConsumed(requestID: request.requestID)
         XCTAssertEqual(bridge.load().status, .consumed)
     }
+
+    func testInterruptedRecordingRecoversToActionableFailure() throws {
+        let suite = "VoiceBridgeRecoveryTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        let bridge = VoiceBridgeStore(defaults: defaults)
+
+        _ = bridge.request(mode: .polished)
+        bridge.publish(status: .recording, message: "正在录音")
+
+        XCTAssertTrue(bridge.recoverInterruptedWork())
+        XCTAssertEqual(bridge.load().status, .failed)
+        XCTAssertTrue(bridge.load().message.contains("重新录音"))
+        XCTAssertFalse(bridge.recoverInterruptedWork())
+    }
 }

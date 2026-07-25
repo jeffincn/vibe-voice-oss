@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MobileHomeView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var bridgeState = VoiceBridgeStore().load()
     @State private var rimeStatus = "尚未准备"
     @State private var isPreparingRime = false
@@ -26,6 +27,11 @@ struct MobileHomeView: View {
                     bridgeState = bridge.load()
                     voiceController.synchronize(with: bridgeState)
                     try? await Task.sleep(for: .milliseconds(500))
+                }
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .background {
+                    voiceController.handleBackgroundTransition()
                 }
             }
         }
@@ -117,6 +123,9 @@ struct MobileHomeView: View {
             }
             .buttonStyle(.bordered)
             .disabled(voiceController.phase == .preparingModel || voiceController.phase == .recording)
+            Text("应用进入后台且没有录音或转写任务时，会自动卸载模型释放内存；下载文件仍保留在设备上。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             LabeledContent("Qwen3-ASR", value: "实验性")
             LabeledContent("Rime 全拼", value: rimeStatus)
             Button(isPreparingRime ? "正在部署词库…" : "重新准备 Rime") {
