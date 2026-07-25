@@ -2,7 +2,7 @@ import XCTest
 @testable import VibeVoiceMobile
 
 final class RimeEngineTests: XCTestCase {
-    func testFullPinyinProducesCandidateAndCommits() {
+    func testFallbackFullPinyinProducesCandidateAndCommits() {
         let engine = PrototypeRimeEngine()
         "nihao".forEach { engine.process(letter: $0) }
 
@@ -12,12 +12,35 @@ final class RimeEngineTests: XCTestCase {
         XCTAssertEqual(engine.snapshot, .empty)
     }
 
-    func testBackspaceEditsCompositionBeforeHostText() {
+    func testFallbackBackspaceEditsCompositionBeforeHostText() {
         let engine = PrototypeRimeEngine()
         "ni".forEach { engine.process(letter: $0) }
 
         engine.backspace()
 
         XCTAssertEqual(engine.snapshot.preedit, "n")
+    }
+
+    func testLibrimeFullPinyinProducesChineseCandidateAndCommits() throws {
+        let userDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VibeVoiceRimeTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: userDirectory) }
+
+        let engine = try RimeEngineFactory.make(
+            bundle: .main,
+            userDataDirectory: userDirectory,
+            performMaintenance: true
+        )
+        "nihao".forEach { engine.process(letter: $0) }
+
+        XCTAssertEqual(engine.snapshot.preedit.replacingOccurrences(of: " ", with: ""), "nihao")
+        XCTAssertTrue(
+            engine.snapshot.candidates.contains { $0.text == "你好" },
+            "Expected 你好 in \(engine.snapshot.candidates)"
+        )
+        let committed = engine.commitBestCandidate()
+        XCTAssertNotNil(committed)
+        XCTAssertTrue(committed?.contains(where: { $0.isASCII == false }) == true)
+        XCTAssertEqual(engine.snapshot.preedit, "")
     }
 }

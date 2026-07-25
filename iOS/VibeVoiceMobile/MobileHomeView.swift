@@ -3,6 +3,8 @@ import SwiftUI
 struct MobileHomeView: View {
     @State private var bridgeState = VoiceBridgeStore().load()
     @State private var testResult = "你好，这是 Vibe Voice 的键盘桥接测试。"
+    @State private var rimeStatus = "尚未准备"
+    @State private var isPreparingRime = false
     private let bridge = VoiceBridgeStore()
 
     var body: some View {
@@ -19,6 +21,7 @@ struct MobileHomeView: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Vibe Voice")
             .task {
+                prepareRime()
                 while !Task.isCancelled {
                     bridgeState = bridge.load()
                     try? await Task.sleep(for: .milliseconds(500))
@@ -88,9 +91,35 @@ struct MobileHomeView: View {
                 .font(.headline)
             LabeledContent("WhisperKit", value: "待接入")
             LabeledContent("Qwen3-ASR", value: "实验性")
-            LabeledContent("Rime", value: "接口已建立")
+            LabeledContent("Rime 全拼", value: rimeStatus)
+            Button(isPreparingRime ? "正在部署词库…" : "重新准备 Rime") {
+                prepareRime()
+            }
+            .buttonStyle(.bordered)
+            .disabled(isPreparingRime)
+            Text("首次启用键盘前，请至少打开一次主应用。词库部署完成后，键盘扩展直接复用共享数据，不在输入时执行维护任务。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .cardStyle()
+    }
+
+    private func prepareRime() {
+        guard !isPreparingRime else { return }
+        isPreparingRime = true
+        rimeStatus = "准备中"
+        Task {
+            let message = await Task.detached(priority: .userInitiated) {
+                do {
+                    _ = try RimeEngineFactory.prepareForMainApp()
+                    return "已就绪"
+                } catch {
+                    return "失败：\(error.localizedDescription)"
+                }
+            }.value
+            rimeStatus = message
+            isPreparingRime = false
+        }
     }
 }
 

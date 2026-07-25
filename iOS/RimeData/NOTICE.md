@@ -1,0 +1,15 @@
+# Rime data notice
+
+`pinyin_simp.dict.yaml` is from
+[`rime/rime-pinyin-simp`](https://github.com/rime/rime-pinyin-simp) and is
+distributed under the Apache License 2.0. The complete license is included as
+`LICENSE.rime-pinyin-simp.txt`.
+
+`default.yaml` and `vibe_pinyin.schema.yaml` are original Vibe Voice OSS
+configuration files.
+
+The keyboard links a core-only `librime.xcframework` built by
+`scripts/prepare-librime-ios.sh` from the official librime 1.16.1 release. No
+librime Lua, octagram, predict, legacy-plugin, or other external plugin source
+is fetched or linked. Licenses for librime and its statically linked
+dependencies are included under `iOS/Vendor/Licenses/`.

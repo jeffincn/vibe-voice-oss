@@ -1,7 +1,7 @@
 import UIKit
 
 final class KeyboardViewController: UIInputViewController {
-    private let engine: RimeEngine = PrototypeRimeEngine()
+    private lazy var engine: RimeEngine = RimeEngineFactory.makeForKeyboard()
     private let bridge = VoiceBridgeStore()
     private var language: KeyboardLanguage = .chinese
     private var voiceMode: VoiceOutputMode = .polished

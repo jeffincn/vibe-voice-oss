@@ -21,26 +21,43 @@ targets:
     sources:
       - path: VibeVoiceMobile
       - path: Shared
+      - path: RimeBridge
+      - path: RimeData
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios
         INFOPLIST_FILE: Resources/AppInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/VibeVoiceMobile.entitlements
+        SWIFT_OBJC_BRIDGING_HEADER: RimeBridge/VVRimeBridge.h
+        OTHER_LDFLAGS: "$(inherited) -lc++"
     dependencies:
       - target: VibeVoiceKeyboard
         embed: true
+      - framework: Vendor/librime.xcframework
+        embed: false
   VibeVoiceKeyboard:
     type: app-extension
     platform: iOS
     sources:
       - path: Keyboard
       - path: Shared
+      - path: RimeBridge
+      - path: RimeData
+        type: folder
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios.keyboard
         INFOPLIST_FILE: Resources/KeyboardInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/VibeVoiceKeyboard.entitlements
         SKIP_INSTALL: YES
+        SWIFT_OBJC_BRIDGING_HEADER: RimeBridge/VVRimeBridge.h
+        OTHER_LDFLAGS: "$(inherited) -lc++"
+    dependencies:
+      - framework: Vendor/librime.xcframework
+        embed: false
   VibeVoiceMobileTests:
     type: bundle.unit-test
     platform: iOS
