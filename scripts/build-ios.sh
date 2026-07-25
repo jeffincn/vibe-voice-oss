@@ -9,13 +9,14 @@ DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro-Max"
 TASK_CACHE_ROOT="${TMPDIR%/}/vibevoice-ios-0.7.0"
 DERIVED_ROOT="$TASK_CACHE_ROOT/DerivedData"
 RESULT_ROOT="$TASK_CACHE_ROOT/TestResults"
+PACKAGE_ROOT="$TASK_CACHE_ROOT/SourcePackages"
 
 if ! command -v xcodegen >/dev/null 2>&1; then
     print "error: XcodeGen is required. Install it with: brew install xcodegen" >&2
     exit 1
 fi
 
-mkdir -p "$DERIVED_ROOT" "$RESULT_ROOT"
+mkdir -p "$DERIVED_ROOT" "$RESULT_ROOT" "$PACKAGE_ROOT"
 # Projects stored under Documents may inherit File Provider metadata that
 # codesign rejects when it reaches a built keyboard extension. Build products
 # therefore live outside that tree.
@@ -57,6 +58,8 @@ for prefix in "${runtime_prefixes[@]}"; do
         -scheme "$SCHEME" \
         -destination "platform=iOS Simulator,id=$simulator_id" \
         -derivedDataPath "$DERIVED_ROOT/iOS${prefix}" \
+        -clonedSourcePackagesDirPath "$PACKAGE_ROOT" \
+        -onlyUsePackageVersionsFromResolvedFile \
         -resultBundlePath "$result_bundle" \
         -parallel-testing-enabled NO \
         -test-timeouts-enabled YES \

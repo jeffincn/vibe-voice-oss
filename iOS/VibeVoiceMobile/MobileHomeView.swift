@@ -2,9 +2,9 @@ import SwiftUI
 
 struct MobileHomeView: View {
     @State private var bridgeState = VoiceBridgeStore().load()
-    @State private var testResult = "你好，这是 Vibe Voice 的键盘桥接测试。"
     @State private var rimeStatus = "尚未准备"
     @State private var isPreparingRime = false
+    @StateObject private var voiceController = MobileVoiceController()
     private let bridge = VoiceBridgeStore()
 
     var body: some View {
@@ -64,21 +64,30 @@ struct MobileHomeView: View {
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
-            TextField("测试输出", text: $testResult, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
+            Text(voiceController.phase.label)
+                .font(.subheadline.weight(.medium))
+            ProgressView(value: Double(voiceController.level))
+                .tint(voiceController.phase == .recording ? .red : .accentColor)
             HStack {
-                Button("发布到键盘") {
-                    bridge.publish(status: .ready, text: testResult, message: "可插入")
-                    bridgeState = bridge.load()
+                Button(voiceController.phase == .recording ? "停止并转写" : "开始录音") {
+                    if voiceController.phase == .recording {
+                        voiceController.stopAndTranscribe()
+                    } else {
+                        voiceController.startRecording()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 Button("重置") {
-                    bridge.reset()
+                    voiceController.reset()
                     bridgeState = bridge.load()
                 }
                 .buttonStyle(.bordered)
             }
-            Text("这是阶段一的确定性桥接验证入口，后续由真实录音和 ASR 管线替换。")
+            if !voiceController.transcript.isEmpty {
+                Text(voiceController.transcript)
+                    .textSelection(.enabled)
+            }
+            Text("iOS 不允许第三方键盘扩展直接使用麦克风。键盘发起请求后，请切到此页录音；转写完成再切回原输入框，结果会自动插入。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -89,7 +98,12 @@ struct MobileHomeView: View {
         VStack(alignment: .leading, spacing: 10) {
             Label("本地模型", systemImage: "cpu")
                 .font(.headline)
-            LabeledContent("WhisperKit", value: "待接入")
+            LabeledContent("WhisperKit tiny", value: voiceController.modelStatus)
+            Button("下载并预热语音模型") {
+                voiceController.prepareModel()
+            }
+            .buttonStyle(.bordered)
+            .disabled(voiceController.phase == .preparingModel || voiceController.phase == .recording)
             LabeledContent("Qwen3-ASR", value: "实验性")
             LabeledContent("Rime 全拼", value: rimeStatus)
             Button(isPreparingRime ? "正在部署词库…" : "重新准备 Rime") {
