@@ -7,12 +7,12 @@ options:
 settings:
   base:
     MARKETING_VERSION: 0.7.0
-    CURRENT_PROJECT_VERSION: 42
+    CURRENT_PROJECT_VERSION: 43
     SWIFT_VERSION: 5.0
     SWIFT_STRICT_CONCURRENCY: targeted
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: ""
-    TARGETED_DEVICE_FAMILY: "1,2"
+    TARGETED_DEVICE_FAMILY: "1"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
 packages:
   ArgmaxOSS:
@@ -69,11 +69,26 @@ targets:
     platform: iOS
     sources:
       - path: Tests
+        excludes:
+          - Fixtures
+      - path: Tests/Fixtures
+        buildPhase: resources
     dependencies:
       - target: VibeVoiceMobile
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios.tests
+        GENERATE_INFOPLIST_FILE: YES
+  VibeVoiceMobileUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: VibeVoiceMobile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios.uitests
         GENERATE_INFOPLIST_FILE: YES
 schemes:
   VibeVoiceMobile:
@@ -82,7 +97,9 @@ schemes:
         VibeVoiceMobile: all
         VibeVoiceKeyboard: all
         VibeVoiceMobileTests: [test]
+        VibeVoiceMobileUITests: [test]
     test:
       gatherCoverageData: true
       targets:
         - VibeVoiceMobileTests
+        - VibeVoiceMobileUITests

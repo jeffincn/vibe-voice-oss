@@ -17,7 +17,8 @@ The keyboard extension never opens the microphone and never loads ASR models. It
 |---|---|
 | `VibeVoiceMobile` | Onboarding, permissions, model management, audio and ASR |
 | `VibeVoiceKeyboard` | Chinese/English keyboard, Rime session, result insertion |
-| `VibeVoiceMobileTests` | Rime boundary and App Group bridge tests |
+| `VibeVoiceMobileTests` | Rime, App Group, ASR fixture, recovery and performance tests |
+| `VibeVoiceMobileUITests` | Main-app launch and control smoke tests |
 
 ## Rime integration
 
@@ -34,7 +35,9 @@ Rime deployment and schema compilation happen in the containing app. The extensi
 | iPhone 14 Pro Max / iOS 26 Simulator | Required on every iOS change |
 | iPhone 14 Pro Max / iOS 26 physical device | Required for microphone, model, background, thermal and memory acceptance |
 
-Simulator ASR tests use deterministic audio fixtures. Real microphone, Metal/Core ML performance, background audio survival, interruptions, thermal behavior, and jetsam acceptance are physical-device-only evidence.
+Simulator ASR tests use a deterministic 16 kHz Chinese audio fixture and perform a real Whisper tiny download, Core ML prewarm, transcription, and unload on each installed runtime. Real microphone capture, device Neural Engine/GPU performance, background audio survival, interruptions, thermal behavior, and jetsam acceptance are physical-device-only evidence.
+
+The first iOS 26 simulator cold run downloaded about 73 MB and completed download, prewarm, transcription, and unload in about 280 seconds. The iOS 18 cold run completed in about 231 seconds; the cached iOS 26 run completed in about 14 seconds. The tiny model produced usable Chinese with one substitution error, so real-device accuracy remains an explicit acceptance gate rather than an assumed property.
 
 ## Delivery gates
 

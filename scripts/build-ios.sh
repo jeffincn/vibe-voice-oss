@@ -63,9 +63,10 @@ for prefix in "${runtime_prefixes[@]}"; do
         -resultBundlePath "$result_bundle" \
         -parallel-testing-enabled NO \
         -test-timeouts-enabled YES \
-        -default-test-execution-time-allowance 60 \
-        -maximum-test-execution-time-allowance 120 \
-        -only-testing:VibeVoiceMobileTests
+        -default-test-execution-time-allowance 900 \
+        -maximum-test-execution-time-allowance 1200 \
+        -only-testing:VibeVoiceMobileTests \
+        -only-testing:VibeVoiceMobileUITests
 
     app_path="$DERIVED_ROOT/iOS${prefix}/Build/Products/Debug-iphonesimulator/VibeVoiceMobile.app"
     xcrun simctl install "$simulator_id" "$app_path"

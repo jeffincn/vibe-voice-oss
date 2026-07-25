@@ -50,6 +50,20 @@
                ReferencedContainer = "container:VibeVoiceMobile.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "1DD5D24A9995FAD3235CED15"
+               BuildableName = "VibeVoiceMobileUITests.xctest"
+               BlueprintName = "VibeVoiceMobileUITests"
+               ReferencedContainer = "container:VibeVoiceMobile.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -77,6 +91,17 @@
                BlueprintIdentifier = "CE54A0A0812E917050F25329"
                BuildableName = "VibeVoiceMobileTests.xctest"
                BlueprintName = "VibeVoiceMobileTests"
+               ReferencedContainer = "container:VibeVoiceMobile.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "1DD5D24A9995FAD3235CED15"
+               BuildableName = "VibeVoiceMobileUITests.xctest"
+               BlueprintName = "VibeVoiceMobileUITests"
                ReferencedContainer = "container:VibeVoiceMobile.xcodeproj">
             </BuildableReference>
          </TestableReference>

@@ -42,6 +42,7 @@ struct MobileHomeView: View {
             Label("iOS 0.7.0 Alpha", systemImage: "waveform.circle.fill")
                 .font(.title2.bold())
                 .foregroundStyle(.tint)
+                .accessibilityIdentifier("home.hero")
             Text("完整中英键盘、Rime 全拼与语音输入的移动端工作区。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -82,6 +83,7 @@ struct MobileHomeView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .accessibilityIdentifier("voice.outputMode")
             ProgressView(value: Double(voiceController.level))
                 .tint(voiceController.phase == .recording ? .red : .accentColor)
             HStack {
@@ -93,6 +95,7 @@ struct MobileHomeView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("voice.record")
                 Button("重置") {
                     voiceController.reset()
                     bridgeState = bridge.load()
@@ -123,6 +126,7 @@ struct MobileHomeView: View {
             }
             .buttonStyle(.bordered)
             .disabled(voiceController.phase == .preparingModel || voiceController.phase == .recording)
+            .accessibilityIdentifier("model.prepare")
             Text("应用进入后台且没有录音或转写任务时，会自动卸载模型释放内存；下载文件仍保留在设备上。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
