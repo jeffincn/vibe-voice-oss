@@ -76,10 +76,11 @@ if [[ -z "$IDENTITY" ]]; then
 fi
 
 # Step 3: ad-hoc fallback
+# SIGN_ARGS carries --force --timestamp=none plus the hardened-runtime flags.
 if [[ -n "$IDENTITY" ]]; then
-    codesign --force --deep --sign "$IDENTITY" --timestamp=none "$APP"
+ codesign "${SIGN_ARGS[@]}" --sign "$IDENTITY" "$APP"
 else
-    codesign --force --deep --sign - "$APP"
+ codesign "${SIGN_ARGS[@]}" --sign - "$APP"
 fi
 ```
 
@@ -87,6 +88,20 @@ Agents MUST NOT:
 - Skip signing or remove signing steps.
 - Hard-code a specific identity string (except the local cert name as a search target).
 - Add `--no-strict` or disable verification.
+- Reintroduce `--deep` when *signing*. It is deprecated for signing and the bundle has no nested Mach-O code. `--deep` remains correct for `codesign --verify`.
+
+### R3a — Hardened Runtime
+
+The app is signed with `--options runtime` and `Resources/VibeVoiceOSS.entitlements`. This blocks code injection and process-memory reads that would expose decrypted API keys, and is a prerequisite for notarization.
+
+The hardened runtime denies the microphone and Apple Events unless the entitlements ask for them, so the file must keep:
+
+| Entitlement | Needed by |
+|-------------|-----------|
+| `com.apple.security.device.audio-input` | `AVAudioEngine` capture |
+| `com.apple.security.automation.apple-events` | `PasteService` NSAppleScript fallback |
+
+Keep the list minimal — each entry weakens the protection. `VIBE_VOICE_SKIP_HARDENED_RUNTIME=1` disables it, and exists only to bisect a launch failure back to this step; it must not be the default.
 
 ### R4 — Post-Sign Verification
 

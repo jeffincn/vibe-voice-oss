@@ -5,6 +5,14 @@ ROOT="${0:A:h:h}"
 APP_NAME="${VIBE_VOICE_APP_NAME:-Vibe Voice OSS}"
 EXECUTABLE_NAME="VibeVoiceOSS"
 ICON_NAME="VibeVoiceOSS"
+
+# The name is interpolated into paths that get rm -rf'd, including one under
+# /Applications, so it has to stay a plain bundle name.
+if [[ -z "$APP_NAME" || "$APP_NAME" == */* || "$APP_NAME" == .* ]]; then
+    echo "error: VIBE_VOICE_APP_NAME must be a plain bundle name, got '$APP_NAME'" >&2
+    exit 1
+fi
+
 APP="$ROOT/dist/${APP_NAME}.app"
 IDENTITY="${CODESIGN_IDENTITY:-}"
 LOCAL_SIGNING_IDENTITY="Vibe Voice OSS Local Code Signing"
@@ -76,11 +84,32 @@ if [[ -z "$IDENTITY" ]]; then
         | head -n 1)
 fi
 
+# --deep is deprecated for signing (it is still the right flag for verification).
+# There is no nested Mach-O code in the bundle, so a plain signature seals
+# everything; the metallib is sealed as a resource.
+SIGN_ARGS=(--force --timestamp=none)
+ENTITLEMENTS="$ROOT/Resources/${EXECUTABLE_NAME}.entitlements"
+if [[ -z "${VIBE_VOICE_SKIP_HARDENED_RUNTIME:-}" ]]; then
+    # The hardened runtime stops other processes from injecting code into the app
+    # or reading the memory that holds decrypted API keys, and is a prerequisite
+    # for notarization. It also denies the microphone and Apple Events unless the
+    # entitlements request them. Set VIBE_VOICE_SKIP_HARDENED_RUNTIME=1 to bisect
+    # a launch failure back to this.
+    if [[ ! -f "$ENTITLEMENTS" ]]; then
+        echo "error: missing entitlements file: $ENTITLEMENTS" >&2
+        exit 1
+    fi
+    SIGN_ARGS+=(--options runtime --entitlements "$ENTITLEMENTS")
+    echo "Hardened runtime: enabled"
+else
+    echo "Hardened runtime: disabled (VIBE_VOICE_SKIP_HARDENED_RUNTIME set)"
+fi
+
 if [[ -n "$IDENTITY" ]]; then
-    codesign --force --deep --sign "$IDENTITY" --timestamp=none "$STAGED_APP"
+    codesign "${SIGN_ARGS[@]}" --sign "$IDENTITY" "$STAGED_APP"
     echo "Signed with: $IDENTITY"
 else
-    codesign --force --deep --sign - "$STAGED_APP"
+    codesign "${SIGN_ARGS[@]}" --sign - "$STAGED_APP"
     echo "Warning: no persistent code-signing identity found; permissions may reset after rebuild."
 fi
 codesign --verify --deep --strict "$STAGED_APP"
@@ -105,9 +134,9 @@ fi
 ditto "$APP" "$APPLICATIONS_APP"
 xattr -cr "$APPLICATIONS_APP"
 if [[ -n "$IDENTITY" ]]; then
-    codesign --force --deep --sign "$IDENTITY" --timestamp=none "$APPLICATIONS_APP"
+    codesign "${SIGN_ARGS[@]}" --sign "$IDENTITY" "$APPLICATIONS_APP"
 else
-    codesign --force --deep --sign - "$APPLICATIONS_APP"
+    codesign "${SIGN_ARGS[@]}" --sign - "$APPLICATIONS_APP"
 fi
 
 # Documents may be managed by File Provider, which can attach Finder metadata
