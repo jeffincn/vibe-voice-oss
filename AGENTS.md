@@ -304,6 +304,38 @@ Without these files, enabling Voice Pipeline fails at start and recovers to idle
 
 ---
 
+## R12 — Branch Naming and Where Work Lands
+
+Agents MUST NOT create, push, or open pull requests from branches whose names start with `cursor/` or `codex/` (case-insensitive). Those prefixes were used by automated agents to spawn one short-lived branch per batch of work; the result was a pile of branches that could not be tested as the product is actually developed. They are forbidden from now on.
+
+### Where to commit
+
+| Work | Branch |
+|------|--------|
+| iOS app, keyboard extension, iOS scripts, iOS docs under `iOS/` / `docs/ios*` / `scripts/*ios*` | The current iOS development branch (`ios/0.7.0` while that is the active line; follow the existing `ios/<version>` branch if a newer one exists) |
+| macOS app and shared desktop work | The product branch the user named for that work (today: `main`, `feat/voice-pipeline`, or `feat/professional-roles`) — never invent a `cursor/` or `codex/` stand-in |
+
+Commit and push **directly on that product branch**. Do not open a parallel agent branch for the same change set unless the user explicitly asks for a named feature branch.
+
+### Allowed branch names when a feature branch is required
+
+If the user asks for a separate branch, use conventional names only:
+
+- `feat/<short-kebab-description>`
+- `fix/<short-kebab-description>`
+- `test/<short-kebab-description>`
+- `docs/<short-kebab-description>`
+- `chore/<short-kebab-description>`
+- `ios/<version>` for iOS release lines
+
+Never: `cursor/...`, `codex/...`, or any other vendor/agent prefix.
+
+### Pull requests
+
+Prefer landing iOS work as commits on `ios/<version>` so the branch the user builds every day is the branch under review. When a PR is needed, its head and base MUST both be allowed names from the list above.
+
+---
+
 ## Acceptance Criteria
 
 - [ ] Every code change is followed by a successful `zsh scripts/build-app.sh`.
@@ -315,3 +347,5 @@ Without these files, enabling Voice Pipeline fails at start and recovers to idle
 - [ ] MLX `default.metallib` is present inside the app bundle when MLX dependencies exist.
 - [ ] The build script is invoked with `zsh`, never `bash`.
 - [ ] Agent presents a structured Yes / No / Other confirmation to the user before ending each task.
+- [ ] No branch named `cursor/*` or `codex/*` is created or pushed (see R12).
+- [ ] iOS changes land on the active `ios/<version>` development branch, not on a parallel agent branch.
