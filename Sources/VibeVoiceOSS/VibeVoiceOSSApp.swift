@@ -60,6 +60,7 @@ private class AppDelegate: NSObject, NSApplicationDelegate {
 struct VibeVoiceOSSApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var appState = AppState()
+    @ObservedObject private var localization = AppLocalization.shared
 
     var body: some Scene {
         MenuBarExtra {
@@ -71,10 +72,14 @@ struct VibeVoiceOSSApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        // The Window title is fixed when the scene is built, so switching UI language
+        // would leave the old title in the title bar and the Window menu. The
+        // navigationTitle below is re-read whenever AppLocalization publishes.
         Window(L10n.t(.windowStageTiming), id: "stage-timing-report") {
             StageTimingReportView()
                 .environmentObject(appState)
                 .preferredColorScheme(.light)
+                .navigationTitle(localization.t(.windowStageTiming))
         }
         .defaultSize(width: 560, height: 460)
 
@@ -82,6 +87,7 @@ struct VibeVoiceOSSApp: App {
             TokenUsageReportView()
                 .environmentObject(appState)
                 .preferredColorScheme(.light)
+                .navigationTitle(localization.t(.windowTokenUsage))
         }
         .defaultSize(width: 560, height: 460)
 

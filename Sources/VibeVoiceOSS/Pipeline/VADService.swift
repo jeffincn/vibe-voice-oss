@@ -19,10 +19,8 @@ enum VADServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case let .modelMissing(path):
-            "Silero VAD 模型未准备：\(path)。请运行 scripts/prepare-silero-vad.sh。"
-        case let .modelLoadFailed(message):
-            "Silero VAD 加载失败：\(message)"
+        case let .modelMissing(path): L10n.t(.errVADModelMissing, path)
+        case let .modelLoadFailed(message): L10n.t(.errVADModelLoadFailed, message)
         }
     }
 }

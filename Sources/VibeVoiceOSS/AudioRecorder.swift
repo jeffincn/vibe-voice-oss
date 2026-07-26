@@ -12,14 +12,11 @@ enum AudioRecorderError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .microphoneDenied: "没有麦克风权限，请在系统设置中允许 Vibe Voice OSS 使用麦克风。"
-        case .noSamples: "没有录到有效音频。"
-        case let .noAudibleSignal(device):
-            "没有从“\(device)”检测到声音。请检查麦克风是否静音、发射器是否连接，或在系统声音设置中切换输入设备。"
-        case let .invalidInputFormat(device):
-            "录音设备“\(device)”尚未就绪（采样率无效）。请稍候再试，或在设置中重新选择麦克风。"
-        case let .tapInstallFailed(device):
-            "无法开始使用“\(device)”录音（输入格式不兼容）。请尝试重新插拔设备，或先在系统声音设置中选中该麦克风后再试。"
+        case .microphoneDenied: L10n.t(.errMicrophoneDenied)
+        case .noSamples: L10n.t(.errNoSamples)
+        case let .noAudibleSignal(device): L10n.t(.errNoAudibleSignal, device)
+        case let .invalidInputFormat(device): L10n.t(.errInvalidInputFormat, device)
+        case let .tapInstallFailed(device): L10n.t(.errTapInstallFailed, device)
         }
     }
 }

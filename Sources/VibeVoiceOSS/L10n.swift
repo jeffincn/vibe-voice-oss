@@ -341,6 +341,42 @@ enum L10n {
         case credentialsPlaintextWarning
         case shortcutTaken
         case shortcutsUnavailableDetail
+
+        // MARK: Thrown errors (LocalizedError.errorDescription)
+        case errInsecureEndpoint
+        case errMicrophoneDenied
+        case errDeviceUnavailable // %@ device
+        case errDeviceCannotSelect // %@ device, %d OSStatus
+        case errNoSamples
+        case errNoAudibleSignal // %@ device
+        case errInvalidInputFormat // %@ device
+        case errTapInstallFailed // %@ device
+        case errASRInvalidEndpoint
+        case errASRServer // %d status, %@ body
+        case errASRInvalidResponse
+        case errASREmptyText
+        case errASRTimedOut
+        case errASRLocalTimedOut // %d minutes
+        case errASRLocalRuntime // %@
+        case errLLMInvalidEndpoint
+        case errLLMServer // %d status, %@ body
+        case errLLMInvalidResponse
+        case errLLMEmptyText
+        case errLLMTimedOut // %d seconds
+        case errFormatInvalidEndpoint
+        case errFormatServer // %d status, %@ body
+        case errFormatInvalidResponse
+        case errFormatEmptyText
+        case errFormatTimedOut // %d seconds
+        case errPromptCompile // %@
+        case errPromptIRInvalid // %@
+        case errPromptIREmpty
+        case errAccessibilityDenied
+        case errCannotCreateEvent
+        case errVADModelMissing // %@ path
+        case errVADModelLoadFailed // %@
+        case errPipelineNeedsLocalASR
+        case errPipelineEmptyText
     }
 
     private final class LanguageBox: @unchecked Sendable {
@@ -711,6 +747,40 @@ enum L10n {
         .credentialsPlaintextWarning: "当前构建为 ad-hoc 签名，API Key 无法存入钥匙串，只能以明文保存在本机文件中（权限 0600）。请使用带证书签名的正式版本以启用钥匙串存储。",
         .shortcutTaken: "已被占用",
         .shortcutsUnavailableDetail: "标记为「已被占用」的快捷键已被其他应用注册，按下不会有任何反应。退出占用它的应用（常见于 Raycast、Alfred、输入法等），然后重新打开设置即可重新注册。",
+        .errInsecureEndpoint: "为保护 API Key，远程明文 HTTP 接口不可用；请改用 HTTPS，或仅在本机回环地址使用 HTTP。",
+        .errMicrophoneDenied: "没有麦克风权限，请在系统设置中允许 Vibe Voice OSS 使用麦克风。",
+        .errDeviceUnavailable: "找不到录音设备“%@”。请确认它仍然连接，或在设置中重新选择。",
+        .errDeviceCannotSelect: "无法使用录音设备“%@”（Core Audio %d）。",
+        .errNoSamples: "没有录到有效音频。",
+        .errNoAudibleSignal: "没有从“%@”检测到声音。请检查麦克风是否静音、发射器是否连接，或在系统声音设置中切换输入设备。",
+        .errInvalidInputFormat: "录音设备“%@”尚未就绪（采样率无效）。请稍候再试，或在设置中重新选择麦克风。",
+        .errTapInstallFailed: "无法开始使用“%@”录音（输入格式不兼容）。请尝试重新插拔设备，或先在系统声音设置中选中该麦克风后再试。",
+        .errASRInvalidEndpoint: "oMLX 接口地址无效。",
+        .errASRServer: "oMLX 返回 HTTP %d：%@",
+        .errASRInvalidResponse: "oMLX 返回了无法解析的响应。",
+        .errASREmptyText: "识别完成，但返回文本为空。",
+        .errASRTimedOut: "转写超过 30 秒，已自动中断。",
+        .errASRLocalTimedOut: "本地 ASR 超过 %d 分钟仍未完成，已自动中断。首次下载或加载模型可能较慢，请检查网络、模型名称或本地模型目录后重试。",
+        .errASRLocalRuntime: "本地 ASR 运行失败：%@",
+        .errLLMInvalidEndpoint: "翻译接口地址无效。",
+        .errLLMServer: "翻译模型返回 HTTP %d：%@",
+        .errLLMInvalidResponse: "翻译模型返回了无法解析的响应。",
+        .errLLMEmptyText: "翻译完成，但返回文本为空。",
+        .errLLMTimedOut: "LLM 处理超过 %d 秒，已自动中断。长内容可缩短后重试，或检查模型的限流与上下文限制。",
+        .errFormatInvalidEndpoint: "结构化整理接口地址无效。",
+        .errFormatServer: "整理模型返回 HTTP %d：%@",
+        .errFormatInvalidResponse: "整理模型返回了无法解析的响应。",
+        .errFormatEmptyText: "整理完成，但返回文本为空。",
+        .errFormatTimedOut: "结构化整理超过 %d 秒，已自动中断。请检查模型限流、上下文长度或缩短输入后重试。",
+        .errPromptCompile: "Prompt 编译失败：%@",
+        .errPromptIRInvalid: "Prompt IR 无法解析：%@",
+        .errPromptIREmpty: "Prompt IR 为空，无法编译。",
+        .errAccessibilityDenied: "需要辅助功能权限才能向当前光标插入文字。请在系统设置 → 隐私与安全 → 辅助功能中关闭再重新打开 Vibe Voice OSS 的开关。",
+        .errCannotCreateEvent: "无法生成文本输入事件。",
+        .errVADModelMissing: "Silero VAD 模型未准备：%@。请运行 scripts/prepare-silero-vad.sh。",
+        .errVADModelLoadFailed: "Silero VAD 加载失败：%@",
+        .errPipelineNeedsLocalASR: "Voice Pipeline 仅支持本地 ASR（WhisperKit 或 Qwen3-ASR），请将 ASR 模式设为「集成」。",
+        .errPipelineEmptyText: "本地 ASR 未返回文本。",
     ]
 
     // MARK: - English
@@ -1037,6 +1107,40 @@ enum L10n {
         .credentialsPlaintextWarning: "This build is ad-hoc signed, so API keys cannot go into the Keychain. They are stored in a local file in clear text (mode 0600). Use a certificate-signed build to enable Keychain storage.",
         .shortcutTaken: "taken",
         .shortcutsUnavailableDetail: "The shortcuts marked \"taken\" are already registered by another application, so pressing them does nothing. Quit whatever holds them (Raycast, Alfred and input methods are the usual culprits), then reopen Settings to register them again.",
+        .errInsecureEndpoint: "Remote clear-text HTTP endpoints are refused so the API key is not sent in the open. Use HTTPS, or keep HTTP for loopback addresses only.",
+        .errMicrophoneDenied: "No microphone permission. Allow Vibe Voice OSS to use the microphone in System Settings.",
+        .errDeviceUnavailable: "Input device “%@” is gone. Check that it is still connected, or pick another one in Settings.",
+        .errDeviceCannotSelect: "Couldn’t use input device “%@” (Core Audio %d).",
+        .errNoSamples: "No usable audio was recorded.",
+        .errNoAudibleSignal: "Nothing was heard from “%@”. Check whether the mic is muted or the transmitter is connected, or switch input device in Sound settings.",
+        .errInvalidInputFormat: "Input device “%@” is not ready yet (invalid sample rate). Try again in a moment, or pick another microphone in Settings.",
+        .errTapInstallFailed: "Couldn’t start recording from “%@” (incompatible input format). Try reconnecting the device, or select it in Sound settings first.",
+        .errASRInvalidEndpoint: "The oMLX endpoint URL is not valid.",
+        .errASRServer: "oMLX returned HTTP %d: %@",
+        .errASRInvalidResponse: "oMLX returned a response that could not be parsed.",
+        .errASREmptyText: "Transcription finished but returned no text.",
+        .errASRTimedOut: "Transcription took longer than 30 seconds and was stopped.",
+        .errASRLocalTimedOut: "Local ASR did not finish within %d minutes and was stopped. The first download or model load can be slow — check the network, the model name and the local model directory, then retry.",
+        .errASRLocalRuntime: "Local ASR failed: %@",
+        .errLLMInvalidEndpoint: "The translation endpoint URL is not valid.",
+        .errLLMServer: "The translation model returned HTTP %d: %@",
+        .errLLMInvalidResponse: "The translation model returned a response that could not be parsed.",
+        .errLLMEmptyText: "Translation finished but returned no text.",
+        .errLLMTimedOut: "The LLM took longer than %d seconds and was stopped. Shorten long input and retry, or check the model’s rate limit and context window.",
+        .errFormatInvalidEndpoint: "The formatting endpoint URL is not valid.",
+        .errFormatServer: "The formatting model returned HTTP %d: %@",
+        .errFormatInvalidResponse: "The formatting model returned a response that could not be parsed.",
+        .errFormatEmptyText: "Formatting finished but returned no text.",
+        .errFormatTimedOut: "Formatting took longer than %d seconds and was stopped. Check the model’s rate limit and context window, or shorten the input and retry.",
+        .errPromptCompile: "Prompt compilation failed: %@",
+        .errPromptIRInvalid: "Prompt IR could not be parsed: %@",
+        .errPromptIREmpty: "Prompt IR is empty, nothing to compile.",
+        .errAccessibilityDenied: "Accessibility permission is required to insert text at the cursor. In System Settings → Privacy & Security → Accessibility, turn the Vibe Voice OSS switch off and back on.",
+        .errCannotCreateEvent: "Couldn’t create the text input event.",
+        .errVADModelMissing: "The Silero VAD model is not prepared: %@. Run scripts/prepare-silero-vad.sh.",
+        .errVADModelLoadFailed: "Silero VAD failed to load: %@",
+        .errPipelineNeedsLocalASR: "Voice Pipeline only supports local ASR (WhisperKit or Qwen3-ASR). Set the ASR mode to Integrated.",
+        .errPipelineEmptyText: "Local ASR returned no text.",
     ]
 
     // MARK: - 日本語
@@ -1351,6 +1455,40 @@ enum L10n {
         .credentialsPlaintextWarning: "このビルドは ad-hoc 署名のため、API キーをキーチェーンに保存できません。ローカルファイルに平文（パーミッション 0600）で保存されます。キーチェーン保存には証明書で署名されたビルドを使用してください。",
         .shortcutTaken: "使用中",
         .shortcutsUnavailableDetail: "「使用中」と表示されたショートカットは他のアプリがすでに登録しているため、押しても何も起きません。占有しているアプリ（Raycast、Alfred、入力メソッドなど）を終了してから設定を開き直すと再登録されます。",
+        .errInsecureEndpoint: "API キーを平文で送らないため、リモートの平文 HTTP エンドポイントは使用できません。HTTPS を使うか、HTTP はループバックアドレスに限定してください。",
+        .errMicrophoneDenied: "マイクの権限がありません。システム設定で Vibe Voice OSS のマイク使用を許可してください。",
+        .errDeviceUnavailable: "録音デバイス「%@」が見つかりません。接続を確認するか、設定で選び直してください。",
+        .errDeviceCannotSelect: "録音デバイス「%@」を使用できません（Core Audio %d）。",
+        .errNoSamples: "有効な音声が録音されませんでした。",
+        .errNoAudibleSignal: "「%@」から音声を検出できませんでした。マイクのミュートや送信機の接続を確認するか、サウンド設定で入力デバイスを切り替えてください。",
+        .errInvalidInputFormat: "録音デバイス「%@」はまだ準備できていません（サンプルレートが無効）。少し待って再試行するか、設定でマイクを選び直してください。",
+        .errTapInstallFailed: "「%@」での録音を開始できません（入力フォーマットが非対応）。デバイスを接続し直すか、先にサウンド設定でそのマイクを選択してください。",
+        .errASRInvalidEndpoint: "oMLX のエンドポイント URL が無効です。",
+        .errASRServer: "oMLX が HTTP %d を返しました：%@",
+        .errASRInvalidResponse: "oMLX が解析できない応答を返しました。",
+        .errASREmptyText: "認識は完了しましたが、テキストが空です。",
+        .errASRTimedOut: "文字起こしが 30 秒を超えたため中断しました。",
+        .errASRLocalTimedOut: "ローカル ASR が %d 分経っても完了しないため中断しました。初回のダウンロードやモデル読み込みには時間がかかります。ネットワーク、モデル名、ローカルモデルのディレクトリを確認して再試行してください。",
+        .errASRLocalRuntime: "ローカル ASR の実行に失敗しました：%@",
+        .errLLMInvalidEndpoint: "翻訳エンドポイントの URL が無効です。",
+        .errLLMServer: "翻訳モデルが HTTP %d を返しました：%@",
+        .errLLMInvalidResponse: "翻訳モデルが解析できない応答を返しました。",
+        .errLLMEmptyText: "翻訳は完了しましたが、テキストが空です。",
+        .errLLMTimedOut: "LLM の処理が %d 秒を超えたため中断しました。長い入力は短くして再試行するか、モデルのレート制限とコンテキスト長を確認してください。",
+        .errFormatInvalidEndpoint: "整形エンドポイントの URL が無効です。",
+        .errFormatServer: "整形モデルが HTTP %d を返しました：%@",
+        .errFormatInvalidResponse: "整形モデルが解析できない応答を返しました。",
+        .errFormatEmptyText: "整形は完了しましたが、テキストが空です。",
+        .errFormatTimedOut: "整形が %d 秒を超えたため中断しました。モデルのレート制限やコンテキスト長を確認するか、入力を短くして再試行してください。",
+        .errPromptCompile: "プロンプトのコンパイルに失敗しました：%@",
+        .errPromptIRInvalid: "プロンプト IR を解析できません：%@",
+        .errPromptIREmpty: "プロンプト IR が空のためコンパイルできません。",
+        .errAccessibilityDenied: "カーソル位置にテキストを挿入するにはアクセシビリティ権限が必要です。システム設定 → プライバシーとセキュリティ → アクセシビリティ で Vibe Voice OSS のスイッチをオフにしてからオンに戻してください。",
+        .errCannotCreateEvent: "テキスト入力イベントを生成できません。",
+        .errVADModelMissing: "Silero VAD モデルが準備されていません：%@。scripts/prepare-silero-vad.sh を実行してください。",
+        .errVADModelLoadFailed: "Silero VAD の読み込みに失敗しました：%@",
+        .errPipelineNeedsLocalASR: "Voice Pipeline はローカル ASR（WhisperKit または Qwen3-ASR）のみ対応しています。ASR モードを「統合」に設定してください。",
+        .errPipelineEmptyText: "ローカル ASR がテキストを返しませんでした。",
     ]
 }
 

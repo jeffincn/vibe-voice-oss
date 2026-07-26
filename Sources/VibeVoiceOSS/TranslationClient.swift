@@ -24,14 +24,13 @@ enum TranslationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidEndpoint: "翻译接口地址无效。"
-        case let .server(status, message): "翻译模型返回 HTTP \(status)：\(message)"
-        case .invalidResponse: "翻译模型返回了无法解析的响应。"
-        case .emptyText: "翻译完成，但返回文本为空。"
-        case let .timedOut(seconds):
-            "LLM 处理超过 \(seconds) 秒，已自动中断。长内容可缩短后重试，或检查百炼模型的限流与上下文限制。"
-        case let .promptCompile(detail): "Prompt 编译失败：\(detail)"
-        case .insecureEndpoint: "为保护 API Key，远程明文 HTTP 接口不可用；请改用 HTTPS，或仅在本机回环地址使用 HTTP。"
+        case .invalidEndpoint: L10n.t(.errLLMInvalidEndpoint)
+        case let .server(status, message): L10n.t(.errLLMServer, status, message)
+        case .invalidResponse: L10n.t(.errLLMInvalidResponse)
+        case .emptyText: L10n.t(.errLLMEmptyText)
+        case let .timedOut(seconds): L10n.t(.errLLMTimedOut, seconds)
+        case let .promptCompile(detail): L10n.t(.errPromptCompile, detail)
+        case .insecureEndpoint: L10n.t(.errInsecureEndpoint)
         case .japaneseModelTooOld: L10n.t(.japaneseModelRequirement)
         }
     }

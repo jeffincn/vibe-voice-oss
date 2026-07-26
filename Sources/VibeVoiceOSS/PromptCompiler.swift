@@ -234,8 +234,8 @@ enum PromptCompilerError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidIR(let detail): "Prompt IR 无法解析：\(detail)"
-        case .emptyIR: "Prompt IR 为空，无法编译。"
+        case .invalidIR(let detail): L10n.t(.errPromptIRInvalid, detail)
+        case .emptyIR: L10n.t(.errPromptIREmpty)
         }
     }
 }

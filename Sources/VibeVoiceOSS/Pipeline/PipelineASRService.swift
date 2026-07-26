@@ -14,12 +14,9 @@ enum PipelineASRServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .apiBackendUnsupported:
-            "Voice Pipeline 仅支持本地 ASR（WhisperKit 或 Qwen3-ASR），请将 ASR 模式设为「集成」。"
-        case .emptyText:
-            "本地 ASR 未返回文本。"
-        case let .notReady(message):
-            message
+        case .apiBackendUnsupported: L10n.t(.errPipelineNeedsLocalASR)
+        case .emptyText: L10n.t(.errPipelineEmptyText)
+        case let .notReady(message): message
         }
     }
 }

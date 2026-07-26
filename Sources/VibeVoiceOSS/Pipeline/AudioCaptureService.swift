@@ -10,12 +10,9 @@ enum AudioCaptureServiceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .microphoneDenied:
-            "没有麦克风权限，请在系统设置中允许 Vibe Voice OSS 使用麦克风。"
-        case let .invalidInputFormat(device):
-            "录音设备“\(device)”尚未就绪（采样率无效）。"
-        case let .tapInstallFailed(device):
-            "无法开始使用“\(device)”录音（输入格式不兼容）。"
+        case .microphoneDenied: L10n.t(.errMicrophoneDenied)
+        case let .invalidInputFormat(device): L10n.t(.errInvalidInputFormat, device)
+        case let .tapInstallFailed(device): L10n.t(.errTapInstallFailed, device)
         }
     }
 }

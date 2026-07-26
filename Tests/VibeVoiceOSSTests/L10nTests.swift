@@ -2,11 +2,33 @@ import XCTest
 @testable import VibeVoiceOSS
 
 final class L10nTests: XCTestCase {
-    func testJapaneseCatalogHasEveryUIKey() {
+    func testEveryCatalogHasEveryUIKey() {
+        for language in AppUILanguage.allCases {
+            for key in L10n.Key.allCases {
+                XCTAssertTrue(
+                    L10n.hasTranslation(key, language: language),
+                    "Missing \(language.rawValue) translation for \(key.rawValue)"
+                )
+            }
+        }
+    }
+
+    /// `L10n.t(key, args)` feeds the looked-up string to `String(format:)`. A translation
+    /// that drops a `%@` or turns it into `%d` reads the argument list wrong at runtime,
+    /// which is a crash rather than a cosmetic bug, and only in that one language.
+    func testFormatSpecifiersAgreeAcrossLanguages() throws {
+        let specifier = try NSRegularExpression(pattern: "%(?:\\d+\\$)?[@dfsu]")
         for key in L10n.Key.allCases {
-            XCTAssertTrue(
-                L10n.hasTranslation(key, language: .japanese),
-                "Missing Japanese translation for \(key.rawValue)"
+            let shapes = AppUILanguage.allCases.map { language -> [String] in
+                let value = L10n.string(key, language: language)
+                let range = NSRange(value.startIndex..., in: value)
+                return specifier.matches(in: value, range: range).map {
+                    String(value[Range($0.range, in: value)!])
+                }
+            }
+            XCTAssertEqual(
+                Set(shapes.map { $0.joined(separator: ",") }).count, 1,
+                "Format specifiers differ across languages for \(key.rawValue): \(shapes)"
             )
         }
     }

@@ -261,8 +261,8 @@ enum PasteError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .accessibilityDenied: "需要辅助功能权限才能向当前光标插入文字。请在系统设置 → 隐私与安全 → 辅助功能中关闭再重新打开 Vibe Voice OSS 的开关。"
-        case .cannotCreateEvent: "无法生成文本输入事件。"
+        case .accessibilityDenied: L10n.t(.errAccessibilityDenied)
+        case .cannotCreateEvent: L10n.t(.errCannotCreateEvent)
         }
     }
 }

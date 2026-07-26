@@ -61,14 +61,12 @@ enum SemanticFormatterError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidEndpoint: "结构化整理接口地址无效。"
-        case let .server(status, message): "整理模型返回 HTTP \(status)：\(message)"
-        case .invalidResponse: "整理模型返回了无法解析的响应。"
-        case .emptyText: "整理完成，但返回文本为空。"
-        case let .timedOut(seconds):
-            "结构化整理超过 \(seconds) 秒，已自动中断。请检查百炼模型限流、上下文长度或缩短输入后重试。"
-        case .insecureEndpoint:
-            "为保护 API Key，远程明文 HTTP 接口不可用；请改用 HTTPS，或仅在本机回环地址使用 HTTP。"
+        case .invalidEndpoint: L10n.t(.errFormatInvalidEndpoint)
+        case let .server(status, message): L10n.t(.errFormatServer, status, message)
+        case .invalidResponse: L10n.t(.errFormatInvalidResponse)
+        case .emptyText: L10n.t(.errFormatEmptyText)
+        case let .timedOut(seconds): L10n.t(.errFormatTimedOut, seconds)
+        case .insecureEndpoint: L10n.t(.errInsecureEndpoint)
         }
     }
 }

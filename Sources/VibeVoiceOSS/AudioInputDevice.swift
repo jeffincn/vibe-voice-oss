@@ -21,9 +21,9 @@ enum AudioInputDeviceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case let .unavailable(name):
-            "找不到录音设备“\(name)”。请确认它仍然连接，或在设置中重新选择。"
+            L10n.t(.errDeviceUnavailable, name)
         case let .cannotSelect(name, status):
-            "无法使用录音设备“\(name)”（Core Audio \(status)）。"
+            L10n.t(.errDeviceCannotSelect, name, Int(status))
         }
     }
 }

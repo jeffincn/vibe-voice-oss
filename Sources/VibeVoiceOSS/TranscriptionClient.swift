@@ -46,15 +46,14 @@ enum TranscriptionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidEndpoint: "oMLX 接口地址无效。"
-        case let .server(status, message): "oMLX 返回 HTTP \(status)：\(message)"
-        case .invalidResponse: "oMLX 返回了无法解析的响应。"
-        case .emptyText: "识别完成，但返回文本为空。"
-        case .timedOut: "转写超过 30 秒，已自动中断。"
-        case let .localTimedOut(seconds):
-            "本地 ASR 超过 \(seconds / 60) 分钟仍未完成，已自动中断。首次下载或加载模型可能较慢，请检查网络、模型名称或本地模型目录后重试。"
-        case let .localRuntime(message): "本地 ASR 运行失败：\(message)"
-        case .insecureEndpoint: "为保护 API Key，远程明文 HTTP 接口不可用；请改用 HTTPS，或仅在本机回环地址使用 HTTP。"
+        case .invalidEndpoint: L10n.t(.errASRInvalidEndpoint)
+        case let .server(status, message): L10n.t(.errASRServer, status, message)
+        case .invalidResponse: L10n.t(.errASRInvalidResponse)
+        case .emptyText: L10n.t(.errASREmptyText)
+        case .timedOut: L10n.t(.errASRTimedOut)
+        case let .localTimedOut(seconds): L10n.t(.errASRLocalTimedOut, seconds / 60)
+        case let .localRuntime(message): L10n.t(.errASRLocalRuntime, message)
+        case .insecureEndpoint: L10n.t(.errInsecureEndpoint)
         }
     }
 }
