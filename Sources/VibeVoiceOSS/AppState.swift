@@ -1089,7 +1089,9 @@ final class AppState: ObservableObject {
         Task {
             do {
                 try await client.checkServer(configuration: configuration)
-                connectionMessage = L10n.t(.asrConnectOK)
+                connectionMessage = Self.appendingCleartextWarning(
+                    to: L10n.t(.asrConnectOK), endpoints: [configuration.endpoint]
+                )
             } catch {
                 connectionMessage = L10n.t(.asrConnectFailed, error.localizedDescription)
             }
@@ -1097,6 +1099,18 @@ final class AppState: ObservableObject {
             lastCapabilities = caps
             capabilityMessage = caps.summary
         }
+    }
+
+    /// Surface clear-text transport for endpoints that would carry audio or transcripts
+    /// unencrypted. This fires even without an API key, where `EndpointSecurity`
+    /// deliberately still allows the request.
+    private static func appendingCleartextWarning(
+        to message: String,
+        endpoints: [String]
+    ) -> String {
+        let exposed = endpoints.contains { EndpointSecurity.isCleartextRemote(endpoint: $0) }
+        guard exposed else { return message }
+        return "\(message) · \(L10n.t(.cleartextEndpointWarning))"
     }
 
     func prepareLocalASRModel() {
@@ -1221,7 +1235,9 @@ final class AppState: ObservableObject {
         Task {
             do {
                 let detail = try await translator.checkServer(configuration: configuration)
-                connectionMessage = detail
+                connectionMessage = Self.appendingCleartextWarning(
+                    to: detail, endpoints: [configuration.endpoint]
+                )
             } catch {
                 connectionMessage = L10n.t(.translationConnectFailed, error.localizedDescription)
             }
@@ -1254,7 +1270,13 @@ final class AppState: ObservableObject {
             } catch {
                 parts.append(L10n.t(.translationFailed, error.localizedDescription))
             }
-            connectionMessage = parts.joined(separator: " · ")
+            connectionMessage = Self.appendingCleartextWarning(
+                to: parts.joined(separator: " · "),
+                endpoints: [
+                    asrConfig.backend == .api ? asrConfig.endpoint : "",
+                    settings.llmFeaturesAvailable ? llmConfig.endpoint : "",
+                ]
+            )
             let caps = await OMLXCapabilityProbe.probe(configuration: asrConfig)
             lastCapabilities = caps
             capabilityMessage = caps.summary

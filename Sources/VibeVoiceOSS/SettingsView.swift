@@ -310,6 +310,7 @@ private struct SettingsForm: View {
                     caption(L10n.t(.hfEndpointCaption))
                 } else {
                     field(L10n.t(.settingsEndpoint), text: $settings.endpoint)
+                    cleartextEndpointWarning(settings.endpoint)
                     secureField(L10n.t(.apiKeyOptional), text: $settings.apiKey)
                     field(L10n.t(.settingsModel), text: $settings.model)
                 }
@@ -428,6 +429,9 @@ private struct SettingsForm: View {
                 caption(settings.llmBackend.caption)
                 field(L10n.t(.settingsLLMEndpoint), text: $settings.llmEndpoint)
                     .disabled(settings.llmBackend != .api)
+                if settings.llmBackend == .api {
+                    cleartextEndpointWarning(settings.llmEndpoint)
+                }
                 secureField(L10n.t(.apiKeyOptional), text: $settings.llmApiKey)
                     .disabled(settings.llmBackend != .api)
                 field(L10n.t(.settingsLLMModel), text: $settings.translationModel)
@@ -739,6 +743,21 @@ private struct SettingsForm: View {
             .font(.system(size: 12))
             .foregroundStyle(AppChrome.muted)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func warningCaption(_ text: String) -> some View {
+        Label(text, systemImage: "exclamationmark.triangle.fill")
+            .font(.system(size: 12))
+            .foregroundStyle(.orange)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Shown under an endpoint field when audio / transcripts would leave the machine unencrypted.
+    @ViewBuilder
+    private func cleartextEndpointWarning(_ endpoint: String) -> some View {
+        if EndpointSecurity.isCleartextRemote(endpoint: endpoint) {
+            warningCaption(L10n.t(.cleartextEndpointDetail))
+        }
     }
 
     private func secondaryPill(_ title: String, action: @escaping () -> Void) -> some View {

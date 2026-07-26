@@ -330,6 +330,11 @@ enum L10n {
         case accessibilityPromptOpened
         case structuredPrefix // used in outputCaption
         case promptCompileArrow // Prompt 编译 →
+
+        // MARK: Security warnings
+        case cleartextEndpointWarning
+        case cleartextEndpointDetail
+        case credentialsPlaintextWarning
     }
 
     private final class LanguageBox: @unchecked Sendable {
@@ -691,6 +696,9 @@ enum L10n {
         .accessibilityPromptOpened: "已打开辅助使用授权提示；授权前会只复制到剪贴板，不会反复弹窗。",
         .structuredPrefix: "结构化：%@",
         .promptCompileArrow: "Prompt 编译 → %@（%@）",
+        .cleartextEndpointWarning: "警告：明文 HTTP 远程端点",
+        .cleartextEndpointDetail: "该地址不是 HTTPS，也不在本机回环地址上：音频与转写文本会以未加密方式在网络上传输。请改用 HTTPS，或把服务部署到本机。",
+        .credentialsPlaintextWarning: "当前构建为 ad-hoc 签名，API Key 无法存入钥匙串，只能以明文保存在本机文件中（权限 0600）。请使用带证书签名的正式版本以启用钥匙串存储。",
     ]
 
     // MARK: - English
@@ -1008,6 +1016,9 @@ enum L10n {
         .accessibilityPromptOpened: "Opened the Accessibility prompt. Until granted, text is copied only (no repeat prompts).",
         .structuredPrefix: "Structured: %@",
         .promptCompileArrow: "Prompt compile → %@ (%@)",
+        .cleartextEndpointWarning: "Warning: clear-text HTTP endpoint",
+        .cleartextEndpointDetail: "This address is neither HTTPS nor on the loopback interface: audio and transcripts travel over the network unencrypted. Use HTTPS, or run the service locally.",
+        .credentialsPlaintextWarning: "This build is ad-hoc signed, so API keys cannot go into the Keychain. They are stored in a local file in clear text (mode 0600). Use a certificate-signed build to enable Keychain storage.",
     ]
 
     // MARK: - 日本語
@@ -1313,6 +1324,9 @@ enum L10n {
         .timingHTMLNoRecords: "記録なし",
         .japaneseModelRequirement: "自然な日本語の出力にはバージョン 5.6 以上のモデルが必要です。現在のモデルはバージョン確認を通過しませんでした。",
         .japaneseNaturalCaption: "日本語は自然な母語の文体で整理します（バージョン 5.6 以上のモデルが必要です）。",
+        .cleartextEndpointWarning: "警告: 平文 HTTP のリモートエンドポイント",
+        .cleartextEndpointDetail: "このアドレスは HTTPS でもループバックでもありません。音声と文字起こしが暗号化されずにネットワークを流れます。HTTPS を使うか、サービスをローカルで動かしてください。",
+        .credentialsPlaintextWarning: "このビルドは ad-hoc 署名のため、API キーをキーチェーンに保存できません。ローカルファイルに平文（パーミッション 0600）で保存されます。キーチェーン保存には証明書で署名されたビルドを使用してください。",
     ]
 }
 
