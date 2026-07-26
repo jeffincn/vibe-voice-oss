@@ -2,7 +2,8 @@ import SwiftUI
 
 struct MobileHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @State private var bridgeState = VoiceBridgeStore().load()
+    @State private var bridgeState = VoiceBridgeState.idle
+    @State private var bridgeWatcher: VoiceBridgeWatcher?
     @State private var rimeStatus = "尚未准备"
     @State private var isPreparingRime = false
     @StateObject private var voiceController = MobileVoiceController()
@@ -23,15 +24,19 @@ struct MobileHomeView: View {
             .navigationTitle("Vibe Voice")
             .task {
                 prepareRime()
-                while !Task.isCancelled {
-                    bridgeState = bridge.load()
-                    voiceController.synchronize(with: bridgeState)
-                    try? await Task.sleep(for: .milliseconds(500))
-                }
+                startObservingBridge()
             }
             .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .background {
+                switch newPhase {
+                case .background:
+                    // The keyboard cannot ask for anything while we are not
+                    // frontmost, so stop listening instead of waking up to poll.
+                    bridgeWatcher = nil
                     voiceController.handleBackgroundTransition()
+                case .active:
+                    startObservingBridge()
+                default:
+                    break
                 }
             }
         }
@@ -98,7 +103,7 @@ struct MobileHomeView: View {
                 .accessibilityIdentifier("voice.record")
                 Button("重置") {
                     voiceController.reset()
-                    bridgeState = bridge.load()
+                    refreshBridgeState()
                 }
                 .buttonStyle(.bordered)
             }
@@ -142,6 +147,19 @@ struct MobileHomeView: View {
                 .foregroundStyle(.secondary)
         }
         .cardStyle()
+    }
+
+    private func startObservingBridge() {
+        refreshBridgeState()
+        guard bridgeWatcher == nil else { return }
+        bridgeWatcher = VoiceBridgeWatcher {
+            refreshBridgeState()
+        }
+    }
+
+    private func refreshBridgeState() {
+        bridgeState = bridge.load()
+        voiceController.synchronize(with: bridgeState)
     }
 
     private func prepareRime() {

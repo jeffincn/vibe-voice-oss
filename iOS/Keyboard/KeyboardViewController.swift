@@ -1,12 +1,21 @@
 import UIKit
 
 final class KeyboardViewController: UIInputViewController {
+    /// The Darwin signal from the containing app is best-effort and coalescing,
+    /// so a slow timer backs it up. It replaces the 0.4s poll this controller
+    /// used to run for as long as the keyboard was on screen.
+    private static let bridgeBackstopInterval: TimeInterval = 2
+
     private lazy var engine: RimeEngine = RimeEngineFactory.makeForKeyboard()
     private let bridge = VoiceBridgeStore()
     private var language: KeyboardLanguage = .chinese
     private var voiceMode: VoiceOutputMode = .polished
     private var lastInsertedRequestID: UUID?
     private var bridgeTimer: Timer?
+    private var bridgeWatcher: VoiceBridgeWatcher?
+    /// A finished transcript that belongs to a different text field. It waits
+    /// here until the user goes back to that field or asks for it explicitly.
+    private var pendingResult: VoiceBridgeState?
 
     private let preeditLabel = UILabel()
     private let candidateStack = UIStackView()
@@ -21,23 +30,23 @@ final class KeyboardViewController: UIInputViewController {
         configureLayout()
         refreshComposition()
         refreshBridge()
-        startBridgeTimer()
+        startBridgeObservation()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         refreshBridge()
-        startBridgeTimer()
+        startBridgeObservation()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        bridgeTimer?.invalidate()
-        bridgeTimer = nil
+        stopBridgeObservation()
     }
 
     deinit {
         bridgeTimer?.invalidate()
+        bridgeWatcher = nil
     }
 
     private func configureLayout() {
@@ -92,14 +101,25 @@ final class KeyboardViewController: UIInputViewController {
         ])
     }
 
-    private func startBridgeTimer() {
+    private func startBridgeObservation() {
+        if bridgeWatcher == nil {
+            bridgeWatcher = VoiceBridgeWatcher { [weak self] in
+                self?.refreshBridge()
+            }
+        }
         guard bridgeTimer == nil else { return }
         bridgeTimer = Timer.scheduledTimer(
-            withTimeInterval: 0.4,
+            withTimeInterval: Self.bridgeBackstopInterval,
             repeats: true
         ) { [weak self] _ in
             self?.refreshBridge()
         }
+    }
+
+    private func stopBridgeObservation() {
+        bridgeWatcher = nil
+        bridgeTimer?.invalidate()
+        bridgeTimer = nil
     }
 
     private func makeLetterRow(_ letters: String) -> UIView {
@@ -136,8 +156,8 @@ final class KeyboardViewController: UIInputViewController {
         let space = keyButton("空格")
         space.addAction(UIAction { [weak self] _ in self?.handleSpace() }, for: .touchUpInside)
 
-        voiceButton.setTitle("🎙 \(voiceMode.label)", for: .normal)
         style(button: voiceButton)
+        updateVoiceButton()
         voiceButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 72).isActive = true
         voiceButton.addAction(UIAction { [weak self] _ in self?.requestVoice() }, for: .touchUpInside)
         configureVoiceMenu()
@@ -177,17 +197,15 @@ final class KeyboardViewController: UIInputViewController {
             engine.process(letter: letter)
             refreshComposition()
         case .english:
-            textDocumentProxy.insertText(String(letter).lowercased())
+            insertIntoDocument(String(letter).lowercased())
         }
     }
 
     private func handleSpace() {
-        if language == .chinese, let committed = engine.commitBestCandidate() {
-            textDocumentProxy.insertText(committed)
-            refreshComposition()
-        } else {
-            textDocumentProxy.insertText(" ")
+        if language == .chinese, commitPendingComposition() {
+            return
         }
+        insertIntoDocument(" ")
     }
 
     private func handleBackspace() {
@@ -200,32 +218,41 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func handleReturn() {
-        if language == .chinese, let committed = engine.commitBestCandidate() {
-            textDocumentProxy.insertText(committed)
-            refreshComposition()
+        if language == .chinese {
+            commitPendingComposition()
         }
-        textDocumentProxy.insertText("\n")
+        insertIntoDocument("\n")
     }
 
     private func toggleLanguage() {
-        if let committed = engine.commitBestCandidate() {
-            textDocumentProxy.insertText(committed)
-        }
+        commitPendingComposition()
         language.toggle()
         languageButton.setTitle(language.toggleLabel, for: .normal)
         refreshComposition()
     }
 
     private func requestVoice() {
-        if let committed = engine.commitBestCandidate() {
-            textDocumentProxy.insertText(committed)
-            refreshComposition()
+        commitPendingComposition()
+        // Tapping the key is the explicit consent that lets a result reach a
+        // field other than the one that requested it.
+        if let pendingResult, pendingResult.hasFreshResult() {
+            deliver(pendingResult)
+            return
         }
         let state = bridge.request(
             mode: voiceMode,
             documentID: textDocumentProxy.documentIdentifier
         )
         statusLabel.text = state.message
+        updateVoiceButton()
+    }
+
+    @discardableResult
+    private func commitPendingComposition() -> Bool {
+        guard let committed = engine.commitBestCandidate() else { return false }
+        insertIntoDocument(committed)
+        refreshComposition()
+        return true
     }
 
     private func configureVoiceMenu() {
@@ -246,7 +273,7 @@ final class KeyboardViewController: UIInputViewController {
     private func selectVoiceMode(_ mode: VoiceOutputMode) {
         voiceMode = mode
         bridge.setMode(mode)
-        voiceButton.setTitle("🎙 \(mode.label)", for: .normal)
+        updateVoiceButton()
         configureVoiceMenu()
         statusLabel.text = "已选择\(mode.label)模式"
     }
@@ -263,23 +290,54 @@ final class KeyboardViewController: UIInputViewController {
             button.setTitle(candidate.text, for: .normal)
             button.titleLabel?.font = .preferredFont(forTextStyle: .headline)
             button.addAction(UIAction { [weak self] _ in
-                guard let text = self?.engine.selectCandidate(at: index) else { return }
-                self?.textDocumentProxy.insertText(text)
-                self?.refreshComposition()
+                guard let self, let text = engine.selectCandidate(at: index) else { return }
+                insertIntoDocument(text)
+                refreshComposition()
             }, for: .touchUpInside)
             candidateStack.addArrangedSubview(button)
         }
     }
 
+    /// Automatic insertion is limited to the field that asked for dictation.
+    /// The bridge is global to the App Group, so without that check a transcript
+    /// requested in one app would be typed into whichever text field the
+    /// keyboard happened to attach to next.
     private func refreshBridge() {
         let state = bridge.load()
-        statusLabel.text = state.message.isEmpty ? state.status.rawValue : state.message
-        guard state.status == .ready,
-              !state.text.isEmpty,
-              state.requestID != lastInsertedRequestID else { return }
-        textDocumentProxy.insertText(state.text)
+        guard state.hasFreshResult() else {
+            pendingResult = nil
+            statusLabel.text = state.message.isEmpty ? state.status.rawValue : state.message
+            updateVoiceButton()
+            return
+        }
+
+        if state.requestID != lastInsertedRequestID,
+           state.targets(documentID: textDocumentProxy.documentIdentifier) {
+            deliver(state)
+            return
+        }
+
+        pendingResult = state
+        statusLabel.text = "结果已就绪，回到原输入框或点麦克风插入"
+        updateVoiceButton()
+    }
+
+    private func deliver(_ state: VoiceBridgeState) {
+        insertIntoDocument(state.text)
         lastInsertedRequestID = state.requestID
+        pendingResult = nil
         bridge.markConsumed(requestID: state.requestID)
+        statusLabel.text = "已插入"
+        updateVoiceButton()
+    }
+
+    private func insertIntoDocument(_ text: String) {
+        textDocumentProxy.insertText(text)
+    }
+
+    private func updateVoiceButton() {
+        let title = pendingResult == nil ? "🎙 \(voiceMode.label)" : "🎙 插入"
+        voiceButton.setTitle(title, for: .normal)
     }
 
     @objc
