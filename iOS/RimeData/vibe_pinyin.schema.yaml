@@ -30,6 +30,8 @@ engine:
     - fallback_segmentor
   translators:
     - script_translator
+    - table_translator@phrase
+    - table_translator@emoji
 
 speller:
   alphabet: zyxwvutsrqponmlkjihgfedcba
@@ -79,3 +81,15 @@ translator:
     - xform/([nl])v/$1ü/
     - xform/([nl])ue/$1üe/
     - xform/([jqxy])v/$1u/
+
+phrase:
+  dictionary: vibe_phrases
+  enable_completion: true
+  enable_sentence: false
+  initial_quality: 1.2
+
+emoji:
+  dictionary: vibe_emoji
+  enable_completion: true
+  enable_sentence: false
+  initial_quality: 1.1

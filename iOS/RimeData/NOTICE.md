@@ -14,6 +14,11 @@ traditional-output features. The bundled dictionary remains the Apache-2.0
 `rime-pinyin-simp` data; users may import additional Rime-format dictionaries
 from the app settings into their private App Group container.
 
+`vibe_phrases.dict.yaml` and `vibe_emoji.dict.yaml` are original Vibe Voice
+curated seed data. They contain Unicode text only; no third-party emoji artwork
+is redistributed. OpenMoji can be considered for a future visual picker, but
+its artwork requires CC BY-SA 4.0 attribution and share-alike terms.
+
 The keyboard links a core-only `librime.xcframework` built by
 `scripts/prepare-librime-ios.sh` from the official librime 1.16.1 release. No
 librime Lua, octagram, predict, legacy-plugin, or other external plugin source

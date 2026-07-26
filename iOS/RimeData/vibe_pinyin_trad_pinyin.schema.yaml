@@ -13,7 +13,7 @@ switches:
 engine:
   processors: [ascii_composer, speller, punctuator, selector, navigator, express_editor]
   segmentors: [ascii_segmentor, abc_segmentor, fallback_segmentor]
-  translators: [script_translator]
+  translators: [script_translator, table_translator@phrase, table_translator@emoji]
   filters: [simplifier]
 speller:
   alphabet: zyxwvutsrqponmlkjihgfedcba
@@ -43,6 +43,16 @@ translator:
     - xform/([nl])v/$1ü/
     - xform/([nl])ue/$1üe/
     - xform/([jqxy])v/$1u/
+phrase:
+  dictionary: vibe_phrases
+  enable_completion: true
+  enable_sentence: false
+  initial_quality: 1.2
+emoji:
+  dictionary: vibe_emoji
+  enable_completion: true
+  enable_sentence: false
+  initial_quality: 1.1
 simplifier:
   option_name: traditional
   opencc_config: s2t.json

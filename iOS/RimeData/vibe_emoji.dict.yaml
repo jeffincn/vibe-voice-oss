@@ -1,0 +1,26 @@
+# Unicode Emoji and kaomoji shortcuts. These are text glyphs, not artwork.
+---
+name: vibe_emoji
+version: "0.7.0"
+sort: by_weight
+columns: [text, code, weight]
+...
+😀	kaixin	900
+😊	kaixin	850
+😂	daxiao	900
+🥳	qingzhu	800
+❤️	ai	850
+👍	zan	900
+🙏	ganxie	850
+🎉	qingzhu	850
+🐶	gou	800
+🐱	mao	800
+☕	kafei	700
+🌟	xingxing	700
+✨	liang	700
+🤝	hezuo	700
+👏	guanzhu	650
+😅	gan	600
+（⌒▽⌒）	kaixin	500
+（╹◡╹）	kaixin	450
+（￣︶￣）	kaixin	400
