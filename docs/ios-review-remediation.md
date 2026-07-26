@@ -27,7 +27,7 @@ where the reasoning for each change lives.
 | H4 | No `AVAudioSession` interruption or route-change handling, so a call during recording left the UI stuck in `.recording` | fixed | `feat(ios): recover from audio interruptions and route changes` |
 | H5 | Project-level `TARGETED_DEVICE_FAMILY = 1` was overridden by XcodeGen's per-target `1,2`, shipping an untested iPad build | fixed | `build(ios): correct device family, extension limits, and declared capabilities` |
 | H6 | Keyboard target did not set `APPLICATION_EXTENSION_API_ONLY`, so non-extension-safe API use would only fail at App Store validation | fixed | `build(ios): correct device family, extension limits, and declared capabilities` |
-| H7 | No shift, digits, or punctuation; candidates beyond the first page unreachable; the Rime schema has no `punctuator` | deferred | Feature work rather than a defect fix, and the largest item in the review. The app and the development plan no longer claim a complete keyboard, so the gap is at least visible. Closing it means new key rows, a schema change, and layout work under the extension memory budget. |
+| H7 | No shift, digits, or punctuation; candidates beyond the first page unreachable; the Rime schema has no `punctuator` | fixed | `feat(ios): complete the keyboard with shift, symbols, and paging` |
 | H8 | Composition was not reset when the host changed the document or moved the caret, so a stale preedit committed into the wrong place | fixed | `fix(ios): keep the composition tied to the host document and fix layout` |
 | H9 | Physical-device acceptance is entirely `Pending` | open | Requires hardware. Run `zsh scripts/test-ios-device.sh` and fill in `docs/ios-device-acceptance.md`. Several fixes on this branch — interruption recovery, the Rime directory split, keyboard memory under the extension budget — can only be proven there. |
 
@@ -54,8 +54,8 @@ where the reasoning for each change lives.
 | L-a11y | Letter keys and candidates carried no VoiceOver labels | fixed | `fix(ios): keep the composition tied to the host document and fix layout` |
 | L-deploy | `start_maintenance(True)` forced a full dictionary check on every launch | fixed | `fix(ios): rework the rime layer for process isolation and key fidelity` |
 | L-rimeapi | `gAPI` was read outside the mutex that guards its assignment | fixed | `fix(ios): rework the rime layer for process isolation and key fidelity` |
-| L-l10n | All iOS strings are hardcoded Simplified Chinese with no localisation infrastructure | deferred | Needs the `L10n` treatment the macOS target already has. Not a 0.7.0 blocker, but it grows with every string added. |
-| L-dictsize | The 1.2 MB raw dictionary source is bundled into the extension, which never compiles it | deferred | Removing it changes what librime sees as deployable data. Worth doing after H9, when there is a device measurement to compare against. |
+| L-l10n | All iOS strings are hardcoded Simplified Chinese with no localisation infrastructure | fixed | `feat(ios): localise the interface instead of hard-coding Chinese` |
+| L-dictsize | The 1.3 MB raw dictionary source is bundled into the extension, which never compiles it | deferred | Deliberately not attempted. The payoff is 1.3 MB of download size and no runtime memory, because a file the extension never opens is never resident. The cost is splitting `RimeData` into two directories, since an XcodeGen folder reference cannot exclude one file, and then betting that no librime code path consults the source dictionary when deciding whether the prebuilt data in `staging_dir` is current. If that bet is wrong the keyboard degrades to the ten-word prototype engine, which is a far worse outcome than 1.3 MB. Revisit once H9 gives a device to measure and confirm on. |
 | L-jq | `scripts/test-ios-device.sh` used `jq` without the dependency check its sibling script has | fixed | `build(ios): verify the vendored librime archives against recorded digests` |
 
 ## Verification status
@@ -63,10 +63,22 @@ where the reasoning for each change lives.
 **Nothing on this branch has been compiled.** It was prepared in a Linux
 container with no Xcode and no iOS SDK. What was verified:
 
-- `iOS/Shared/VoiceBridge.swift` and `iOS/Shared/RimeEngine.swift` typecheck
-  under a Linux Swift 6.0.3 toolchain in Swift 5 language mode, with
-  `NSFileCoordinator`, `FileManager.containerURL`, and the Objective-C bridge
-  replaced by shims that mirror the real signatures.
+- Every file in `iOS/Shared` except `VoiceBridgeSignal.swift` typechecks under a
+  Linux Swift 6.0.3 toolchain in Swift 5 language mode, with `NSFileCoordinator`,
+  `FileManager.containerURL`, the Darwin notification calls, and the Objective-C
+  bridge replaced by shims that mirror the real signatures.
+- The `KeyboardLayout` and `MobileL10n` invariants were run as a real program,
+  not just typechecked: every plane has three rows ending in backspace, every
+  character key holds exactly one character, the letters plane covers the
+  alphabet with no duplicates, and all 86 catalog keys resolve in both
+  languages with the positional format specifiers substituting in order.
+- `iOS/project.yml` was generated with xcodegen 2.44.1 built from source for
+  Linux. The two `InfoPlist.strings` files become one `PBXVariantGroup` in both
+  the app and the extension, `knownRegions` picks up `en` and `zh-Hans`, and no
+  `.plist` or `.entitlements` file leaks into a resources phase.
+- `iOS/RimeData/vibe_pinyin.schema.yaml` parses, and the inline `punctuator`
+  map round-trips through a YAML loader — worth checking by machine, because a
+  malformed schema fails at deployment rather than at build time.
 - `iOS/Vendor/librime.xcframework.sha256` matches the committed archives.
 - `.github/workflows/ios.yml` parses.
 
@@ -74,8 +86,13 @@ What still has to happen before merge:
 
 1. `zsh scripts/build-ios.sh` — simulator matrix plus the generic device build.
    Expect new warnings: `SWIFT_STRICT_CONCURRENCY` moved to `complete`, and
-   surfacing those was the point of M6.
+   surfacing those was the point of M6. The UIKit in
+   `KeyboardViewController.swift` has never been through a compiler, so this is
+   the first real check of the H7 layout code.
 2. `VIBEVOICE_RUN_INTEGRATION_TESTS=1 zsh scripts/build-ios.sh` at least once,
    since the WhisperKit test no longer runs by default.
 3. `zsh scripts/test-ios-device.sh` and `docs/ios-device-acceptance.md`, which
-   closes H9.
+   closes H9. Beyond the existing checklist, H7 adds things only a device shows:
+   that Chinese punctuation comes out full-width, that the candidate arrows
+   page, and that shift and the symbol planes lay out correctly on the smallest
+   supported screen.

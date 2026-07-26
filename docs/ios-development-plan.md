@@ -6,17 +6,23 @@ The iOS product is a Chinese/English keyboard plus voice input.
 
 Implemented:
 
-- QWERTY letter input in English mode.
-- Simplified Chinese full Pinyin through Rime, with a candidate bar.
+- QWERTY letter input in English mode, with a shift key that is one-shot on a
+  single tap and locked on a double tap.
+- Number and symbol planes matching the system keyboard layout.
+- Simplified Chinese full Pinyin through Rime, with a candidate bar. Chinese
+  punctuation goes through the schema's `punctuator` and comes out full-width.
+- Candidate paging, driven by librime's `page_no` and `is_last_page`, plus digit
+  selection from the visible page.
 - Original, polished, and translated voice output.
 - Local-first ASR in the containing app.
+- Simplified Chinese and English interface, following the device language.
 
 Not yet implemented, and therefore not claimed anywhere in the UI:
 
-- Shift and capitals, digits, and punctuation keys. The Rime schema also has no
-  `punctuator`, so punctuation cannot be typed in Chinese mode.
-- Candidate pagination. Only the first eight candidates are reachable, and
-  digit keys do not select candidates.
+- Any keyboard layout other than QWERTY: no Wubi, no nine-key, no handwriting.
+- Emoji, dictation of punctuation by name, or a clipboard plane.
+- Any language other than Simplified Chinese and English, in either the input
+  method or the interface.
 
 The keyboard extension never opens the microphone and never loads ASR models. It owns only keyboard UI, the Rime session, candidate selection, and text insertion. The containing app owns audio capture, VAD, model management, ASR, translation, and structured cleanup.
 
