@@ -147,8 +147,8 @@ struct TranscriptionClient: Sendable {
         if streamResults {
             request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         }
-        if !configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+        if let authorization = EndpointSecurity.bearerHeader(apiKey: configuration.apiKey) {
+            request.setValue(authorization, forHTTPHeaderField: "Authorization")
         }
         request.httpBody = multipartBody(
             boundary: boundary,
@@ -334,8 +334,8 @@ struct TranscriptionClient: Sendable {
             .appendingPathComponent("models")
         var request = URLRequest(url: modelsURL)
         request.timeoutInterval = 10
-        if !configuration.apiKey.isEmpty {
-            request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+        if let authorization = EndpointSecurity.bearerHeader(apiKey: configuration.apiKey) {
+            request.setValue(authorization, forHTTPHeaderField: "Authorization")
         }
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {

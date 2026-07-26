@@ -213,9 +213,8 @@ struct TranslationClient: Sendable {
     }
 
     static func applyBearerIfNeeded(_ apiKey: String, to request: inout URLRequest) {
-        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        request.setValue("Bearer \(trimmed)", forHTTPHeaderField: "Authorization")
+        guard let authorization = EndpointSecurity.bearerHeader(apiKey: apiKey) else { return }
+        request.setValue(authorization, forHTTPHeaderField: "Authorization")
     }
 
     /// Resolve provider profile then build the chat body (shared by translate + format).

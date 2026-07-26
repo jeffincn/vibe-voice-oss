@@ -31,6 +31,23 @@ enum EndpointSecurity {
         return isCleartextRemote(url)
     }
 
+    /// `Bearer <key>` for `Authorization`, or nil when there is no usable key.
+    ///
+    /// Keys are pasted, and a paste from a file or a password manager routinely carries a
+    /// trailing newline. Interpolating that straight into a header produced a request the
+    /// URL loader rejects or truncates, and the user saw an unexplained failure — now with
+    /// the response body redacted, so there was nothing left to diagnose it with. Callers
+    /// used to trim in some paths and not others.
+    static func bearerHeader(apiKey: String) -> String? {
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        // A key with an interior control character is not recoverable by trimming, and
+        // sending it would smuggle whatever follows into the header block.
+        guard !trimmed.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+        else { return nil }
+        return "Bearer \(trimmed)"
+    }
+
     private static func isLoopbackHost(_ rawHost: String?) -> Bool {
         let host = (rawHost ?? "")
             .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))

@@ -106,4 +106,24 @@ final class EndpointSecurityTests: XCTestCase {
         XCTAssertFalse(EndpointSecurity.isCleartextRemote(endpoint: ""))
         XCTAssertFalse(EndpointSecurity.isCleartextRemote(endpoint: "   "))
     }
+
+    // MARK: - Authorization header
+
+    func testBearerHeaderTrimsPastedWhitespace() {
+        // A paste from a file or password manager routinely carries a trailing newline.
+        XCTAssertEqual(EndpointSecurity.bearerHeader(apiKey: "sk-secret\n"), "Bearer sk-secret")
+        XCTAssertEqual(EndpointSecurity.bearerHeader(apiKey: "  sk-secret  "), "Bearer sk-secret")
+    }
+
+    func testBearerHeaderIsNilWithoutAKey() {
+        XCTAssertNil(EndpointSecurity.bearerHeader(apiKey: ""))
+        XCTAssertNil(EndpointSecurity.bearerHeader(apiKey: " \n\t"))
+    }
+
+    func testBearerHeaderRejectsInteriorControlCharacters() {
+        // Trimming cannot fix these, and sending them would smuggle the remainder into
+        // the header block.
+        XCTAssertNil(EndpointSecurity.bearerHeader(apiKey: "sk-one\r\nX-Admin: true"))
+        XCTAssertNil(EndpointSecurity.bearerHeader(apiKey: "sk\u{0}two"))
+    }
 }

@@ -48,8 +48,8 @@ actor WebSocketStreamingASRClient: StreamingASRClient {
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
-        if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if let authorization = EndpointSecurity.bearerHeader(apiKey: apiKey) {
+            request.setValue(authorization, forHTTPHeaderField: "Authorization")
         }
         let socket = session.webSocketTask(with: request)
         socket.maximumMessageSize = Self.maximumMessageBytes

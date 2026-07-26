@@ -156,8 +156,8 @@ enum OMLXCapabilityProbe {
         request.httpMethod = "POST"
         request.timeoutInterval = 20
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        if !configuration.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+        if let authorization = EndpointSecurity.bearerHeader(apiKey: configuration.apiKey) {
+            request.setValue(authorization, forHTTPHeaderField: "Authorization")
         }
         request.httpBody = multipart(
             boundary: boundary,
@@ -194,8 +194,8 @@ enum OMLXCapabilityProbe {
     private static func get(_ url: URL, apiKey: String) async throws -> (Data, URLResponse) {
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
-        if !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if let authorization = EndpointSecurity.bearerHeader(apiKey: apiKey) {
+            request.setValue(authorization, forHTTPHeaderField: "Authorization")
         }
         return try await URLSession.shared.data(for: request)
     }
