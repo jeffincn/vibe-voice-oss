@@ -395,34 +395,10 @@ final class AudioRecorder: @unchecked Sendable {
     /// the one thing that cannot be deferred — copying out of a buffer the tap reclaims
     /// as soon as this returns — and hands the rest to `processingQueue`.
     private func append(buffer: AVAudioPCMBuffer) {
-        let frameCount = Int(buffer.frameLength)
-        let channelCount = Int(buffer.format.channelCount)
-        guard frameCount > 0, channelCount > 0 else { return }
-
-        var mono = [Float](repeating: 0, count: frameCount)
-        if let channels = buffer.floatChannelData {
-            for channel in 0..<channelCount {
-                let source = channels[channel]
-                for frame in 0..<frameCount {
-                    mono[frame] += source[frame] / Float(channelCount)
-                }
-            }
-        } else if let channels = buffer.int16ChannelData {
-            let scale: Float = 1.0 / Float(Int16.max)
-            for channel in 0..<channelCount {
-                let source = channels[channel]
-                for frame in 0..<frameCount {
-                    mono[frame] += Float(source[frame]) * scale / Float(channelCount)
-                }
-            }
-        } else {
-            return
-        }
-
+        guard let mono = AudioBufferDownmix.mono(from: buffer) else { return }
         let bufferRate = buffer.format.sampleRate
-        let frames = mono
         processingQueue.async { [weak self] in
-            self?.process(mono: frames, tapRate: bufferRate)
+            self?.process(mono: mono, tapRate: bufferRate)
         }
     }
 

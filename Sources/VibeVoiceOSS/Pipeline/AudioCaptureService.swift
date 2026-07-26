@@ -282,39 +282,19 @@ final class AudioCaptureService: @unchecked Sendable {
         return false
     }
 
-    /// Tap callback on a real-time audio thread. Copies out of the buffer — which the
+    /// Tap callback on a real-time audio thread. Downmixes out of the buffer — which the
     /// tap reclaims on return — and defers conversion and delivery to `processingQueue`.
     private func handleTap(buffer: AVAudioPCMBuffer) {
-        guard let copy = Self.detachedCopy(of: buffer) else { return }
+        guard let mono = AudioBufferDownmix.mono(from: buffer) else { return }
+        let tapRate = buffer.format.sampleRate
         processingQueue.async { [weak self] in
-            self?.process(buffer: copy)
+            self?.process(mono: mono, tapRate: tapRate)
         }
     }
 
-    private static func detachedCopy(of buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        let frames = buffer.frameLength
-        guard frames > 0,
-              let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: frames)
-        else { return nil }
-        copy.frameLength = frames
-        let channels = Int(buffer.format.channelCount)
-        if let source = buffer.floatChannelData, let destination = copy.floatChannelData {
-            for channel in 0..<channels {
-                destination[channel].update(from: source[channel], count: Int(frames))
-            }
-        } else if let source = buffer.int16ChannelData, let destination = copy.int16ChannelData {
-            for channel in 0..<channels {
-                destination[channel].update(from: source[channel], count: Int(frames))
-            }
-        } else {
-            return nil
-        }
-        return copy
-    }
-
-    private func process(buffer: AVAudioPCMBuffer) {
+    private func process(mono: [Float], tapRate: Double) {
         dispatchPrecondition(condition: .onQueue(processingQueue))
-        let (samples, rms) = converter.convert(buffer: buffer)
+        let (samples, rms) = converter.convert(mono: mono, tapRate: tapRate)
         guard !samples.isEmpty else { return }
 
         let decibels = 20 * log10(max(rms, 0.000_01))
