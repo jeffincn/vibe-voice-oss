@@ -24,7 +24,9 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
     private var _isRunning = false
     private var configuration: TranscriptionConfiguration?
     private var sessionStartedAt: CFAbsoluteTime = 0
+    /// Single consumer that transcribes segments one at a time, in capture order.
     private var asrTask: Task<Void, Never>?
+    private var _segmentSink: AsyncStream<SpeechSegment>.Continuation?
     /// Invalidates callbacks from ASR work belonging to a previous session.
     private var sessionGeneration = 0
     /// Slow AGC so quiet mics still reach VAD/ASR (mirrors AudioRecorder export gain).
@@ -32,12 +34,21 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
     /// Running transcript for ASR context across VAD cuts.
     private var accumulatedTranscript = ""
     /// Full session PCM (16 kHz) for a coherent re-ASR on stop. Capped ~3 minutes.
-    private var sessionSamples: [Float] = []
-    private let maxSessionSamples = 16_000 * 180
+    ///
+    /// A ring, not an Array trimmed with `removeFirst`: once the cap was reached that
+    /// shifted the whole 11 MB buffer down on every capture callback, roughly fifty
+    /// times a second, for the rest of the session.
+    private var sessionSamples = AudioRingBuffer(capacity: 16_000 * 180)
 
     private var isRunningFlag: Bool {
         get { stateLock.withLock { _isRunning } }
         set { stateLock.withLock { _isRunning = newValue } }
+    }
+
+    /// Written from the main actor on start/stop, read from the capture queue.
+    private var segmentSink: AsyncStream<SpeechSegment>.Continuation? {
+        get { stateLock.withLock { _segmentSink } }
+        set { stateLock.withLock { _segmentSink = newValue } }
     }
 
     /// Joined caption text from live segments (may be choppier than full-session re-ASR).
@@ -47,10 +58,7 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
 
     /// Snapshot session audio for a final whole-utterance transcription.
     func takeSessionSamples() -> [Float] {
-        stateLock.withLock {
-            let copy = sessionSamples
-            return copy
-        }
+        stateLock.withLock { sessionSamples.snapshot() }
     }
 
     var isListening: Bool {
@@ -72,6 +80,8 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
         self.configuration = configuration
         state = .listening // optimistic UI while preparing; rolled back on failure
 
+        startSegmentConsumer(generation: sessionGeneration)
+
         do {
             try vad.load()
             vadUsesCoreML = vad.usesCoreML
@@ -83,7 +93,7 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
             agcGain = 1
             accumulatedTranscript = ""
             segmentTexts = []
-            stateLock.withLock { sessionSamples.removeAll(keepingCapacity: true) }
+            stateLock.withLock { sessionSamples.reset() }
 
             // Levels/bands are derived from gain-normalized samples inside handleSamples
             // so the HUD matches what VAD actually hears.
@@ -110,6 +120,7 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
             )
         } catch {
             capture.stop()
+            stopSegmentConsumer()
             isRunningFlag = false
             state = .failed(error.localizedDescription)
             SpeechPipelineLog.coordinator.error(
@@ -122,15 +133,14 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
     @MainActor
     func stop() {
         sessionGeneration += 1
-        asrTask?.cancel()
-        asrTask = nil
+        stopSegmentConsumer()
         capture.stop()
         isRunningFlag = false
         state = .idle
         audioLevel = 0
         audioBands = .silent
         SpeechPipelineLog.coordinator.info(
-            "pipeline stopped segments=\(self.segmentTexts.count) sessionSamples=\(self.sessionSamples.count)"
+            "pipeline stopped segments=\(self.segmentTexts.count) sessionSamples=\(self.sessionSamples.sampleCount)"
         )
     }
 
@@ -161,12 +171,7 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
             self?.audioBands = bands
         }
 
-        stateLock.withLock {
-            sessionSamples.append(contentsOf: gained)
-            if sessionSamples.count > maxSessionSamples {
-                sessionSamples.removeFirst(sessionSamples.count - maxSessionSamples)
-            }
-        }
+        stateLock.withLock { sessionSamples.append(gained) }
 
         if let vadResult = vad.push(gained) {
             latestProbability = vadResult.speechProbability
@@ -178,9 +183,10 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
         }
 
         if let segment = segmenter.push(samples: gained, speechProbability: latestProbability) {
-            DispatchQueue.main.async { [weak self] in
-                self?.enqueueASR(segment: segment)
-            }
+            // Yielded straight from the capture queue so segments reach the consumer in
+            // the order they were spoken; a hop through the main queue would still be
+            // ordered, but this keeps the main thread out of the hot path.
+            segmentSink?.yield(segment)
         }
     }
 
@@ -205,58 +211,90 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Start the one task that drains segments.
+    ///
+    /// Each segment used to get its own `Task`, and `asrTask` only ever held the newest
+    /// one, so several ran concurrently. Two things went wrong with that: results were
+    /// appended in completion order, which put a fast short segment ahead of the slower
+    /// one spoken before it, and every task captured `priorContext` at enqueue time, so
+    /// overlapping segments fed the model a transcript that was already stale.
     @MainActor
-    private func enqueueASR(segment: SpeechSegment) {
-        guard isRunningFlag, let configuration else { return }
-        state = .processing
-        let endToEndStart = sessionStartedAt
-        let prior = accumulatedTranscript
-        let segmentIndex = segmentTexts.count + 1
-        let generation = sessionGeneration
-        // Do not cancel an in-flight segment — that drops captions the user already spoke.
+    private func startSegmentConsumer(generation: Int) {
+        stopSegmentConsumer()
+        let (stream, continuation) = AsyncStream<SpeechSegment>.makeStream(
+            // Bounded so a machine that cannot keep up sheds audio instead of memory.
+            // Sixteen queued segments is already far past the point where captions are
+            // useful; keeping the newest means the HUD still tracks what is being said.
+            bufferingPolicy: .bufferingNewest(16)
+        )
+        segmentSink = continuation
         asrTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let result = try await self.asr.transcribe(
-                    samples: segment.samples,
-                    configuration: configuration,
-                    priorContext: prior
-                )
-                guard !Task.isCancelled else { return }
-                let e2e = CFAbsoluteTimeGetCurrent() - endToEndStart
-                SpeechPipelineLog.coordinator.info(
-                    "segment#\(segmentIndex) asr ok e2e=\(e2e, format: .fixed(precision: 2))s asr=\(result.inferenceLatency, format: .fixed(precision: 2))s chars=\(result.text.count) priorChars=\(prior.count) text=\(result.text, privacy: .private)"
-                )
-                await MainActor.run {
-                    guard self.sessionGeneration == generation, self.isRunningFlag else { return }
-                    self.segmentTexts.append(result.text)
-                    if self.accumulatedTranscript.isEmpty {
-                        self.accumulatedTranscript = result.text
-                    } else {
-                        self.accumulatedTranscript += "\n" + result.text
-                    }
-                    self.lastCompletedText = result.text
-                    self.state = .completed(result.text)
+            for await segment in stream {
+                guard !Task.isCancelled, let self else { return }
+                await self.transcribe(segment: segment, generation: generation)
+            }
+        }
+    }
+
+    @MainActor
+    private func stopSegmentConsumer() {
+        segmentSink?.finish()
+        segmentSink = nil
+        asrTask?.cancel()
+        asrTask = nil
+    }
+
+    private func transcribe(segment: SpeechSegment, generation: Int) async {
+        let context: (configuration: TranscriptionConfiguration, prior: String, index: Int)?
+        context = await MainActor.run {
+            guard self.sessionGeneration == generation, self.isRunningFlag,
+                  let configuration = self.configuration else { return nil }
+            self.state = .processing
+            return (configuration, self.accumulatedTranscript, self.segmentTexts.count + 1)
+        }
+        guard let context else { return }
+        let endToEndStart = sessionStartedAt
+
+        do {
+            let result = try await asr.transcribe(
+                samples: segment.samples,
+                configuration: context.configuration,
+                priorContext: context.prior
+            )
+            guard !Task.isCancelled else { return }
+            let e2e = CFAbsoluteTimeGetCurrent() - endToEndStart
+            SpeechPipelineLog.coordinator.info(
+                "segment#\(context.index) asr ok e2e=\(e2e, format: .fixed(precision: 2))s asr=\(result.inferenceLatency, format: .fixed(precision: 2))s chars=\(result.text.count) priorChars=\(context.prior.count) text=\(result.text, privacy: .private)"
+            )
+            await MainActor.run {
+                guard self.sessionGeneration == generation, self.isRunningFlag else { return }
+                self.segmentTexts.append(result.text)
+                if self.accumulatedTranscript.isEmpty {
+                    self.accumulatedTranscript = result.text
+                } else {
+                    self.accumulatedTranscript += "\n" + result.text
                 }
-                // Yield so AppState's poll (and any Combine subscribers) can observe
-                // `.completed` before we flip back to listening. Without this, both
-                // assignments happen in one turn and the transcript never reaches the HUD.
-                try? await Task.sleep(for: .milliseconds(120))
-                await MainActor.run {
-                    if self.sessionGeneration == generation, self.isRunningFlag {
-                        self.state = .listening
-                    }
+                self.lastCompletedText = result.text
+                self.state = .completed(result.text)
+            }
+            // Yield so subscribers observe `.completed` before we flip back to listening.
+            // Without this, both assignments happen in one turn and the transcript never
+            // reaches the HUD.
+            try? await Task.sleep(for: .milliseconds(120))
+            await MainActor.run {
+                if self.sessionGeneration == generation, self.isRunningFlag {
+                    self.state = .listening
                 }
-            } catch {
-                guard !Task.isCancelled else { return }
-                SpeechPipelineLog.coordinator.error(
-                    "segment#\(segmentIndex) asr skipped: \(error.localizedDescription, privacy: .public)"
-                )
-                await MainActor.run {
-                    // Empty / noise segments: stay listening without publishing .failed (avoids UI thrash).
-                    if self.sessionGeneration == generation, self.isRunningFlag {
-                        self.state = .listening
-                    }
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            SpeechPipelineLog.coordinator.error(
+                "segment#\(context.index) asr skipped: \(error.localizedDescription, privacy: .public)"
+            )
+            await MainActor.run {
+                // Empty / noise segments: stay listening without publishing .failed (avoids UI thrash).
+                if self.sessionGeneration == generation, self.isRunningFlag {
+                    self.state = .listening
                 }
             }
         }

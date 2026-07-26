@@ -7,6 +7,9 @@ struct AudioRingBuffer: Sendable {
     private var count = 0
     let capacity: Int
 
+    /// Samples currently held, up to `capacity`.
+    var sampleCount: Int { count }
+
     init(capacity: Int) {
         self.capacity = max(1, capacity)
         storage = [Float](repeating: 0, count: self.capacity)
