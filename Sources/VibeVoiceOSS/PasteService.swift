@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 
 enum TextInsertionMethod: Sendable {
     case accessibility
@@ -50,9 +51,15 @@ enum PasteService {
         let pasteboard = NSPasteboard.general
         let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
         pasteboard.clearContents()
+        // Clipboard managers watch the general pasteboard. The transient marker asks
+        // them not to archive a transcript the user never chose to copy.
+        pasteboard.setData(Data(), forType: .transientMarker)
         pasteboard.setString(text, forType: .string)
 
-        if let method = try? await postCmdV() {
+        // CGEvent.post returns nothing and is silently dropped when the process
+        // lacks post-event access, so this path used to report success on a paste
+        // that never happened. Ask first, and go straight to AppleScript if not.
+        if CGPreflightPostEventAccess(), let method = try? await postCmdV() {
             try? await Task.sleep(for: .milliseconds(800))
             restoreIfUnchanged(snapshot: snapshot, expected: text)
             return method
@@ -70,10 +77,10 @@ enum PasteService {
     /// Simulate Cmd+V via CGEvent.
     @MainActor
     private static func postCmdV() async throws -> TextInsertionMethod {
-        // virtualKey 9 = 'V' on the standard US keyboard layout.
+        let key = virtualKey(for: "v") ?? Self.usKeyCodeV
         guard let source = CGEventSource(stateID: .combinedSessionState),
-              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 9, keyDown: false) else {
+              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false) else {
             throw PasteError.cannotCreateEvent
         }
         keyDown.flags = .maskCommand
@@ -81,6 +88,55 @@ enum PasteService {
         keyDown.post(tap: .cgSessionEventTap)
         keyUp.post(tap: .cgSessionEventTap)
         return .pasteboard
+    }
+
+    /// 'V' on the standard US layout, used only when the active layout cannot be read.
+    private static let usKeyCodeV: CGKeyCode = 9
+
+    /// The virtual key that produces `character` on the layout currently in use.
+    ///
+    /// Hard-coding the US position sends whatever letter sits there on Dvorak,
+    /// AZERTY or Colemak, so the paste shortcut fires some unrelated command.
+    /// The scan is 128 table lookups, cheap enough to redo per paste rather than
+    /// cache and risk going stale when the user switches layout.
+    @MainActor
+    private static func virtualKey(for character: Character) -> CGKeyCode? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
+            return nil
+        }
+        let layoutData = Unmanaged<CFData>.fromOpaque(raw).takeUnretainedValue() as Data
+        let keyboardType = UInt32(LMGetKbdType())
+
+        return layoutData.withUnsafeBytes { buffer -> CGKeyCode? in
+            guard let layout = buffer.baseAddress?
+                .assumingMemoryBound(to: UCKeyboardLayout.self) else {
+                return nil
+            }
+            var characters = [UniChar](repeating: 0, count: 4)
+            for code in 0..<CGKeyCode(128) {
+                var deadKeyState: UInt32 = 0
+                var length = 0
+                let status = UCKeyTranslate(
+                    layout,
+                    UInt16(code),
+                    UInt16(kUCKeyActionDown),
+                    0,
+                    keyboardType,
+                    OptionBits(kUCKeyTranslateNoDeadKeysBit),
+                    &deadKeyState,
+                    characters.count,
+                    &length,
+                    &characters
+                )
+                guard status == noErr, length == 1,
+                      let scalar = UnicodeScalar(characters[0]) else { continue }
+                if Character(scalar) == character {
+                    return code
+                }
+            }
+            return nil
+        }
     }
 
     /// Simulate Cmd+V via AppleScript System Events — survives stricter
@@ -100,15 +156,38 @@ enum PasteService {
         return .appleScript
     }
 
+    /// Editors that accept `kAXSelectedText` and then quietly discard it, so only a
+    /// simulated paste actually lands.
+    private static let pasteboardOnlyBundleIDs: Set<String> = [
+        "com.todesktop.230313mzl4w4u92", // Cursor
+        "com.microsoft.VSCode",
+        "com.microsoft.VSCodeInsiders",
+        "com.openai.chat",
+        "com.google.Chrome",
+        "com.google.Chrome.canary",
+        "org.chromium.Chromium",
+        "company.thebrowser.Browser", // Arc
+        "com.tinyspeck.slackmacgap",
+        "com.hnc.Discord",
+    ]
+
+    private static let pasteboardOnlyNameWords: Set<String> = [
+        "cursor", "codex", "chatgpt", "electron", "code", "chrome", "chromium",
+        "arc", "slack", "discord",
+    ]
+
     private static func prefersPasteboardInsertion(_ application: NSRunningApplication) -> Bool {
-        let identity = [application.bundleIdentifier, application.localizedName]
-            .compactMap { $0?.lowercased() }
-            .joined(separator: " ")
-        let webEditorMarkers = [
-            "cursor", "codex", "chatgpt", "electron", "visual studio code",
-            "chrome", "chromium", "arc", "slack", "discord"
-        ]
-        return webEditorMarkers.contains { identity.contains($0) }
+        if let bundleID = application.bundleIdentifier,
+           pasteboardOnlyBundleIDs.contains(bundleID) {
+            return true
+        }
+        // Names are matched whole-word. Substring matching treated "Search" as Arc
+        // and "Xcode" as Codex, forcing a slow clipboard paste on unrelated apps.
+        let words = (application.localizedName ?? "")
+            .lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+        return !Set(words).isDisjoint(with: pasteboardOnlyNameWords)
     }
 
     @MainActor
@@ -120,7 +199,13 @@ enum PasteService {
             kAXFocusedUIElementAttribute as CFString,
             &focusedValue
         )
-        guard focusStatus == .success, let focusedValue else { return false }
+        // Some apps answer the focus query with a string or a dictionary. Casting
+        // that to AXUIElement unchecked is undefined behaviour, and the crash lands
+        // on whatever the user happened to be typing into.
+        guard focusStatus == .success, let focusedValue,
+              CFGetTypeID(focusedValue) == AXUIElementGetTypeID() else {
+            return false
+        }
 
         let focusedElement = unsafeDowncast(focusedValue, to: AXUIElement.self)
         let insertStatus = AXUIElementSetAttributeValue(
@@ -137,6 +222,11 @@ enum PasteService {
             snapshot.restore(to: pasteboard)
         }
     }
+}
+
+private extension NSPasteboard.PasteboardType {
+    /// Convention honoured by clipboard managers (Maccy, Alfred, Paste, Raycast).
+    static let transientMarker = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
 }
 
 private struct PasteboardSnapshot {
