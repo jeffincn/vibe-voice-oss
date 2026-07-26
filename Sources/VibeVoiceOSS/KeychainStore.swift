@@ -82,6 +82,7 @@ enum KeychainStore {
         legacyKey: String
     ) -> String {
         if let stored = get(account) {
+            scrubLegacyCopies(defaults: defaults, legacyKey: legacyKey)
             return stored
         }
 
@@ -91,8 +92,22 @@ enum KeychainStore {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let resolved = !fromDefaults.isEmpty ? fromDefaults : fromLegacyApp
 
-        set(resolved, account: account)
+        // Only scrub once the value is safely somewhere else: a failed Keychain
+        // write must not leave the user with no copy at all.
+        if set(resolved, account: account), !resolved.isEmpty {
+            scrubLegacyCopies(defaults: defaults, legacyKey: legacyKey)
+        }
         return resolved
+    }
+
+    /// Older builds wrote the API key straight into the preferences plist, where it
+    /// stayed readable through `defaults read` even after the key moved to the
+    /// Keychain or the credential file. Drop those copies once they are redundant.
+    private static func scrubLegacyCopies(defaults: UserDefaults, legacyKey: String) {
+        if defaults.object(forKey: legacyKey) != nil {
+            defaults.removeObject(forKey: legacyKey)
+        }
+        removeLegacyPreference(domain: legacyPreferenceDomain, key: legacyKey)
     }
 
     // MARK: - Non-secret string coalescing
@@ -261,6 +276,16 @@ enum KeychainStore {
         for key in legacyDefaultsKeys(account) {
             UserDefaults.standard.removeObject(forKey: key)
         }
+    }
+
+    /// Drop a migrated secret from a preference domain an older build owned.
+    /// Skipped under test: the suite runs against the developer's own preferences and
+    /// has no business deleting what a real install of the legacy build put there.
+    private static func removeLegacyPreference(domain: String, key: String) {
+        guard !isRunningInTests else { return }
+        guard CFPreferencesCopyAppValue(key as CFString, domain as CFString) != nil else { return }
+        CFPreferencesSetAppValue(key as CFString, nil, domain as CFString)
+        CFPreferencesAppSynchronize(domain as CFString)
     }
 
     private static func preferenceValue(domain: String, key: String) -> String {
