@@ -57,6 +57,7 @@ enum SemanticFormatterError: LocalizedError {
     case invalidResponse
     case emptyText
     case timedOut(seconds: Int)
+    case insecureEndpoint
 
     var errorDescription: String? {
         switch self {
@@ -66,6 +67,8 @@ enum SemanticFormatterError: LocalizedError {
         case .emptyText: "整理完成，但返回文本为空。"
         case let .timedOut(seconds):
             "结构化整理超过 \(seconds) 秒，已自动中断。请检查百炼模型限流、上下文长度或缩短输入后重试。"
+        case .insecureEndpoint:
+            "为保护 API Key，远程明文 HTTP 接口不可用；请改用 HTTPS，或仅在本机回环地址使用 HTTP。"
         }
     }
 }
@@ -784,6 +787,11 @@ struct SemanticFormatterClient: Sendable {
     ) async throws -> String {
         guard let url = URL(string: configuration.endpoint) else {
             throw SemanticFormatterError.invalidEndpoint
+        }
+        guard EndpointSecurity.allowsCredentialTransmission(
+            to: url, apiKey: configuration.apiKey
+        ) else {
+            throw SemanticFormatterError.insecureEndpoint
         }
 
         var request = URLRequest(url: url)
