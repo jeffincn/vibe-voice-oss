@@ -498,6 +498,16 @@ final class AppSettings: ObservableObject {
         llmFeaturesAvailable ? targetLanguages : []
     }
 
+    var outputModeCapabilities: OutputModePlan.Capabilities {
+        OutputModePlan.Capabilities(
+            llmAvailable: llmFeaturesAvailable,
+            structuredOutputEnabled: structuredOutputEnabled,
+            hasCustomFormattingPrompt: hasCustomFormattingPrompt,
+            promptOptimizeEnabled: promptOptimizeEnabled,
+            promptTargetLabel: promptTarget.label
+        )
+    }
+
     var streamingMode: StreamingMode {
         get { StreamingMode(rawValue: streamingModeRaw) ?? .duplexStreaming }
         set { streamingModeRaw = newValue.rawValue }

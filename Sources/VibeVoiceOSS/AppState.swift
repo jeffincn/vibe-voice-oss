@@ -306,20 +306,8 @@ final class AppState: ObservableObject {
         }
 
         sessionOutputMode = outputMode
-        let promptLabel: String?
-        switch outputMode {
-        case .prompt:
-            promptLabel = settings.llmFeaturesAvailable ? settings.promptTarget.label : nil
-        case .smartRoute:
-            promptLabel = nil
-        case .none:
-            promptLabel = settings.llmFeaturesAvailable && settings.promptOptimizeEnabled
-                ? settings.promptTarget.label
-                : nil
-        case .conversation, .english, .structured:
-            promptLabel = nil
-        }
-        stageTiming.beginSession(promptTarget: promptLabel)
+        let plan = OutputModePlan(mode: outputMode, capabilities: settings.outputModeCapabilities)
+        stageTiming.beginSession(promptTarget: plan.promptTargetLabel)
         stageTiming.enter(.recording)
 
         partialTranscript = ""
@@ -520,52 +508,19 @@ final class AppState: ObservableObject {
 
         processingGeneration += 1
         let outputMode = sessionOutputMode
-        let llmEnabled = settings.llmFeaturesAvailable
-        let structured: Bool
-        let prompt: Bool
-        let smart: Bool
-        switch outputMode {
-        case .conversation:
-            structured = false
-            prompt = false
-            smart = false
-        case .english:
-            structured = false
-            prompt = false
-            smart = false
-        case .structured:
-            structured = llmEnabled
-            prompt = false
-            smart = false
-        case .prompt:
-            structured = false
-            prompt = llmEnabled
-            smart = false
-        case .smartRoute:
-            structured = false
-            prompt = false
-            smart = llmEnabled
-        case .none:
-            structured = llmEnabled && (
-                settings.structuredOutputEnabled || settings.hasCustomFormattingPrompt
-            )
-            prompt = llmEnabled && settings.promptOptimizeEnabled
-            smart = false
-        }
+        let plan = OutputModePlan(mode: outputMode, capabilities: settings.outputModeCapabilities)
         let snapshot = ProcessingSnapshot(
             wav: nil,
             transcript: text,
             generation: processingGeneration,
             configuration: settings.configuration,
-            targetLanguages: outputMode == .english
-                ? [TargetLanguage.resolve(id: "en")]
-                : settings.effectiveTargetLanguages,
-            includeOriginal: outputMode != .english,
-            promptOptimizeEnabled: prompt,
-            structuredOutputEnabled: structured,
+            targetLanguages: plan.targetLanguages(fallback: settings.effectiveTargetLanguages),
+            includeOriginal: plan.includeOriginal,
+            promptOptimizeEnabled: plan.promptOptimize,
+            structuredOutputEnabled: plan.structuredOutput,
             structuredEmojiEnabled: settings.structuredEmojiEnabled,
             structureIntensity: settings.structureIntensity,
-            smartRouteEnabled: smart,
+            smartRouteEnabled: plan.smartRoute,
             translationConfiguration: settings.translationConfiguration,
             promptOptimizeConfiguration: settings.promptOptimizeConfiguration,
             smartRouteConfiguration: settings.smartRouteConfiguration,
@@ -692,20 +647,8 @@ final class AppState: ObservableObject {
         }
         do {
             try await recorder.start(deviceUID: settings.inputDeviceUID)
-            let promptLabel: String?
-            switch outputMode {
-            case .prompt:
-                promptLabel = settings.llmFeaturesAvailable ? settings.promptTarget.label : nil
-            case .smartRoute:
-                promptLabel = nil
-            case .none:
-                promptLabel = settings.llmFeaturesAvailable && settings.promptOptimizeEnabled
-                    ? settings.promptTarget.label
-                    : nil
-            case .conversation, .english, .structured:
-                promptLabel = nil
-            }
-            stageTiming.beginSession(promptTarget: promptLabel)
+            let plan = OutputModePlan(mode: outputMode, capabilities: settings.outputModeCapabilities)
+            stageTiming.beginSession(promptTarget: plan.promptTargetLabel)
             stageTiming.enter(.recording)
             phase = .recording
             audioLevel = 0
@@ -765,53 +708,20 @@ final class AppState: ObservableObject {
             processingGeneration += 1
             let mode = settings.streamingMode
             let outputMode = sessionOutputMode
-            let llmEnabled = settings.llmFeaturesAvailable
-            let structured: Bool
-            let prompt: Bool
-            let smart: Bool
-            switch outputMode {
-            case .conversation:
-                structured = false
-                prompt = false
-                smart = false
-            case .english:
-                structured = false
-                prompt = false
-                smart = false
-            case .structured:
-                structured = llmEnabled
-                prompt = false
-                smart = false
-            case .prompt:
-                structured = false
-                prompt = llmEnabled
-                smart = false
-            case .smartRoute:
-                structured = false
-                prompt = false
-                smart = llmEnabled
-            case .none:
-                structured = llmEnabled && (
-                    settings.structuredOutputEnabled || settings.hasCustomFormattingPrompt
-                )
-                prompt = llmEnabled && settings.promptOptimizeEnabled
-                smart = false
-            }
+            let plan = OutputModePlan(mode: outputMode, capabilities: settings.outputModeCapabilities)
             let streamingMode = settings.asrBackend == .api ? mode : .batch
             let snapshot = ProcessingSnapshot(
                 wav: wav,
                 transcript: nil,
                 generation: processingGeneration,
                 configuration: settings.configuration,
-                targetLanguages: outputMode == .english
-                    ? [TargetLanguage.resolve(id: "en")]
-                    : settings.effectiveTargetLanguages,
-                includeOriginal: outputMode != .english,
-                promptOptimizeEnabled: prompt,
-                structuredOutputEnabled: structured,
+                targetLanguages: plan.targetLanguages(fallback: settings.effectiveTargetLanguages),
+                includeOriginal: plan.includeOriginal,
+                promptOptimizeEnabled: plan.promptOptimize,
+                structuredOutputEnabled: plan.structuredOutput,
                 structuredEmojiEnabled: settings.structuredEmojiEnabled,
                 structureIntensity: settings.structureIntensity,
-                smartRouteEnabled: smart,
+                smartRouteEnabled: plan.smartRoute,
                 translationConfiguration: settings.translationConfiguration,
                 promptOptimizeConfiguration: settings.promptOptimizeConfiguration,
                 smartRouteConfiguration: settings.smartRouteConfiguration,
