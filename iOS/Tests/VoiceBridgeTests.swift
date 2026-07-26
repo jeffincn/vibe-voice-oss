@@ -132,7 +132,7 @@ final class VoiceBridgeTests: XCTestCase {
 
         XCTAssertTrue(bridge.recoverInterruptedWork())
         XCTAssertEqual(bridge.load().status, .failed)
-        XCTAssertTrue(bridge.load().message.contains("重新录音"))
+        XCTAssertEqual(bridge.load().message, MobileL10n.t(.bridgeInterrupted))
         XCTAssertFalse(bridge.recoverInterruptedWork())
     }
 }

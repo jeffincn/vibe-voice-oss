@@ -171,15 +171,18 @@ final class VoiceBridgeStore {
     /// actionable failure instead of a phase the UI can never leave.
     @discardableResult
     func recoverInterruptedWork() -> Bool {
-        var recovered = false
+        let before = load()
+        guard before.status == .recording || before.status == .processing else {
+            return false
+        }
         mutate { state in
             guard state.status == .recording || state.status == .processing else { return }
             state.status = .failed
             state.text = ""
             state.message = MobileL10n.t(.bridgeInterrupted)
-            recovered = true
         }
-        return recovered
+        let after = load()
+        return after.status == .failed && after.requestID == before.requestID
     }
 
     @discardableResult
