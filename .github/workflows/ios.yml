@@ -1,0 +1,90 @@
+name: iOS
+
+# Nothing verified the iOS targets automatically: the simulator matrix and the
+# device gate both ran only on a maintainer's machine, so a change that broke
+# the keyboard extension reached a branch unnoticed.
+#
+# This runs the hermetic half. The integration scheme downloads the WhisperKit
+# model and the physical-device gate needs hardware, so neither runs here; see
+# docs/ios-device-acceptance.md.
+on:
+  pull_request:
+    paths:
+      - "iOS/**"
+      - "scripts/build-ios.sh"
+      - "scripts/verify-librime-ios.sh"
+      - ".github/workflows/ios.yml"
+  push:
+    branches:
+      - main
+      - "ios/**"
+    paths:
+      - "iOS/**"
+      - "scripts/build-ios.sh"
+      - "scripts/verify-librime-ios.sh"
+      - ".github/workflows/ios.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # The XCFramework is committed, so this is the only thing that can tell
+      # whether it is still the artefact prepare-librime-ios.sh produced.
+      - name: Verify vendored librime archives
+        run: zsh scripts/verify-librime-ios.sh
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec iOS/project.yml --project iOS
+
+      - name: Build and test on the simulator
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project iOS/VibeVoiceMobile.xcodeproj \
+            -scheme VibeVoiceMobile \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            -resultBundlePath "$RUNNER_TEMP/ios-simulator.xcresult" \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 900
+
+      # Catches anything that only fails for arm64 device slices, including
+      # non-extension-safe API in the keyboard now that it is compiled with
+      # APPLICATION_EXTENSION_API_ONLY.
+      - name: Build for a generic device
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project iOS/VibeVoiceMobile.xcodeproj \
+            -scheme VibeVoiceMobile \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedDataDevice" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-results
+          path: ${{ runner.temp }}/ios-simulator.xcresult
+          if-no-files-found: ignore
