@@ -7,7 +7,13 @@ final class HotKeyManager {
     /// Fired for any registered mode chord. `mode` identifies which shortcut.
     var onEvent: ((RecordingOutputMode, Event) -> Void)?
 
-    private var hotKeys: [EventHotKeyRef?] = []
+    /// Chords another application already owns. Those shortcuts will never fire, and
+    /// without this the failure was invisible: the user pressed ⌘⇧R and nothing happened.
+    private(set) var unavailableModes: Set<RecordingOutputMode> = []
+    /// True when the Carbon handler could not be installed, which kills every chord.
+    private(set) var handlerUnavailable = false
+
+    private var hotKeys: [EventHotKeyRef] = []
     private var eventHandler: EventHandlerRef?
     private var installedHandler = false
     private let signature = OSType(0x56564F53) // VVOS
@@ -22,10 +28,11 @@ final class HotKeyManager {
         if let eventHandler { RemoveEventHandler(eventHandler) }
     }
 
-    /// Re-register the three mode shortcuts (idempotent).
+    /// Re-register the mode shortcuts (idempotent).
     func registerAll() {
         installHandlerIfNeeded()
         unregisterAll()
+        var unavailable: Set<RecordingOutputMode> = []
         for mode in RecordingOutputMode.allCases {
             var ref: EventHotKeyRef?
             let id = EventHotKeyID(signature: signature, id: mode.carbonHotKeyID)
@@ -37,8 +44,16 @@ final class HotKeyManager {
                 0,
                 &ref
             )
-            hotKeys.append(status == noErr ? ref : nil)
+            guard status == noErr, let ref else {
+                // Usually eventHotKeyExistsErr — another app holds the chord. There is
+                // nothing to retry; the shortcut stays dead until that app releases it,
+                // so the only useful response is to tell the user.
+                unavailable.insert(mode)
+                continue
+            }
+            hotKeys.append(ref)
         }
+        unavailableModes = unavailable
     }
 
     private func installHandlerIfNeeded() {
@@ -87,13 +102,12 @@ final class HotKeyManager {
             &eventHandler
         )
         installedHandler = status == noErr
+        handlerUnavailable = !installedHandler
     }
 
     private func unregisterAll() {
         for ref in hotKeys {
-            if let ref {
-                UnregisterEventHotKey(ref)
-            }
+            UnregisterEventHotKey(ref)
         }
         hotKeys.removeAll()
     }

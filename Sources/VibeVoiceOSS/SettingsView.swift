@@ -559,14 +559,25 @@ private struct SettingsForm: View {
         settingsStack {
             settingsCard {
                 VStack(alignment: .leading, spacing: 10) {
+                    let unavailable = appState.unavailableShortcuts
                     ForEach(RecordingOutputMode.allCases) { mode in
-                        Text("\(mode.chordLabel)  \(mode.label) — \(mode.caption)")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundStyle(AppChrome.ink)
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("\(mode.chordLabel)  \(mode.label) — \(mode.caption)")
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(unavailable.contains(mode) ? AppChrome.muted : AppChrome.ink)
+                            if unavailable.contains(mode) {
+                                Text(L10n.t(.shortcutTaken))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.orange)
+                            }
+                        }
                     }
                 }
             }
             caption(L10n.t(.shortcutsCaption))
+            if !appState.unavailableShortcuts.isEmpty {
+                warningCaption(L10n.t(.shortcutsUnavailableDetail))
+            }
 
             settingsCard {
                 HStack {

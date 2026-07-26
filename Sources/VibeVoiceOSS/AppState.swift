@@ -265,6 +265,13 @@ final class AppState: ObservableObject {
         objectWillChange.send()
     }
 
+    /// Chords that another application already owns, so pressing them does nothing.
+    var unavailableShortcuts: Set<RecordingOutputMode> {
+        hotKey.handlerUnavailable
+            ? Set(RecordingOutputMode.allCases)
+            : hotKey.unavailableModes
+    }
+
     /// Toggle Voice Pipeline (VAD → local ASR). Ending the session runs the same post rules as
     /// push-to-talk (structure / translate / Prompt / smart route) then pastes the result.
     func toggleVoicePipeline(outputMode: RecordingOutputMode? = nil) async {
