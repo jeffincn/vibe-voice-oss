@@ -278,6 +278,9 @@ private struct SettingsForm: View {
                     .disabled(!settings.isVoicePipelineAvailable)
                 if settings.isVoicePipelineAvailable {
                     caption(L10n.t(.voicePipelineCaption))
+                    if VADService.availableBackend() == .energy {
+                        warningCaption(L10n.t(.vadEnergyFallbackDetail))
+                    }
                 } else {
                     caption(L10n.t(.voicePipelineUnavailable))
                 }

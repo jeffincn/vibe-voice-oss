@@ -352,7 +352,7 @@ final class AppState: ObservableObject {
                 if self.voicePipeline.isListening, now.timeIntervalSince(lastStatusAt) >= 1.0 {
                     lastStatusAt = now
                     let pct = Int((self.voicePipeline.lastSpeechProbability * 100).rounded())
-                    self.connectionMessage = "\(L10n.t(.hudListening)) · \(self.voicePipeline.vadUsesCoreML ? "Silero" : "VAD") \(pct)%"
+                    self.connectionMessage = "\(L10n.t(.hudListening)) · \(L10n.t(self.voicePipeline.vadUsesCoreML ? .vadBackendSilero : .vadBackendEnergy)) \(pct)%"
                 }
                 try? await Task.sleep(for: .milliseconds(50))
             }
@@ -368,7 +368,7 @@ final class AppState: ObservableObject {
             connectionMessage = message
         } else if voicePipeline.isListening {
             voicePipelineSessionActive = true
-            connectionMessage = "\(L10n.t(.voicePipeline)) · \(L10n.t(.hudListening))（\(voicePipeline.vadUsesCoreML ? "Silero CoreML" : "VAD")）"
+            connectionMessage = "\(L10n.t(.voicePipeline)) · \(L10n.t(.hudListening))（\(L10n.t(voicePipeline.vadUsesCoreML ? .vadBackendSilero : .vadBackendEnergy))）"
         }
     }
 

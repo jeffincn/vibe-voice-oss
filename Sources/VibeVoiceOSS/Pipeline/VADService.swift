@@ -52,9 +52,27 @@ final class VADService: @unchecked Sendable {
     private var sileroH: MLMultiArray?
     private var sileroC: MLMultiArray?
 
+    enum Backend {
+        case sileroCoreML
+        /// Windowed short-term energy. Far weaker than Silero: music, keyboard noise
+        /// and fan hum all read as speech.
+        case energy
+    }
+
     static var defaultModelDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/VibeVoiceOSS/Models/SileroVAD", isDirectory: true)
+    }
+
+    /// Which backend `load()` would pick, without loading anything, so Settings can
+    /// tell the user they are on the degraded detector before a session starts.
+    static func availableBackend(in directory: URL = VADService.defaultModelDirectory) -> Backend {
+        let manager = FileManager.default
+        let compiled = directory.appendingPathComponent("silero_vad.mlmodelc", isDirectory: true)
+        let package = directory.appendingPathComponent("silero_vad.mlpackage", isDirectory: true)
+        let hasModel = manager.fileExists(atPath: compiled.path)
+            || manager.fileExists(atPath: package.path)
+        return hasModel ? .sileroCoreML : .energy
     }
 
     init(config: VADConfig = VADConfig(), modelDirectory: URL = VADService.defaultModelDirectory) {
