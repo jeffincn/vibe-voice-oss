@@ -225,4 +225,30 @@ if [[ "$(shasum -a 256 "$BOOST_LICENSE" | awk '{print $1}')" != \
 fi
 cp "$BOOST_LICENSE" "$LICENSE_OUTPUT/Boost-1.0.txt"
 
+# The XCFramework is committed rather than rebuilt on every clone, so record
+# what it is and what produced it. scripts/verify-librime-ios.sh checks the
+# digests before any iOS build.
+(
+    cd "$ROOT/iOS/Vendor"
+    shasum -a 256 \
+        librime.xcframework/ios-arm64/librime_full.a \
+        librime.xcframework/ios-arm64-simulator/librime_full.a \
+        > librime.xcframework.sha256
+)
+
+cat > "$ROOT/iOS/Vendor/librime-build-provenance.txt" <<PROVENANCE
+Produced by scripts/prepare-librime-ios.sh
+librime      1.16.1  ${HASHES[librime]}
+yaml-cpp     0.8.0   ${HASHES[yaml-cpp]}
+leveldb      1.23    ${HASHES[leveldb]}
+OpenCC       1.1.9   ${HASHES[opencc]}
+marisa-trie  0.2.6   bundled in the OpenCC source tree
+Boost        ${boost_version} (headers only, from ${BOOST_PREFIX})
+
+Boost is the one input that is not pinned to a digest: it comes from the
+build machine's Homebrew prefix, so a different Boost produces a different
+archive. The version above is what the committed digests correspond to.
+PROVENANCE
+
 print "Created core-only librime 1.16.1 XCFramework at $OUTPUT"
+print "Recorded digests in iOS/Vendor/librime.xcframework.sha256"

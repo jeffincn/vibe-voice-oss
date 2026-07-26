@@ -16,6 +16,8 @@ if ! command -v xcodegen >/dev/null 2>&1; then
     exit 1
 fi
 
+zsh "$ROOT/scripts/verify-librime-ios.sh"
+
 mkdir -p "$DERIVED_ROOT" "$RESULT_ROOT" "$PACKAGE_ROOT"
 # Projects stored under Documents may inherit File Provider metadata that
 # codesign rejects when it reaches a built keyboard extension. Build products

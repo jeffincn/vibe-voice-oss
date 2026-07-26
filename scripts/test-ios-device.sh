@@ -18,6 +18,12 @@ if ! command -v xcodegen >/dev/null 2>&1; then
     print "error: XcodeGen is required. Install it with: brew install xcodegen" >&2
     exit 1
 fi
+if ! command -v jq >/dev/null 2>&1; then
+    print "error: jq is required. Install it with: brew install jq" >&2
+    exit 1
+fi
+
+zsh "$ROOT/scripts/verify-librime-ios.sh"
 
 xcrun devicectl list devices --json-output "$DEVICE_JSON" >/dev/null
 device_record=$(jq -c --arg model "$EXPECTED_MODEL" '

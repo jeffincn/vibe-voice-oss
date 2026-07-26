@@ -13,3 +13,7 @@ The keyboard links a core-only `librime.xcframework` built by
 librime Lua, octagram, predict, legacy-plugin, or other external plugin source
 is fetched or linked. Licenses for librime and its statically linked
 dependencies are included under `iOS/Vendor/Licenses/`.
+
+marisa-trie, reached through OpenCC, is dual-licensed under BSD-2-Clause and
+LGPL-2.1. Vibe Voice OSS takes it under BSD-2-Clause. See `iOS/Vendor/README.md`
+for how the vendored archives are built and verified.

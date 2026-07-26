@@ -1,0 +1,13 @@
+Produced by scripts/prepare-librime-ios.sh
+librime      1.16.1  944909b5d9fb81171b044b7f2ea89922bd73457fcc5105798a259173288cd2d9
+yaml-cpp     0.8.0   fbe74bbdcee21d656715688706da3c8becfd946d92cd44705cc6098bb23b3a16
+leveldb      1.23    9a37f8a6174f09bd622bc723b55881dc541cd50747cbd08831c2a82d620f6d76
+OpenCC       1.1.9   ad4bcd8d87219a240a236d4a55c9decd2132a9436697d2882ead85c8939b0a99
+marisa-trie  0.2.6   bundled in the OpenCC source tree
+Boost        unrecorded (headers only, from the build machine's Homebrew prefix)
+
+Boost is the one input that is not pinned to a digest: it comes from the
+build machine's Homebrew prefix, so a different Boost produces a different
+archive. The archives committed alongside this file predate provenance
+recording, so their Boost version is unknown. The next run of
+scripts/prepare-librime-ios.sh fills it in.
