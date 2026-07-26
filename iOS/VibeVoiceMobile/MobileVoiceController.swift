@@ -35,6 +35,7 @@ final class MobileVoiceController: ObservableObject {
     private let bridge: VoiceBridgeStore
     private let asr: any MobileASRServing
     private var recorder: (any AudioProcessing)?
+    private var audioObservers: [NSObjectProtocol] = []
 
     init(
         bridge: VoiceBridgeStore = VoiceBridgeStore(),
@@ -46,6 +47,12 @@ final class MobileVoiceController: ObservableObject {
         if bridge.recoverInterruptedWork() {
             phase = .failed("上次语音任务被系统中断，请重新录音")
         }
+        observeAudioSession()
+    }
+
+    deinit {
+        let center = NotificationCenter.default
+        audioObservers.forEach { center.removeObserver($0) }
     }
 
     func prepareModel() {
@@ -64,7 +71,9 @@ final class MobileVoiceController: ObservableObject {
     }
 
     func startRecording() {
-        guard phase != .recording, phase != .processing else { return }
+        guard phase != .requestingPermission,
+              phase != .recording,
+              phase != .processing else { return }
         phase = .requestingPermission
         Task {
             guard await AudioProcessor.requestRecordPermission() else {
@@ -93,8 +102,11 @@ final class MobileVoiceController: ObservableObject {
 
     func stopAndTranscribe() {
         guard phase == .recording, let recorder else { return }
-        let samples = Array(recorder.audioSamples)
+        // Stop before reading. The capture tap appends to audioSamples from a
+        // realtime audio thread, so copying a live buffer races with it and
+        // also drops whatever arrives while the copy is in flight.
         recorder.stopRecording()
+        let samples = Array(recorder.audioSamples)
         self.recorder = nil
         level = 0
         phase = .processing
@@ -142,6 +154,48 @@ final class MobileVoiceController: ObservableObject {
         transcript = ""
         phase = .idle
         bridge.reset()
+    }
+
+    /// A call, Siri, or another app taking the audio session stops capture
+    /// without telling the recorder, and losing the input route has the same
+    /// effect. Without this the UI stays in `.recording` over a dead engine and
+    /// the only way out is to relaunch the app.
+    private func observeAudioSession() {
+        let center = NotificationCenter.default
+        let session = AVAudioSession.sharedInstance()
+        audioObservers = [
+            center.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: session,
+                queue: .main
+            ) { [weak self] notification in
+                guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                      AVAudioSession.InterruptionType(rawValue: raw) == .began else { return }
+                Task { @MainActor in
+                    self?.abortRecording(reason: "录音被系统中断，请重新录音")
+                }
+            },
+            center.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: session,
+                queue: .main
+            ) { [weak self] notification in
+                // Only an input that disappeared. A category change is what our
+                // own capture start looks like, and reacting to it would abort
+                // every recording as it begins.
+                guard let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                      AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable
+                else { return }
+                Task { @MainActor in
+                    self?.abortRecording(reason: "录音输入设备已断开，请重新录音")
+                }
+            },
+        ]
+    }
+
+    private func abortRecording(reason: String) {
+        guard phase == .recording else { return }
+        failMessage(reason)
     }
 
     private func fail(_ error: Error) {
