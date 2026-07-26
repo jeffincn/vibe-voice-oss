@@ -160,6 +160,7 @@ When a persistent identity is used (tiers 1–3), this warning is unnecessary.
 - **Sandbox restrictions.** When running `swift build` inside a sandboxed AI agent, request `all` permissions to allow package resolution and compilation.
 - **Bundle ID.** Always `app.vibevoice.oss.macos`. Do not change without explicit user request.
 - **Executable name.** Always `VibeVoiceOSS` (must match `Package.swift` executable target).
+- **No `cursor/` or `codex/` branch prefixes.** See R12.
 
 ---
 
@@ -314,6 +315,23 @@ Without these files, enabling Voice Pipeline falls back to the energy backend, w
 
 ---
 
+## R12 — Git Branch Naming
+
+Agents MUST NOT create, push, or open pull requests from branches whose names start with `cursor/` or `codex/` (case-insensitive). Those prefixes split reviewable work across throwaway agent branches that cannot be tested as one development line.
+
+Work on the active development branch instead:
+
+| Track | Branch |
+|-------|--------|
+| macOS 0.8.0 / professional roles | `feat/professional-roles` |
+| iOS 0.7.0 | `ios/0.7.0` |
+
+Allowed prefixes when a separate branch is truly required: `feat/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/`, `refactor/`, `ios/`. Branch names stay lowercase kebab-case.
+
+If a cloud agent or other tool defaults to `cursor/` or `codex/` names, override that default and use one of the prefixes above — or commit directly on the active development branch when the change belongs there.
+
+---
+
 ## Acceptance Criteria
 
 - [ ] Every code change is followed by a successful `zsh scripts/build-app.sh`.
@@ -325,3 +343,4 @@ Without these files, enabling Voice Pipeline falls back to the energy backend, w
 - [ ] MLX `default.metallib` is present inside the app bundle when MLX dependencies exist.
 - [ ] The build script is invoked with `zsh`, never `bash`.
 - [ ] Agent presents a structured Yes / No / Other confirmation to the user before ending each task.
+- [ ] No branch or PR uses a `cursor/` or `codex/` prefix (R12).
