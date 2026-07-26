@@ -5,6 +5,9 @@ private class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         KeychainStore.cleanupLegacyKeychainEntries()
+        // Recordings from a job that was interrupted mid-transcription otherwise
+        // stay on disk forever.
+        NativeASRClient.purgeAbandonedJobs()
         NSApp?.appearance = NSAppearance(named: .aqua)
         // Stay a menu-bar agent until a Settings / report window appears.
         NSApp?.setActivationPolicy(.accessory)

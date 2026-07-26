@@ -602,13 +602,37 @@ actor NativeASRClient {
     }
 
     private func writeJobWAV(_ wav: Data) throws -> URL {
-        let workDir = try runtimeDirectory()
-            .appendingPathComponent("jobs", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
+        let jobsDir = try runtimeDirectory().appendingPathComponent("jobs", isDirectory: true)
+        let workDir = jobsDir.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        // Recorded speech, so keep it out of reach of other accounts on the machine.
+        try FileManager.default.createDirectory(
+            at: workDir,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: jobsDir.path
+        )
         let audioURL = workDir.appendingPathComponent("recording.wav")
         try wav.write(to: audioURL, options: .atomic)
         return audioURL
+    }
+
+    /// Delete recordings from jobs that never reached their cleanup, which is what a
+    /// crash or a force-quit mid-transcription leaves behind. Without this the WAVs
+    /// accumulate on disk indefinitely.
+    static func purgeAbandonedJobs() {
+        let manager = FileManager.default
+        guard let base = try? manager.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false
+        ) else { return }
+        let jobsDir = base.appendingPathComponent("VibeVoiceOSS/NativeASR/jobs", isDirectory: true)
+        guard let entries = try? manager.contentsOfDirectory(
+            at: jobsDir, includingPropertiesForKeys: nil
+        ) else { return }
+        for entry in entries {
+            try? manager.removeItem(at: entry)
+        }
     }
 
     private func runtimeDirectory() throws -> URL {
