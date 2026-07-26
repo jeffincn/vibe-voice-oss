@@ -94,6 +94,33 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(config.normalizedHFEndpoint, "https://hf-mirror.com")
     }
 
+    func testNormalizedHFEndpointRejectsRemoteClearTextMirrors() {
+        var config = AppSettings(defaults: isolatedDefaults()).configuration
+
+        // Weights from a mirror are loaded into the process, so a transfer that can
+        // be tampered with decides what the app runs.
+        config.hfEndpoint = "http://hf-mirror.com"
+        XCTAssertNil(config.normalizedHFEndpoint)
+
+        // A local mirror over plain HTTP stays usable.
+        config.hfEndpoint = "http://127.0.0.1:8080"
+        XCTAssertEqual(config.normalizedHFEndpoint, "http://127.0.0.1:8080")
+        config.hfEndpoint = "http://localhost:8080/"
+        XCTAssertEqual(config.normalizedHFEndpoint, "http://localhost:8080")
+    }
+
+    func testRejectedHFMirrorIsReportedToTheUI() {
+        let settings = AppSettings(defaults: isolatedDefaults())
+
+        XCTAssertFalse(settings.hfEndpointRejected, "an empty field is not a rejection")
+
+        settings.hfEndpoint = "https://hf-mirror.com"
+        XCTAssertFalse(settings.hfEndpointRejected)
+
+        settings.hfEndpoint = "http://hf-mirror.com"
+        XCTAssertTrue(settings.hfEndpointRejected)
+    }
+
     func testWhisperKitModelMigrationDropsRepoPrefix() {
         let defaults = isolatedDefaults()
         defaults.set("openai_whisper-large-v3-v20240930_626MB", forKey: "whisperKitModel")

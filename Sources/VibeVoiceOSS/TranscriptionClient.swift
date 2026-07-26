@@ -26,6 +26,10 @@ struct TranscriptionConfiguration: Sendable {
               ["http", "https"].contains(scheme.lowercased()), url.host != nil else {
             return nil
         }
+        // Weights fetched from this mirror are loaded into the process, so anyone
+        // able to tamper with the transfer chooses what the app runs. Plain HTTP is
+        // only tolerable on loopback.
+        guard !EndpointSecurity.isCleartextRemote(url) else { return nil }
         return trimmed
     }
 }

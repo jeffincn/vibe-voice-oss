@@ -333,6 +333,7 @@ enum L10n {
 
         // MARK: Security warnings
         case cleartextEndpointWarning
+        case hfEndpointRejected
         case cleartextEndpointDetail
         case credentialsPlaintextWarning
     }
@@ -697,6 +698,7 @@ enum L10n {
         .structuredPrefix: "结构化：%@",
         .promptCompileArrow: "Prompt 编译 → %@（%@）",
         .cleartextEndpointWarning: "警告：明文 HTTP 远程端点",
+        .hfEndpointRejected: "该镜像地址无效或使用了远程明文 HTTP，已忽略，模型仍从默认 Hugging Face 端点下载。模型权重下载后会加载进本进程，篡改传输等同于决定应用运行什么代码，因此镜像必须走 HTTPS。",
         .cleartextEndpointDetail: "该地址不是 HTTPS，也不在本机回环地址上：音频与转写文本会以未加密方式在网络上传输。请改用 HTTPS，或把服务部署到本机。",
         .credentialsPlaintextWarning: "当前构建为 ad-hoc 签名，API Key 无法存入钥匙串，只能以明文保存在本机文件中（权限 0600）。请使用带证书签名的正式版本以启用钥匙串存储。",
     ]
@@ -1017,6 +1019,7 @@ enum L10n {
         .structuredPrefix: "Structured: %@",
         .promptCompileArrow: "Prompt compile → %@ (%@)",
         .cleartextEndpointWarning: "Warning: clear-text HTTP endpoint",
+        .hfEndpointRejected: "This mirror is invalid or uses remote clear-text HTTP, so it was ignored and models still download from the default Hugging Face host. Downloaded weights are loaded into this process, so tampering with the transfer decides what the app runs — mirrors must use HTTPS.",
         .cleartextEndpointDetail: "This address is neither HTTPS nor on the loopback interface: audio and transcripts travel over the network unencrypted. Use HTTPS, or run the service locally.",
         .credentialsPlaintextWarning: "This build is ad-hoc signed, so API keys cannot go into the Keychain. They are stored in a local file in clear text (mode 0600). Use a certificate-signed build to enable Keychain storage.",
     ]
@@ -1325,6 +1328,7 @@ enum L10n {
         .japaneseModelRequirement: "自然な日本語の出力にはバージョン 5.6 以上のモデルが必要です。現在のモデルはバージョン確認を通過しませんでした。",
         .japaneseNaturalCaption: "日本語は自然な母語の文体で整理します（バージョン 5.6 以上のモデルが必要です）。",
         .cleartextEndpointWarning: "警告: 平文 HTTP のリモートエンドポイント",
+        .hfEndpointRejected: "このミラーは無効か、リモートの平文 HTTP のため無視されました。モデルは既定の Hugging Face からダウンロードされます。ダウンロードした重みはこのプロセスに読み込まれるため、通信を改ざんされるとアプリが実行する内容を握られます。ミラーは HTTPS が必須です。",
         .cleartextEndpointDetail: "このアドレスは HTTPS でもループバックでもありません。音声と文字起こしが暗号化されずにネットワークを流れます。HTTPS を使うか、サービスをローカルで動かしてください。",
         .credentialsPlaintextWarning: "このビルドは ad-hoc 署名のため、API キーをキーチェーンに保存できません。ローカルファイルに平文（パーミッション 0600）で保存されます。キーチェーン保存には証明書で署名されたビルドを使用してください。",
     ]

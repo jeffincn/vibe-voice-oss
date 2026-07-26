@@ -483,6 +483,13 @@ final class AppSettings: ObservableObject {
             && !TranslationClient.sanitizeModelName(translationModel).isEmpty
     }
 
+    /// True when a mirror was typed but rejected, so model downloads silently fall
+    /// back to the default Hugging Face host.
+    var hfEndpointRejected: Bool {
+        !hfEndpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && configuration.normalizedHFEndpoint == nil
+    }
+
     var effectiveTargetLanguage: TargetLanguage {
         effectiveTargetLanguages.first ?? .none
     }

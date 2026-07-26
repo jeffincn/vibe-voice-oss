@@ -308,6 +308,9 @@ private struct SettingsForm: View {
                     }
                     field("HF \(L10n.t(.settingsEndpoint))", text: $settings.hfEndpoint)
                     caption(L10n.t(.hfEndpointCaption))
+                    if settings.hfEndpointRejected {
+                        warningCaption(L10n.t(.hfEndpointRejected))
+                    }
                 } else {
                     field(L10n.t(.settingsEndpoint), text: $settings.endpoint)
                     cleartextEndpointWarning(settings.endpoint)
