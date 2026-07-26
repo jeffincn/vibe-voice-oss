@@ -298,11 +298,19 @@ zsh scripts/prepare-silero-vad.sh
 
 | Artifact | Purpose |
 |----------|---------|
-| `silero_vad.onnx` | Upstream Silero ONNX |
-| `silero_vad.mlpackage` / `.mlmodelc` | Preferred CoreML runtime |
-| `USE_ENERGY_VAD` | Written when CoreML conversion is unavailable; app uses Silero-windowed energy backend |
+| `silero_vad.jit` | Upstream TorchScript model, pinned to a commit and checksum-verified |
+| `silero_vad.mlpackage` | CoreML model the app loads (compiled to `.mlmodelc` on first launch) |
+| `USE_ENERGY_VAD` | Written when conversion is unavailable; the app falls back to the energy backend |
 
-Without these files, enabling Voice Pipeline fails at start and recovers to idle/listening.
+Conversion runs through `scripts/convert-silero-vad.py`, which needs `torch` and `coremltools>=8`:
+
+```zsh
+pip install torch 'coremltools>=8'
+```
+
+The CoreML model must expose exactly the interface `VADService` feeds — inputs `audio [1,1,576]`, `h [1,1,128]`, `c [1,1,128]`; outputs `probability`, `h_out`, `c_out`. The script asserts this and checks numerical parity against the upstream module before saving, so agents MUST NOT relax those checks: a model that converts but does not match is silently useless, which is how the previous script failed.
+
+Without these files, enabling Voice Pipeline falls back to the energy backend, which Settings now warns about.
 
 ---
 

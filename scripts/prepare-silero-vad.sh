@@ -1,78 +1,77 @@
 #!/usr/bin/env zsh
-# Prepare Silero VAD for Vibe Voice OSS Voice Pipeline.
-# Target: ~/Documents/VibeVoiceOSS/Models/SileroVAD/
+# Prepare Silero VAD for the Vibe Voice OSS voice pipeline.
+# Default target: ~/Documents/VibeVoiceOSS/Models/SileroVAD (override with SILERO_VAD_DIR).
 #
-# Prefer CoreML (silero_vad.mlpackage / .mlmodelc). If conversion is unavailable,
-# writes USE_ENERGY_VAD so the app can start with the Silero-windowed energy backend.
+# Produces silero_vad.mlpackage with the exact interface VADService expects:
+#   inputs  audio [1,1,576], h [1,1,128], c [1,1,128]
+#   outputs probability, h_out, c_out
+# Writes USE_ENERGY_VAD instead when conversion is not possible, so the app can
+# still start on the much weaker Silero-windowed energy backend.
 
 set -euo pipefail
 
 MODEL_DIR="${SILERO_VAD_DIR:-$HOME/Documents/VibeVoiceOSS/Models/SileroVAD}"
 mkdir -p "$MODEL_DIR"
 
-ONNX_URL="https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx"
-ONNX_PATH="$MODEL_DIR/silero_vad.onnx"
+# Pinned to the v6.2.1 commit rather than a branch: the previous version fetched
+# from master, so the weights loaded into the process changed whenever upstream
+# pushed, and nothing verified what arrived.
+SILERO_COMMIT="7e30209a3e901f9842f81b225f3e93d8199902b1" # v6.2.1
+JIT_SHA256="e1122837f4154c511485fe0b9c64455f7b929c96fbb8d79fbdb336383ebd3720"
+JIT_URL="https://github.com/snakers4/silero-vad/raw/${SILERO_COMMIT}/src/silero_vad/data/silero_vad.jit"
+JIT_PATH="$MODEL_DIR/silero_vad.jit"
+MARKER="$MODEL_DIR/USE_ENERGY_VAD"
 
 echo "==> Silero VAD directory: $MODEL_DIR"
 
-if [[ ! -f "$ONNX_PATH" ]]; then
-  echo "==> Downloading silero_vad.onnx…"
-  if ! curl -fL --retry 3 -o "$ONNX_PATH" "$ONNX_URL"; then
-    echo "!! Download failed; enabling energy VAD marker."
-    touch "$MODEL_DIR/USE_ENERGY_VAD"
+fall_back_to_energy() {
+    echo "!! $1"
+    echo "!! Writing USE_ENERGY_VAD — the app will run the energy backend, which"
+    echo "   treats music, keystrokes and fan noise as speech."
+    print -r -- "energy" > "$MARKER"
     exit 0
-  fi
-else
-  echo "==> Found existing $ONNX_PATH"
-fi
-
-convert_with_python() {
-  python3 - <<'PY'
-import sys
-from pathlib import Path
-
-model_dir = Path.home() / "Documents/VibeVoiceOSS/Models/SileroVAD"
-onnx_path = model_dir / "silero_vad.onnx"
-out_package = model_dir / "silero_vad.mlpackage"
-marker = model_dir / "USE_ENERGY_VAD"
-
-try:
-    import coremltools as ct
-except ImportError:
-    print("coremltools not installed; pip install coremltools")
-    marker.write_text("energy\n")
-    sys.exit(0)
-
-try:
-    model = ct.converters.onnx.convert(
-        model=str(onnx_path),
-        minimum_deployment_target=ct.target.macOS15,
-    )
-    if out_package.exists():
-        import shutil
-        shutil.rmtree(out_package)
-    model.save(str(out_package))
-    if marker.exists():
-        marker.unlink()
-    print(f"Saved CoreML package: {out_package}")
-except Exception as exc:
-    print(f"CoreML conversion failed: {exc}")
-    marker.write_text("energy\n")
-    print("Wrote USE_ENERGY_VAD — app will use Silero-windowed energy backend.")
-PY
 }
 
-if command -v python3 >/dev/null 2>&1; then
-  echo "==> Attempting ONNX → CoreML conversion…"
-  convert_with_python || {
-    echo "!! Conversion script failed; enabling energy VAD."
-    touch "$MODEL_DIR/USE_ENERGY_VAD"
-  }
+verify_checksum() {
+    # Not named `path`: in zsh that is tied to $PATH, and shadowing it here would
+    # empty the command search path for the rest of the function.
+    local file="$1" expected="$2"
+    local actual
+    actual=$(shasum -a 256 "$file" | cut -d' ' -f1)
+    [[ "$actual" == "$expected" ]] && return 0
+    echo "!! checksum mismatch for $file" >&2
+    echo "   expected $expected" >&2
+    echo "   actual   $actual" >&2
+    return 1
+}
+
+if [[ -f "$JIT_PATH" ]] && verify_checksum "$JIT_PATH" "$JIT_SHA256" 2>/dev/null; then
+    echo "==> Reusing verified $JIT_PATH"
 else
-  echo "!! python3 not found; enabling energy VAD."
-  touch "$MODEL_DIR/USE_ENERGY_VAD"
+    echo "==> Downloading silero_vad.jit @ ${SILERO_COMMIT:0:12}…"
+    rm -f "$JIT_PATH"
+    if ! curl -fL --retry 3 -o "$JIT_PATH" "$JIT_URL"; then
+        fall_back_to_energy "Download failed."
+    fi
+    if ! verify_checksum "$JIT_PATH" "$JIT_SHA256"; then
+        # Refuse to convert weights we cannot identify — they end up running
+        # inside the app.
+        rm -f "$JIT_PATH"
+        fall_back_to_energy "Refusing to use a model that failed verification."
+    fi
+    echo "==> Verified silero_vad.jit"
 fi
 
+if ! command -v python3 >/dev/null 2>&1; then
+    fall_back_to_energy "python3 not found."
+fi
+
+echo "==> Converting to CoreML…"
+if ! SILERO_VAD_DIR="$MODEL_DIR" python3 "${0:A:h}/convert-silero-vad.py"; then
+    fall_back_to_energy "CoreML conversion failed (see the error above)."
+fi
+
+rm -f "$MARKER"
 echo "==> Contents of $MODEL_DIR:"
 ls -la "$MODEL_DIR"
-echo "Done."
+echo "Done. Restart Vibe Voice OSS to pick up the model."
