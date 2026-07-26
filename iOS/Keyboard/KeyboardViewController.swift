@@ -5,6 +5,9 @@ final class KeyboardViewController: UIInputViewController {
     /// so a slow timer backs it up. It replaces the 0.4s poll this controller
     /// used to run for as long as the keyboard was on screen.
     private static let bridgeBackstopInterval: TimeInterval = 2
+    /// Height of the keys themselves. The home indicator inset is added on top
+    /// in viewSafeAreaInsetsDidChange.
+    private static let contentHeight: CGFloat = 286
 
     private var engine: RimeEngine = PrototypeRimeEngine()
     /// Non-nil when librime failed to start and the prototype engine is standing
@@ -19,6 +22,20 @@ final class KeyboardViewController: UIInputViewController {
     /// A finished transcript that belongs to a different text field. It waits
     /// here until the user goes back to that field or asks for it explicitly.
     private var pendingResult: VoiceBridgeState?
+    /// The host text field the composition currently belongs to.
+    private var currentDocumentID: UUID?
+    /// Set while we edit the document ourselves, so the change callbacks that
+    /// follow are not mistaken for the user moving the caret.
+    private var isPerformingOwnEdit = false
+
+    private lazy var heightConstraint: NSLayoutConstraint = {
+        let constraint = view.heightAnchor.constraint(equalToConstant: Self.contentHeight)
+        // The system installs its own required height on the input view. A
+        // required constraint of ours would conflict with it and one of the two
+        // gets broken at runtime, so stay just below required.
+        constraint.priority = UILayoutPriority(999)
+        return constraint
+    }()
 
     private let preeditLabel = UILabel()
     private let candidateStack = UIStackView()
@@ -44,8 +61,35 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        syncWithHostDocument()
         refreshBridge()
         startBridgeObservation()
+    }
+
+    override func textDidChange(_ textInput: (any UITextInput)?) {
+        super.textDidChange(textInput)
+        syncWithHostDocument()
+    }
+
+    override func selectionWillChange(_ textInput: (any UITextInput)?) {
+        super.selectionWillChange(textInput)
+        // The user moved the caret away from where the composition was being
+        // built. Committing it now would drop the characters somewhere else.
+        guard !isPerformingOwnEdit, !engine.snapshot.preedit.isEmpty else { return }
+        engine.reset()
+        refreshComposition()
+    }
+
+    /// A keyboard extension is reused across text fields and across apps within
+    /// a host. Anything still in the composition belongs to the field it was
+    /// typed in and must not follow the user to the next one.
+    private func syncWithHostDocument() {
+        let documentID = textDocumentProxy.documentIdentifier
+        guard documentID != currentDocumentID else { return }
+        currentDocumentID = documentID
+        engine.reset()
+        refreshComposition()
+        refreshBridge()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -101,13 +145,21 @@ final class KeyboardViewController: UIInputViewController {
         keyboard.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(keyboard)
 
+        // Keys pinned to the safe area keep the bottom row clear of the home
+        // indicator and, in landscape, of the sensor housing.
+        let safeArea = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            keyboard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
-            keyboard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
+            keyboard.leadingAnchor.constraint(equalTo: safeArea.leadingAnchor, constant: 6),
+            keyboard.trailingAnchor.constraint(equalTo: safeArea.trailingAnchor, constant: -6),
             keyboard.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
-            keyboard.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
-            view.heightAnchor.constraint(greaterThanOrEqualToConstant: 286),
+            keyboard.bottomAnchor.constraint(equalTo: safeArea.bottomAnchor, constant: -6),
+            heightConstraint,
         ])
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        heightConstraint.constant = Self.contentHeight + view.safeAreaInsets.bottom
     }
 
     private func startBridgeObservation() {
@@ -139,6 +191,9 @@ final class KeyboardViewController: UIInputViewController {
         for letter in letters {
             let button = keyButton(String(letter))
             button.accessibilityIdentifier = "key.\(letter.lowercased())"
+            // Without a label VoiceOver reads the glyph, which for a single
+            // letter is announced inconsistently across voices.
+            button.accessibilityLabel = String(letter)
             button.addAction(UIAction { [weak self] _ in
                 self?.handleLetter(letter)
             }, for: .touchUpInside)
@@ -154,6 +209,7 @@ final class KeyboardViewController: UIInputViewController {
         row.distribution = .fill
 
         let globe = keyButton("🌐")
+        globe.accessibilityLabel = "切换键盘"
         globe.widthAnchor.constraint(equalToConstant: 44).isActive = true
         globe.addTarget(self, action: #selector(handleGlobe(_:event:)), for: .allTouchEvents)
 
@@ -172,10 +228,12 @@ final class KeyboardViewController: UIInputViewController {
         configureVoiceMenu()
 
         let backspace = keyButton("⌫")
+        backspace.accessibilityLabel = "删除"
         backspace.widthAnchor.constraint(equalToConstant: 48).isActive = true
         backspace.addAction(UIAction { [weak self] _ in self?.handleBackspace() }, for: .touchUpInside)
 
         let enter = keyButton("↵")
+        enter.accessibilityLabel = "换行"
         enter.widthAnchor.constraint(equalToConstant: 44).isActive = true
         enter.addAction(UIAction { [weak self] _ in self?.handleReturn() }, for: .touchUpInside)
 
@@ -238,7 +296,7 @@ final class KeyboardViewController: UIInputViewController {
                 return
             }
         }
-        textDocumentProxy.deleteBackward()
+        deleteBackwardInDocument()
     }
 
     private func handleReturn() {
@@ -323,6 +381,7 @@ final class KeyboardViewController: UIInputViewController {
             let button = UIButton(type: .system)
             button.setTitle(candidate.text, for: .normal)
             button.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+            button.accessibilityLabel = "候选 \(index + 1)：\(candidate.text)"
             button.addAction(UIAction { [weak self] _ in
                 guard let self, let text = engine.selectCandidate(at: index) else { return }
                 insertIntoDocument(text)
@@ -366,12 +425,33 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func insertIntoDocument(_ text: String) {
+        isPerformingOwnEdit = true
         textDocumentProxy.insertText(text)
+        clearOwnEditFlagAfterCallbacks()
+    }
+
+    private func deleteBackwardInDocument() {
+        isPerformingOwnEdit = true
+        textDocumentProxy.deleteBackward()
+        clearOwnEditFlagAfterCallbacks()
+    }
+
+    private func clearOwnEditFlagAfterCallbacks() {
+        // The host may deliver the change callbacks synchronously or on the next
+        // main-queue turn, so hold the flag until that turn has passed.
+        DispatchQueue.main.async { [weak self] in
+            self?.isPerformingOwnEdit = false
+        }
     }
 
     private func updateVoiceButton() {
-        let title = pendingResult == nil ? "🎙 \(voiceMode.label)" : "🎙 插入"
-        voiceButton.setTitle(title, for: .normal)
+        if pendingResult == nil {
+            voiceButton.setTitle("🎙 \(voiceMode.label)", for: .normal)
+            voiceButton.accessibilityLabel = "语音输入，\(voiceMode.label)模式"
+        } else {
+            voiceButton.setTitle("🎙 插入", for: .normal)
+            voiceButton.accessibilityLabel = "插入已完成的语音结果"
+        }
     }
 
     @objc
