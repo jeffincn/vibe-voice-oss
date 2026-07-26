@@ -7,26 +7,35 @@ import SQLite3
 /// the main actor (UI stores, AppSettings).
 @MainActor
 final class DataStore {
-    static let shared: DataStore = {
-        let store = DataStore()
-        store.migrate()
-        return store
-    }()
+    static let shared = DataStore()
 
     private var db: OpaquePointer?
 
-    private init() {
+    private convenience init() {
         PersistenceDirectory.ensureExists()
-        let path = PersistenceDirectory.url.appendingPathComponent("vibe_voice.sqlite").path
+        self.init(directory: PersistenceDirectory.url)
+    }
+
+    /// Opens an independent database under `directory`. Production code goes through
+    /// `shared`; this exists so tests can run against a temporary directory.
+    init(directory: URL) {
+        let path = directory.appendingPathComponent("vibe_voice.sqlite").path
         guard sqlite3_open(path, &db) == SQLITE_OK else {
             assertionFailure("DataStore: failed to open database at \(path)")
             return
         }
         execute("PRAGMA journal_mode = WAL")
         execute("PRAGMA foreign_keys = ON")
+        migrate()
     }
 
-    // Singleton lives for the app's lifetime — no deinit needed.
+    /// The shared store lives for the app's lifetime and never needs this. Instances
+    /// opened against a temporary directory do, otherwise the connection outlives them.
+    func close() {
+        guard let db else { return }
+        sqlite3_close_v2(db)
+        self.db = nil
+    }
 
     // MARK: - Migration
 
