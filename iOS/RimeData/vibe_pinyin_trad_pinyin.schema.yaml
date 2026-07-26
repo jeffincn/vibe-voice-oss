@@ -1,0 +1,48 @@
+# Rime full-pinyin input with Traditional Chinese output.
+# OpenCC is linked into the iOS librime build; s2t is the standard Rime
+# Simplified-to-Traditional conversion pipeline.
+schema:
+  schema_id: vibe_pinyin_trad_pinyin
+  name: Vibe 繁體拼音
+  version: "0.7.0"
+  author: [Vibe Voice OSS contributors]
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [中文, 英文]
+engine:
+  processors: [ascii_composer, speller, punctuator, selector, navigator, express_editor]
+  segmentors: [ascii_segmentor, abc_segmentor, fallback_segmentor]
+  translators: [script_translator]
+  filters: [simplifier]
+speller:
+  alphabet: zyxwvutsrqponmlkjihgfedcba
+  delimiter: " '"
+  algebra:
+    - abbrev/^([a-z]).+$/$1/
+    - derive/^([nl])ue$/$1ve/
+    - derive/^([jqxy])u/$1v/
+    - derive/un$/uen/
+    - derive/ui$/uei/
+    - derive/iu$/iou/
+punctuator:
+  half_shape:
+    ",": "，"
+    ".": "。"
+    "!": "！"
+    "?": "？"
+    ":": "："
+    ";": "；"
+    "\\": "、"
+translator:
+  dictionary: pinyin_simp
+  user_dict: vibe_user
+  enable_user_dict: true
+  enable_sentence: true
+  preedit_format:
+    - xform/([nl])v/$1ü/
+    - xform/([nl])ue/$1üe/
+    - xform/([jqxy])v/$1u/
+simplifier:
+  option_name: traditional
+  opencc_config: s2t.json

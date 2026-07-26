@@ -2,6 +2,8 @@ config_version: "0.7.0"
 
 schema_list:
   - schema: vibe_pinyin
+  - schema: vibe_pinyin_trad_pinyin
+  - schema: vibe_zhuyin_trad
 
 menu:
   page_size: 8

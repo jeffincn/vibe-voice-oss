@@ -8,6 +8,12 @@ distributed under the Apache License 2.0. The complete license is included as
 `default.yaml` and `vibe_pinyin.schema.yaml` are original Vibe Voice OSS
 configuration files.
 
+`vibe_pinyin_trad_pinyin.schema.yaml` and `vibe_zhuyin_trad.schema.yaml` are
+original Vibe Voice schema wrappers around librime's standard OpenCC and
+traditional-output features. The bundled dictionary remains the Apache-2.0
+`rime-pinyin-simp` data; users may import additional Rime-format dictionaries
+from the app settings into their private App Group container.
+
 The keyboard links a core-only `librime.xcframework` built by
 `scripts/prepare-librime-ios.sh` from the official librime 1.16.1 release. No
 librime Lua, octagram, predict, legacy-plugin, or other external plugin source

@@ -75,6 +75,7 @@ NSString *TakeCommit(RimeApi *api, RimeSessionId session) {
 - (nullable instancetype)initWithSharedDataDirectory:(NSString *)sharedDataDirectory
                                    userDataDirectory:(NSString *)userDataDirectory
                                     stagingDirectory:(nullable NSString *)stagingDirectory
+                                          schemaID:(NSString *)schemaID
                                   performMaintenance:(BOOL)performMaintenance
                                            fullCheck:(BOOL)fullCheck
                                                error:(NSError **)error {
@@ -140,7 +141,8 @@ NSString *TakeCommit(RimeApi *api, RimeSessionId session) {
         }
         return nil;
     }
-    if (!api->select_schema || !api->select_schema(self.session, "vibe_pinyin")) {
+    std::string selectedSchema = schemaID.UTF8String ?: "vibe_pinyin";
+    if (!api->select_schema || !api->select_schema(self.session, selectedSchema.c_str())) {
         api->destroy_session(self.session);
         self.session = 0;
         if (error) {

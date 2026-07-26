@@ -72,6 +72,7 @@ punctuator:
 
 translator:
   dictionary: pinyin_simp
+  user_dict: vibe_user
   enable_user_dict: true
   enable_sentence: true
   preedit_format:

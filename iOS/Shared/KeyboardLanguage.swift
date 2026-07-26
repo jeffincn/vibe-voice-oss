@@ -29,3 +29,17 @@ enum VoiceOutputMode: String, Codable, CaseIterable, Sendable {
         }
     }
 }
+
+enum RimeSchema: String, CaseIterable, Hashable, Sendable {
+    case simplifiedPinyin = "vibe_pinyin"
+    case traditionalPinyin = "vibe_pinyin_trad_pinyin"
+    case traditionalZhuyin = "vibe_zhuyin_trad"
+
+    var label: String {
+        switch self {
+        case .simplifiedPinyin: "简体拼音"
+        case .traditionalPinyin: "繁體拼音"
+        case .traditionalZhuyin: "繁體注音"
+        }
+    }
+}

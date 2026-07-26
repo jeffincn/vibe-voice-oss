@@ -29,6 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable instancetype)initWithSharedDataDirectory:(NSString *)sharedDataDirectory
                                    userDataDirectory:(NSString *)userDataDirectory
                                     stagingDirectory:(nullable NSString *)stagingDirectory
+                                          schemaID:(NSString *)schemaID
                                   performMaintenance:(BOOL)performMaintenance
                                            fullCheck:(BOOL)fullCheck
                                                error:(NSError * _Nullable * _Nullable)error

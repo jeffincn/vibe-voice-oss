@@ -121,6 +121,10 @@ enum MobileL10n {
         case rimeReady
         case rimeFailed // %@ message
         case rimeLearningCleared
+        case rimeSchemaTitle
+        case rimeDictionaryImport
+        case rimeDictionaryImportStatus
+        case rimeDictionaryImportHelp
 
         // MARK: Home screen
         case homeHero
@@ -276,6 +280,10 @@ enum MobileL10n {
         .rimeReady: "已就绪",
         .rimeFailed: "失败：%@",
         .rimeLearningCleared: "已清除学习记录",
+        .rimeSchemaTitle: "输入方案",
+        .rimeDictionaryImport: "导入 Rime 词库",
+        .rimeDictionaryImportStatus: "已导入 %@（%d 条）",
+        .rimeDictionaryImportHelp: "支持 Rime 词库格式：词<TAB>拼音<TAB>词频。词库保存在本机共享容器，可随时替换。",
 
         .homeHero: "Rime 全拼与语音输入的移动端工作区。键盘提供字母、数字、符号、上档、候选翻页与语音键，中文标点由 Rime 转换为全角。",
         .homeEnableKeyboardTitle: "启用键盘",
@@ -387,6 +395,10 @@ enum MobileL10n {
         .rimeReady: "Ready",
         .rimeFailed: "Failed: %@",
         .rimeLearningCleared: "Learning data cleared",
+        .rimeSchemaTitle: "Input schema",
+        .rimeDictionaryImport: "Import Rime dictionary",
+        .rimeDictionaryImportStatus: "Imported %@ (%d entries)",
+        .rimeDictionaryImportHelp: "Rime format: word<TAB>pinyin<TAB>frequency. The dictionary stays in this device's shared container.",
 
         .homeHero: "A mobile workspace for Rime full pinyin and voice input. The keyboard has letters, numbers, symbols, shift, candidate paging, and a voice key; Rime converts Chinese punctuation to its full-width form.",
         .homeEnableKeyboardTitle: "Enable the keyboard",

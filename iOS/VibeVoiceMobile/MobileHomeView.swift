@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MobileHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -6,6 +7,8 @@ struct MobileHomeView: View {
     @State private var bridgeWatcher: VoiceBridgeWatcher?
     @State private var rimeStatus = MobileL10n.t(.modelNotPrepared)
     @State private var isPreparingRime = false
+    @State private var isImportingDictionary = false
+    @State private var dictionaryStatus: String?
     @StateObject private var voiceController = MobileVoiceController()
     private let bridge = VoiceBridgeStore()
 
@@ -27,6 +30,20 @@ struct MobileHomeView: View {
             .task {
                 prepareRime()
                 startObservingBridge()
+            }
+            .fileImporter(
+                isPresented: $isImportingDictionary,
+                allowedContentTypes: [.data, .text],
+                allowsMultipleSelection: false
+            ) { result in
+                guard case let .success(urls) = result, let url = urls.first else { return }
+                do {
+                    let imported = try RimeDictionaryManager.importDictionary(from: url)
+                    dictionaryStatus = MobileL10n.t(.rimeDictionaryImportStatus, imported.fileName, imported.entries)
+                    prepareRime(fullCheck: true)
+                } catch {
+                    dictionaryStatus = error.localizedDescription
+                }
             }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
@@ -172,6 +189,18 @@ struct MobileHomeView: View {
                 .foregroundStyle(.secondary)
             LabeledContent("Qwen3-ASR", value: MobileL10n.t(.rimeExperimental))
             LabeledContent(MobileL10n.t(.rimeSectionTitle), value: rimeStatus)
+            Picker(MobileL10n.t(.rimeSchemaTitle), selection: Binding(
+                get: { RimeEngineFactory.selectedSchema },
+                set: {
+                    RimeEngineFactory.selectedSchema = $0
+                    prepareRime(fullCheck: true)
+                }
+            )) {
+                ForEach(RimeSchema.allCases, id: \.self) { schema in
+                    Text(schema.label).tag(schema)
+                }
+            }
+            .accessibilityIdentifier("rime.schema")
             Button(isPreparingRime
                 ? MobileL10n.t(.rimeDeploying)
                 : MobileL10n.t(.rimeRedeploy)) {
@@ -179,6 +208,19 @@ struct MobileHomeView: View {
             }
             .buttonStyle(.bordered)
             .disabled(isPreparingRime)
+            Button(MobileL10n.t(.rimeDictionaryImport)) {
+                isImportingDictionary = true
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("rime.dictionary.import")
+            if let dictionaryStatus {
+                Text(dictionaryStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(MobileL10n.t(.rimeDictionaryImportHelp))
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Text(MobileL10n.t(.rimeFootnote))
                 .font(.caption)
                 .foregroundStyle(.secondary)

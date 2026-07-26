@@ -102,6 +102,7 @@ final class LibrimeEngine: RimeEngine {
             sharedDataDirectory: sharedDataDirectory.path,
             userDataDirectory: userDataDirectory.path,
             stagingDirectory: stagingDirectory?.path,
+            schemaID: RimeEngineFactory.selectedSchema.rawValue,
             performMaintenance: performMaintenance,
             fullCheck: fullCheck
         )
@@ -173,6 +174,16 @@ final class LibrimeEngine: RimeEngine {
 
 enum RimeEngineFactory {
     static let appGroupIdentifier = "group.app.vibevoice.oss.shared"
+    private static let schemaDefaultsKey = "rime.schema"
+
+    static var selectedSchema: RimeSchema {
+        get {
+            guard let raw = UserDefaults(suiteName: appGroupIdentifier)?.string(forKey: schemaDefaultsKey),
+                  let schema = RimeSchema(rawValue: raw) else { return .simplifiedPinyin }
+            return schema
+        }
+        set { UserDefaults(suiteName: appGroupIdentifier)?.set(newValue.rawValue, forKey: schemaDefaultsKey) }
+    }
 
     /// The containing app deploys here, so this directory holds the compiled
     /// schema both processes read.
