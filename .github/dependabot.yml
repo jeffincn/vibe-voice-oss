@@ -1,0 +1,27 @@
+version: 2
+
+updates:
+  # Actions are pinned to commit SHAs, which means they never pick up security
+  # fixes on their own. Dependabot is what moves those pins forward.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: swift
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      swift-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
