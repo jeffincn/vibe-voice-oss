@@ -28,5 +28,9 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Vibe Voice OSS 需要麦克风权限，以便将语音发送到你在设置中配置的转写服务。</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Vibe Voice OSS 需要控制其他应用的权限，以便在无法直接写入输入框时，通过模拟粘贴把识别结果送入当前应用。</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Vibe Voice OSS 会在「文稿」文件夹下存放本地语音识别模型与 VAD 模型。</string>
 </dict>
 </plist>
