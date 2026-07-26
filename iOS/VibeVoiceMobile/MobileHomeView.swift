@@ -17,6 +17,7 @@ struct MobileHomeView: View {
                     setupCard
                     bridgeCard
                     modelCard
+                    privacyCard
                 }
                 .padding()
             }
@@ -48,7 +49,7 @@ struct MobileHomeView: View {
                 .font(.title2.bold())
                 .foregroundStyle(.tint)
                 .accessibilityIdentifier("home.hero")
-            Text("完整中英键盘、Rime 全拼与语音输入的移动端工作区。")
+            Text("Rime 全拼与语音输入的移动端工作区。键盘目前提供字母、候选与语音键，数字、符号与 Shift 仍在开发中。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -147,6 +148,33 @@ struct MobileHomeView: View {
                 .foregroundStyle(.secondary)
         }
         .cardStyle()
+    }
+
+    private var privacyCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("隐私与数据", systemImage: "lock.shield")
+                .font(.headline)
+            Text("语音转写只在本机进行，不上传音频或文字。转写结果写入键盘共享容器，插入后立即删除；键盘的拼音学习记录保存在共享容器内，仅本机可读。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button("清除共享数据与拼音学习记录", role: .destructive) {
+                clearSharedData()
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("privacy.clear")
+            Text("清除后键盘会重新从零学习，已部署的词库不受影响。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .cardStyle()
+    }
+
+    private func clearSharedData() {
+        voiceController.reset()
+        bridge.reset()
+        RimeEngineFactory.clearLearningData()
+        refreshBridgeState()
+        rimeStatus = "已清除学习记录"
     }
 
     private func startObservingBridge() {

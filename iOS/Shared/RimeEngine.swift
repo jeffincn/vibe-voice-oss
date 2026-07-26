@@ -67,9 +67,17 @@ final class LibrimeEngine: RimeEngine {
         performMaintenance: Bool,
         fullCheck: Bool
     ) throws {
+        // Files created inside inherit the directory's protection class. What
+        // librime learns is a record of what the user typed, so it should not
+        // be readable from a powered-off device. Complete protection is too
+        // strong: the LevelDB stays open across lock events and would start
+        // failing its reads.
         try FileManager.default.createDirectory(
             at: userDataDirectory,
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
+            attributes: [
+                .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
+            ]
         )
         bridge = try VVRimeBridge(
             sharedDataDirectory: sharedDataDirectory.path,
@@ -214,8 +222,24 @@ enum RimeEngineFactory {
             .appendingPathComponent(name, isDirectory: true)
     }
 
-    static var keyboardLearningDirectory: URL? {
-        try? containerDirectory(named: keyboardFolder)
+    /// Deletes everything librime has learned from the user while leaving the
+    /// compiled schema in place, so clearing does not force a redeploy.
+    ///
+    /// Only safe to call from the containing app: the keyboard may hold the
+    /// LevelDB open, and it reopens its own directory the next time it starts.
+    static func clearLearningData() {
+        let manager = FileManager.default
+        if let keyboard = try? containerDirectory(named: keyboardFolder) {
+            try? manager.removeItem(at: keyboard)
+        }
+        guard let deployment = try? containerDirectory(named: deploymentFolder),
+              let contents = try? manager.contentsOfDirectory(
+                at: deployment,
+                includingPropertiesForKeys: nil
+              ) else { return }
+        for url in contents where url.lastPathComponent.contains(".userdb") {
+            try? manager.removeItem(at: url)
+        }
     }
 
     private static func rimeDataDirectory(in bundle: Bundle) -> URL? {
