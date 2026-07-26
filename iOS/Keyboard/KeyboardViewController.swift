@@ -6,7 +6,10 @@ final class KeyboardViewController: UIInputViewController {
     /// used to run for as long as the keyboard was on screen.
     private static let bridgeBackstopInterval: TimeInterval = 2
 
-    private lazy var engine: RimeEngine = RimeEngineFactory.makeForKeyboard()
+    private var engine: RimeEngine = PrototypeRimeEngine()
+    /// Non-nil when librime failed to start and the prototype engine is standing
+    /// in with its ten-word lexicon.
+    private var rimeDegradedReason: String?
     private let bridge = VoiceBridgeStore()
     private var language: KeyboardLanguage = .chinese
     private var voiceMode: VoiceOutputMode = .polished
@@ -26,10 +29,16 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         voiceMode = bridge.load().mode
+        let rime = RimeEngineFactory.makeForKeyboard()
+        engine = rime.engine
+        rimeDegradedReason = rime.degradedReason
         view.backgroundColor = UIColor.systemGray6
         configureLayout()
         refreshComposition()
         refreshBridge()
+        if let rimeDegradedReason {
+            statusLabel.text = "拼音降级：\(rimeDegradedReason)"
+        }
         startBridgeObservation()
     }
 
@@ -194,11 +203,24 @@ final class KeyboardViewController: UIInputViewController {
     private func handleLetter(_ letter: Character) {
         switch language {
         case .chinese:
-            engine.process(letter: letter)
-            refreshComposition()
+            apply(engine.process(letter: letter), fallback: String(letter).lowercased())
         case .english:
             insertIntoDocument(String(letter).lowercased())
         }
+    }
+
+    /// librime commits on its own for punctuation, a full buffer, or a schema
+    /// rule. That text has already left the composition, so it has to reach the
+    /// document now instead of waiting for the next space. A key librime did not
+    /// consume is the host's responsibility, not something to drop.
+    private func apply(_ outcome: RimeKeyOutcome, fallback: String?) {
+        if let commit = outcome.commit {
+            insertIntoDocument(commit)
+        }
+        if !outcome.handled, let fallback {
+            insertIntoDocument(fallback)
+        }
+        refreshComposition()
     }
 
     private func handleSpace() {
@@ -210,11 +232,13 @@ final class KeyboardViewController: UIInputViewController {
 
     private func handleBackspace() {
         if language == .chinese, !engine.snapshot.preedit.isEmpty {
-            engine.backspace()
-            refreshComposition()
-        } else {
-            textDocumentProxy.deleteBackward()
+            let outcome = engine.backspace()
+            apply(outcome, fallback: nil)
+            if outcome.handled {
+                return
+            }
         }
+        textDocumentProxy.deleteBackward()
     }
 
     private func handleReturn() {
@@ -278,9 +302,19 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.text = "已选择\(mode.label)模式"
     }
 
+    /// Shown instead of the composition when there is nothing being typed, so a
+    /// degraded Rime session stays visible rather than looking like a keyboard
+    /// that has forgotten the language.
+    private var idlePreeditText: String {
+        if rimeDegradedReason != nil, language == .chinese {
+            return "⚠️ 拼音降级"
+        }
+        return language.toggleLabel
+    }
+
     private func refreshComposition() {
         let snapshot = engine.snapshot
-        preeditLabel.text = snapshot.preedit.isEmpty ? language.toggleLabel : snapshot.preedit
+        preeditLabel.text = snapshot.preedit.isEmpty ? idlePreeditText : snapshot.preedit
         candidateStack.arrangedSubviews.forEach {
             candidateStack.removeArrangedSubview($0)
             $0.removeFromSuperview()

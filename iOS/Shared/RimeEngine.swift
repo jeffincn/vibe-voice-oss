@@ -13,13 +13,27 @@ struct RimeSnapshot: Equatable, Sendable {
     static let empty = RimeSnapshot(preedit: "", candidates: [], highlightedIndex: 0)
 }
 
+/// What one key did to the composition.
+struct RimeKeyOutcome: Equatable, Sendable {
+    /// Text the engine committed because of this key. The engine has already
+    /// dropped it from the composition, so the host has to insert it now.
+    var commit: String?
+    /// False when the engine did not consume the key and the host should.
+    var handled: Bool
+    var snapshot: RimeSnapshot
+
+    static func ignored(_ snapshot: RimeSnapshot) -> RimeKeyOutcome {
+        RimeKeyOutcome(commit: nil, handled: false, snapshot: snapshot)
+    }
+}
+
 protocol RimeEngine: AnyObject {
     var snapshot: RimeSnapshot { get }
 
     @discardableResult
-    func process(letter: Character) -> RimeSnapshot
+    func process(letter: Character) -> RimeKeyOutcome
     @discardableResult
-    func backspace() -> RimeSnapshot
+    func backspace() -> RimeKeyOutcome
     func selectCandidate(at index: Int) -> String?
     func commitBestCandidate() -> String?
     func reset()
@@ -42,13 +56,16 @@ enum RimeEngineError: LocalizedError {
 /// Production wrapper around librime. The Objective-C++ bridge owns the native
 /// session while this type keeps UIKit independent from the C API.
 final class LibrimeEngine: RimeEngine {
+    private static let backspaceKeyCode = 0xff08
+
     private let bridge: VVRimeBridge
-    private var lastCommit: String?
 
     init(
         sharedDataDirectory: URL,
         userDataDirectory: URL,
-        performMaintenance: Bool
+        stagingDirectory: URL?,
+        performMaintenance: Bool,
+        fullCheck: Bool
     ) throws {
         try FileManager.default.createDirectory(
             at: userDataDirectory,
@@ -57,7 +74,9 @@ final class LibrimeEngine: RimeEngine {
         bridge = try VVRimeBridge(
             sharedDataDirectory: sharedDataDirectory.path,
             userDataDirectory: userDataDirectory.path,
-            performMaintenance: performMaintenance
+            stagingDirectory: stagingDirectory?.path,
+            performMaintenance: performMaintenance,
+            fullCheck: fullCheck
         )
     }
 
@@ -81,19 +100,17 @@ final class LibrimeEngine: RimeEngine {
     }
 
     @discardableResult
-    func process(letter: Character) -> RimeSnapshot {
+    func process(letter: Character) -> RimeKeyOutcome {
         guard letter.isASCII, letter.isLetter || letter == "'",
               let scalar = String(letter.lowercased()).unicodeScalars.first else {
-            return snapshot
+            return .ignored(snapshot)
         }
-        lastCommit = bridge.processKeyCode(Int(scalar.value))
-        return snapshot
+        return outcome(from: bridge.processKeyCode(Int(scalar.value)))
     }
 
     @discardableResult
-    func backspace() -> RimeSnapshot {
-        lastCommit = bridge.processKeyCode(0xff08)
-        return snapshot
+    func backspace() -> RimeKeyOutcome {
+        outcome(from: bridge.processKeyCode(Self.backspaceKeyCode))
     }
 
     func selectCandidate(at index: Int) -> String? {
@@ -101,10 +118,6 @@ final class LibrimeEngine: RimeEngine {
     }
 
     func commitBestCandidate() -> String? {
-        if let lastCommit {
-            self.lastCommit = nil
-            return lastCommit
-        }
         let current = snapshot
         if current.candidates.indices.contains(current.highlightedIndex) {
             return selectCandidate(at: current.highlightedIndex)
@@ -113,52 +126,96 @@ final class LibrimeEngine: RimeEngine {
     }
 
     func reset() {
-        lastCommit = nil
         bridge.clearComposition()
+    }
+
+    private func outcome(from result: VVRimeKeyResult) -> RimeKeyOutcome {
+        RimeKeyOutcome(commit: result.commit, handled: result.handled, snapshot: snapshot)
     }
 }
 
 enum RimeEngineFactory {
     static let appGroupIdentifier = "group.app.vibevoice.oss.shared"
 
-    static func makeForKeyboard() -> RimeEngine {
+    /// The containing app deploys here, so this directory holds the compiled
+    /// schema both processes read.
+    private static let deploymentFolder = "Deploy"
+    /// The keyboard learns into its own database. librime keeps the user
+    /// dictionary in a LevelDB, which permits a single writer, so pointing both
+    /// processes at one directory makes whichever opens second fail and fall
+    /// back to the prototype engine.
+    private static let keyboardFolder = "KeyboardUser"
+
+    struct KeyboardEngine {
+        let engine: RimeEngine
+        /// Set when librime could not start and the deterministic fallback is in
+        /// use. Without surfacing it the keyboard silently appears to forget
+        /// almost every word.
+        let degradedReason: String?
+    }
+
+    static func makeForKeyboard() -> KeyboardEngine {
         do {
-            return try make(performMaintenance: false)
+            let deployment = try containerDirectory(named: deploymentFolder)
+            let engine = try make(
+                userDataDirectory: try containerDirectory(named: keyboardFolder),
+                stagingDirectory: deployment.appendingPathComponent("build", isDirectory: true),
+                performMaintenance: false
+            )
+            return KeyboardEngine(engine: engine, degradedReason: nil)
         } catch {
-            return PrototypeRimeEngine()
+            return KeyboardEngine(
+                engine: PrototypeRimeEngine(),
+                degradedReason: error.localizedDescription
+            )
         }
     }
 
-    static func prepareForMainApp() throws -> RimeEngine {
-        try make(performMaintenance: true)
+    /// - Parameter fullCheck: re-verifies every dictionary. Only worth the cost
+    ///   when the user explicitly asks to repair the deployment; a normal launch
+    ///   lets librime deploy just what changed.
+    static func prepareForMainApp(fullCheck: Bool) throws -> RimeEngine {
+        try make(
+            userDataDirectory: try containerDirectory(named: deploymentFolder),
+            performMaintenance: true,
+            fullCheck: fullCheck
+        )
     }
 
     static func make(
         bundle: Bundle = .main,
-        userDataDirectory: URL? = nil,
-        performMaintenance: Bool
+        userDataDirectory: URL,
+        stagingDirectory: URL? = nil,
+        performMaintenance: Bool,
+        fullCheck: Bool = false
     ) throws -> LibrimeEngine {
         guard let sharedDataDirectory = rimeDataDirectory(in: bundle) else {
             throw RimeEngineError.resourcesMissing
         }
-        let resolvedUserDirectory: URL
-        if let userDataDirectory {
-            resolvedUserDirectory = userDataDirectory
-        } else {
-            guard let container = FileManager.default.containerURL(
-                forSecurityApplicationGroupIdentifier: appGroupIdentifier
-            ) else {
-                throw RimeEngineError.appGroupUnavailable
-            }
-            resolvedUserDirectory = container
-                .appendingPathComponent("Rime", isDirectory: true)
-                .appendingPathComponent("User", isDirectory: true)
-        }
         return try LibrimeEngine(
             sharedDataDirectory: sharedDataDirectory,
-            userDataDirectory: resolvedUserDirectory,
-            performMaintenance: performMaintenance
+            userDataDirectory: userDataDirectory,
+            stagingDirectory: stagingDirectory,
+            performMaintenance: performMaintenance,
+            fullCheck: fullCheck
         )
+    }
+
+    /// Everything librime writes lives under this directory, so it is also what
+    /// a "clear learning data" action removes.
+    static func containerDirectory(named name: String) throws -> URL {
+        guard let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupIdentifier
+        ) else {
+            throw RimeEngineError.appGroupUnavailable
+        }
+        return container
+            .appendingPathComponent("Rime", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+    }
+
+    static var keyboardLearningDirectory: URL? {
+        try? containerDirectory(named: keyboardFolder)
     }
 
     private static func rimeDataDirectory(in bundle: Bundle) -> URL? {
@@ -204,18 +261,19 @@ final class PrototypeRimeEngine: RimeEngine {
     }
 
     @discardableResult
-    func process(letter: Character) -> RimeSnapshot {
-        guard letter.isASCII, letter.isLetter || letter == "'" else { return snapshot }
+    func process(letter: Character) -> RimeKeyOutcome {
+        guard letter.isASCII, letter.isLetter || letter == "'" else {
+            return .ignored(snapshot)
+        }
         composition.append(Character(letter.lowercased()))
-        return snapshot
+        return RimeKeyOutcome(commit: nil, handled: true, snapshot: snapshot)
     }
 
     @discardableResult
-    func backspace() -> RimeSnapshot {
-        if !composition.isEmpty {
-            composition.removeLast()
-        }
-        return snapshot
+    func backspace() -> RimeKeyOutcome {
+        guard !composition.isEmpty else { return .ignored(snapshot) }
+        composition.removeLast()
+        return RimeKeyOutcome(commit: nil, handled: true, snapshot: snapshot)
     }
 
     func selectCandidate(at index: Int) -> String? {

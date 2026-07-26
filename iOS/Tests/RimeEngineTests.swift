@@ -6,6 +6,8 @@ final class RimeEngineTests: XCTestCase {
         let engine = PrototypeRimeEngine()
         "nihao".forEach { engine.process(letter: $0) }
 
+        XCTAssertFalse(engine.process(letter: "1").handled)
+
         XCTAssertEqual(engine.snapshot.preedit, "nihao")
         XCTAssertEqual(engine.snapshot.candidates.first?.text, "你好")
         XCTAssertEqual(engine.commitBestCandidate(), "你好")
@@ -29,7 +31,8 @@ final class RimeEngineTests: XCTestCase {
         let engine = try RimeEngineFactory.make(
             bundle: .main,
             userDataDirectory: userDirectory,
-            performMaintenance: true
+            performMaintenance: true,
+            fullCheck: true
         )
         "nihao".forEach { engine.process(letter: $0) }
 

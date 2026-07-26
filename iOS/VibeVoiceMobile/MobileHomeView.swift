@@ -138,7 +138,7 @@ struct MobileHomeView: View {
             LabeledContent("Qwen3-ASR", value: "实验性")
             LabeledContent("Rime 全拼", value: rimeStatus)
             Button(isPreparingRime ? "正在部署词库…" : "重新准备 Rime") {
-                prepareRime()
+                prepareRime(fullCheck: true)
             }
             .buttonStyle(.bordered)
             .disabled(isPreparingRime)
@@ -162,14 +162,16 @@ struct MobileHomeView: View {
         voiceController.synchronize(with: bridgeState)
     }
 
-    private func prepareRime() {
+    /// - Parameter fullCheck: re-verifies every dictionary. Reserved for the
+    ///   repair button; a launch only deploys what actually changed.
+    private func prepareRime(fullCheck: Bool = false) {
         guard !isPreparingRime else { return }
         isPreparingRime = true
         rimeStatus = "准备中"
         Task {
             let message = await Task.detached(priority: .userInitiated) {
                 do {
-                    _ = try RimeEngineFactory.prepareForMainApp()
+                    _ = try RimeEngineFactory.prepareForMainApp(fullCheck: fullCheck)
                     return "已就绪"
                 } catch {
                     return "失败：\(error.localizedDescription)"

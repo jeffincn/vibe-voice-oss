@@ -9,7 +9,8 @@ final class MobilePerformanceTests: XCTestCase {
         let engine = try RimeEngineFactory.make(
             bundle: .main,
             userDataDirectory: userDirectory,
-            performMaintenance: true
+            performMaintenance: true,
+            fullCheck: true
         )
 
         measure(metrics: [XCTClockMetric(), XCTMemoryMetric()]) {
