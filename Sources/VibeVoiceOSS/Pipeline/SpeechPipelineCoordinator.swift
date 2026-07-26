@@ -93,6 +93,9 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
             agcGain = 1
             accumulatedTranscript = ""
             segmentTexts = []
+            // Cleared so a new session that produces the same text as the last one is
+            // still seen as a change by subscribers.
+            lastCompletedText = ""
             stateLock.withLock { sessionSamples.reset() }
 
             // Levels/bands are derived from gain-normalized samples inside handleSamples

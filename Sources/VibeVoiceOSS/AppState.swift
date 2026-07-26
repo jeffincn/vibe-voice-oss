@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import ServiceManagement
 
@@ -148,7 +149,9 @@ final class AppState: ObservableObject {
     private let recorder = AudioRecorder()
     private let voicePipeline = SpeechPipelineCoordinator()
     private let client = TranscriptionClient()
-    private var pipelineObservation: Task<Void, Never>?
+    private var pipelineObservation: Set<AnyCancellable> = []
+    /// Throttles the "listening · <backend> NN%" status line to once a second.
+    private var lastPipelineStatusAt = Date.distantPast
     private let translator = TranslationClient()
     private let formatter = SemanticFormatterClient()
     private let hotKey: HotKeyManager
@@ -322,41 +325,7 @@ final class AppState: ObservableObject {
         connectionMessage = L10n.t(.phaseTranscribing)
         NSSound(named: "Tink")?.play()
 
-        pipelineObservation?.cancel()
-        pipelineObservation = Task { @MainActor [weak self] in
-            guard let self else { return }
-            var lastState = self.voicePipeline.state
-            var lastCompletedText = self.voicePipeline.lastCompletedText
-            var lastStatusAt = Date.distantPast
-            while !Task.isCancelled {
-                let state = self.voicePipeline.state
-                let level = self.voicePipeline.audioLevel
-                let bands = self.voicePipeline.audioBands
-                let completedText = self.voicePipeline.lastCompletedText
-                if abs(level - self.audioLevel) > 0.01 {
-                    self.audioLevel = level
-                }
-                if bands != self.audioBands {
-                    self.audioBands = bands
-                }
-                // Source of truth for captions: lastCompletedText (survives completed→listening race).
-                if !completedText.isEmpty, completedText != lastCompletedText {
-                    lastCompletedText = completedText
-                    self.applyVoicePipelineCompletedText(completedText)
-                }
-                if state != lastState {
-                    lastState = state
-                    self.applyVoicePipelineState(state)
-                }
-                let now = Date()
-                if self.voicePipeline.isListening, now.timeIntervalSince(lastStatusAt) >= 1.0 {
-                    lastStatusAt = now
-                    let pct = Int((self.voicePipeline.lastSpeechProbability * 100).rounded())
-                    self.connectionMessage = "\(L10n.t(.hudListening)) · \(L10n.t(self.voicePipeline.vadUsesCoreML ? .vadBackendSilero : .vadBackendEnergy)) \(pct)%"
-                }
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-        }
+        observeVoicePipeline()
 
         await voicePipeline.start(
             deviceUID: settings.inputDeviceUID,
@@ -372,6 +341,85 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Mirror the coordinator's published values onto the HUD.
+    ///
+    /// This used to be a 50 ms poll. It woke the main thread twenty times a second for
+    /// a session that is idle most of the time, and still lost values: a `.completed`
+    /// that flipped back to `.listening` inside one tick never reached the HUD, which
+    /// is why the coordinator sleeps 120 ms between those two assignments. Subscribing
+    /// delivers every value exactly once.
+    ///
+    /// The coordinator publishes from the main queue, so the sinks are already on the
+    /// main thread; `receive(on:)` makes that a guarantee rather than an assumption.
+    /// `assumeIsolated` keeps delivery synchronous, so `.completed` cannot be reordered
+    /// behind the `.listening` that follows it.
+    @MainActor
+    private func observeVoicePipeline() {
+        pipelineObservation.removeAll()
+        lastPipelineStatusAt = .distantPast
+
+        // dropFirst everywhere: @Published replays its current value on subscribe, and
+        // that value still belongs to the session that just ended.
+        voicePipeline.$audioLevel
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] level in
+                MainActor.assumeIsolated {
+                    guard let self, abs(level - self.audioLevel) > 0.01 else { return }
+                    self.audioLevel = level
+                }
+            }
+            .store(in: &pipelineObservation)
+
+        voicePipeline.$audioBands
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] bands in
+                MainActor.assumeIsolated { self?.audioBands = bands }
+            }
+            .store(in: &pipelineObservation)
+
+        // Captions come from lastCompletedText rather than the `.completed` state,
+        // because it survives the completed → listening flip.
+        voicePipeline.$lastCompletedText
+            .dropFirst()
+            .removeDuplicates()
+            .filter { !$0.isEmpty }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] text in
+                MainActor.assumeIsolated { self?.applyVoicePipelineCompletedText(text) }
+            }
+            .store(in: &pipelineObservation)
+
+        voicePipeline.$state
+            .dropFirst()
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                MainActor.assumeIsolated { self?.applyVoicePipelineState(state) }
+            }
+            .store(in: &pipelineObservation)
+
+        voicePipeline.$lastSpeechProbability
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] probability in
+                MainActor.assumeIsolated {
+                    guard let self, self.voicePipeline.isListening else { return }
+                    let now = Date()
+                    guard now.timeIntervalSince(self.lastPipelineStatusAt) >= 1 else { return }
+                    self.lastPipelineStatusAt = now
+                    let percent = Int((probability * 100).rounded())
+                    let backend = self.voicePipeline.vadUsesCoreML
+                        ? L10n.t(.vadBackendSilero)
+                        : L10n.t(.vadBackendEnergy)
+                    self.connectionMessage = "\(L10n.t(.hudListening)) · \(backend) \(percent)%"
+                }
+            }
+            .store(in: &pipelineObservation)
+    }
+
     func stopVoicePipeline(deliver: Bool = true) {
         Task { @MainActor in
             await finishVoicePipeline(deliver: deliver)
@@ -382,8 +430,7 @@ final class AppState: ObservableObject {
     /// cuts don't lose dialogue continuity), then run the same post rules as push-to-talk.
     @MainActor
     func finishVoicePipeline(deliver: Bool = true) async {
-        pipelineObservation?.cancel()
-        pipelineObservation = nil
+        pipelineObservation.removeAll()
 
         // Copy before stop — segment boundaries encode the user's pauses.
         let segments = voicePipeline.segmentTexts
