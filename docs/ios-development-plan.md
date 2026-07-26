@@ -2,12 +2,21 @@
 
 ## Product boundary
 
-The iOS product is a complete Chinese/English keyboard plus voice input:
+The iOS product is a Chinese/English keyboard plus voice input.
 
-- Standard QWERTY English input.
-- Simplified Chinese full Pinyin through Rime.
+Implemented:
+
+- QWERTY letter input in English mode.
+- Simplified Chinese full Pinyin through Rime, with a candidate bar.
 - Original, polished, and translated voice output.
 - Local-first ASR in the containing app.
+
+Not yet implemented, and therefore not claimed anywhere in the UI:
+
+- Shift and capitals, digits, and punctuation keys. The Rime schema also has no
+  `punctuator`, so punctuation cannot be typed in Chinese mode.
+- Candidate pagination. Only the first eight candidates are reachable, and
+  digit keys do not select candidates.
 
 The keyboard extension never opens the microphone and never loads ASR models. It owns only keyboard UI, the Rime session, candidate selection, and text insertion. The containing app owns audio capture, VAD, model management, ASR, translation, and structured cleanup.
 
@@ -17,14 +26,20 @@ The keyboard extension never opens the microphone and never loads ASR models. It
 |---|---|
 | `VibeVoiceMobile` | Onboarding, permissions, model management, audio and ASR |
 | `VibeVoiceKeyboard` | Chinese/English keyboard, Rime session, result insertion |
-| `VibeVoiceMobileTests` | Rime, App Group, ASR fixture, recovery and performance tests |
+| `VibeVoiceMobileTests` | Hermetic tests: Rime, bridge delivery rules, text processing, performance |
+| `VibeVoiceMobileIntegrationTests` | Real WhisperKit download and transcription; opt in, needs the network |
 | `VibeVoiceMobileUITests` | Main-app launch and control smoke tests |
 
 ## Rime integration
 
 `RimeEngine` is the stable Swift boundary. Phase one uses a deterministic prototype engine to validate keyboard lifecycle and automated tests. Production replaces it with a pinned, BSD-3-Clause `librime.xcframework`.
 
-Rime deployment and schema compilation happen in the containing app. The extension loads precompiled schemas and writes only user learning data. Squirrel is a GPL-3.0 architectural reference only; its source is not copied into this MIT repository. Plum is not executed inside iOS; schema packages use a native manifest, pinned versions, archive validation, and per-package license inventory.
+Rime deployment and schema compilation happen in the containing app, which owns
+`Rime/Deploy` in the App Group. The extension reads the compiled schema from
+`Rime/Deploy/build` through `RimeTraits.staging_dir` and learns into its own
+`Rime/KeyboardUser` database. The two must not share a user data directory:
+librime keeps the user dictionary in a LevelDB, which allows a single writer, so
+whichever process opened second would fail and fall back to the prototype engine. Squirrel is a GPL-3.0 architectural reference only; its source is not copied into this MIT repository. Plum is not executed inside iOS; schema packages use a native manifest, pinned versions, archive validation, and per-package license inventory.
 
 ## Test matrix
 
@@ -35,7 +50,12 @@ Rime deployment and schema compilation happen in the containing app. The extensi
 | iPhone 14 Pro Max / iOS 26 Simulator | Required on every iOS change |
 | iPhone 14 Pro Max / iOS 26 physical device | Required for microphone, model, background, thermal and memory acceptance |
 
-Simulator ASR tests use a deterministic 16 kHz Chinese audio fixture and perform a real Whisper tiny download, Core ML prewarm, transcription, and unload on each installed runtime. Real microphone capture, device Neural Engine/GPU performance, background audio survival, interruptions, thermal behavior, and jetsam acceptance are physical-device-only evidence.
+The simulator matrix is hermetic by default. The ASR test that uses the
+deterministic 16 kHz Chinese fixture to perform a real Whisper tiny download,
+Core ML prewarm, transcription, and unload lives in the
+`VibeVoiceMobileIntegration` scheme: `scripts/build-ios.sh` runs it only when
+`VIBEVOICE_RUN_INTEGRATION_TESTS=1`, and `scripts/test-ios-device.sh` always
+does. Real microphone capture, device Neural Engine/GPU performance, background audio survival, interruptions, thermal behavior, and jetsam acceptance are physical-device-only evidence.
 
 The first iOS 26 simulator cold run downloaded about 73 MB and completed download, prewarm, transcription, and unload in about 280 seconds. The iOS 18 cold run completed in about 231 seconds; the cached iOS 26 run completed in about 14 seconds. The tiny model produced usable Chinese with one substitution error, so real-device accuracy remains an explicit acceptance gate rather than an assumed property.
 
@@ -46,7 +66,8 @@ The first iOS 26 simulator cold run downloaded about 73 MB and completed downloa
 ## Delivery gates
 
 1. Generate the Xcode project from `iOS/project.yml`.
-2. Pass all installed simulator runtimes with `zsh scripts/build-ios.sh`.
+2. Pass all installed simulator runtimes with `zsh scripts/build-ios.sh`, which
+   first verifies the vendored librime archives against their recorded digests.
 3. Keep missing runtimes visibly marked `SKIPPED`.
 4. Increment the macOS `CFBundleVersion`.
 5. Build, sign, verify, and deploy the macOS app with `zsh scripts/build-app.sh`.
