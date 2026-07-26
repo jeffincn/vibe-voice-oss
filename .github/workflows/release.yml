@@ -1,22 +1,26 @@
 name: Release
 
 # Push a tag like v0.8.0 to build, package, and publish a GitHub Release,
-# then refresh the Homebrew cask (Casks/vibe-voice-oss.rb) on main.
+# then open a pull request refreshing the Homebrew cask (Casks/vibe-voice-oss.rb).
 on:
   push:
     tags:
       - "v*"
 
-permissions:
-  contents: write
+# Grant nothing by default; every job asks for exactly what it needs.
+permissions: {}
 
 jobs:
   build-release:
     runs-on: macos-15
+    permissions:
+      contents: write # publish the GitHub Release
     outputs:
       zip_sha256: ${{ steps.package.outputs.zip_sha256 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -36,15 +40,18 @@ jobs:
 
       - name: Package zip
         id: package
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          ZIP="VibeVoiceOSS-${GITHUB_REF_NAME}.zip"
+          set -euo pipefail
+          ZIP="VibeVoiceOSS-${TAG}.zip"
           ditto -c -k --sequesterRsrc --keepParent "dist/Vibe Voice OSS.app" "dist/$ZIP"
           SHA=$(shasum -a 256 "dist/$ZIP" | cut -d' ' -f1)
           echo "$SHA  $ZIP" > "dist/$ZIP.sha256"
           echo "zip_sha256=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: |
             dist/VibeVoiceOSS-*.zip
@@ -54,26 +61,53 @@ jobs:
   update-cask:
     needs: build-release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the cask branch
+      pull-requests: write # open the PR against main
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
 
+      # The tag name and the upstream job's output both reach sed, so validate
+      # their shape before they can rewrite the cask into something else.
       - name: Update cask version and sha256
+        id: cask
+        env:
+          TAG: ${{ github.ref_name }}
+          ZIP_SHA256: ${{ needs.build-release.outputs.zip_sha256 }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          SHA="${{ needs.build-release.outputs.zip_sha256 }}"
-          sed -i "s/^  version \".*\"$/  version \"$VERSION\"/" Casks/vibe-voice-oss.rb
-          sed -i "s/^  sha256 .*$/  sha256 \"$SHA\"/" Casks/vibe-voice-oss.rb
-
-      - name: Commit cask update
-        run: |
-          if git diff --quiet; then
-            echo "Cask already up to date."
-            exit 0
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::unexpected version from tag '$TAG'"
+            exit 1
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Casks/vibe-voice-oss.rb
-          git commit -m "chore: update Homebrew cask to ${GITHUB_REF_NAME}"
-          git push origin main
+          if [[ ! "$ZIP_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::refusing to write a malformed sha256"
+            exit 1
+          fi
+          sed -i "s/^  version \".*\"$/  version \"$VERSION\"/" Casks/vibe-voice-oss.rb
+          sed -i "s/^  sha256 \".*\"$/  sha256 \"$ZIP_SHA256\"/" Casks/vibe-voice-oss.rb
+          grep -q "  version \"$VERSION\"" Casks/vibe-voice-oss.rb
+          grep -q "  sha256 \"$ZIP_SHA256\"" Casks/vibe-voice-oss.rb
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # A release build pushing straight to main bypasses branch protection and
+      # every review rule, so the cask bump goes through a pull request instead.
+      - name: Open cask update pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          base: main
+          branch: chore/cask-v${{ steps.cask.outputs.version }}
+          delete-branch: true
+          title: "chore: update Homebrew cask to v${{ steps.cask.outputs.version }}"
+          commit-message: "chore: update Homebrew cask to v${{ steps.cask.outputs.version }}"
+          body: |
+            Opened by the release workflow for `${{ github.ref_name }}`.
+
+            Confirm the `sha256` matches the digest published alongside the
+            release asset before merging.
+
+            Requires "Allow GitHub Actions to create and approve pull requests"
+            under Settings → Actions → General.
