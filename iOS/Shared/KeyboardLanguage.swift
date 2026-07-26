@@ -6,8 +6,8 @@ enum KeyboardLanguage: String, Codable, CaseIterable, Sendable {
 
     var toggleLabel: String {
         switch self {
-        case .chinese: "中"
-        case .english: "EN"
+        case .chinese: MobileL10n.t(.languageChinese)
+        case .english: MobileL10n.t(.languageEnglish)
         }
     }
 
@@ -23,9 +23,9 @@ enum VoiceOutputMode: String, Codable, CaseIterable, Sendable {
 
     var label: String {
         switch self {
-        case .original: "原文"
-        case .polished: "整理"
-        case .translate: "翻译"
+        case .original: MobileL10n.t(.modeOriginal)
+        case .polished: MobileL10n.t(.modePolished)
+        case .translate: MobileL10n.t(.modeTranslate)
         }
     }
 }

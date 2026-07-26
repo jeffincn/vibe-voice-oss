@@ -7,7 +7,7 @@ options:
 settings:
   base:
     MARKETING_VERSION: 0.7.0
-    CURRENT_PROJECT_VERSION: 44
+    CURRENT_PROJECT_VERSION: 45
     SWIFT_VERSION: 5.0
     # Under Swift 5 these are warnings, but they are the only thing that can
     # find an actor boundary crossed by the audio capture thread.
@@ -32,6 +32,13 @@ targets:
       - path: RimeData
         type: folder
         buildPhase: resources
+      # The .lproj pair becomes a variant group, which is what makes the
+      # microphone prompt and the keyboard's display name follow the device
+      # language instead of always appearing in Chinese.
+      - path: Resources
+        excludes:
+          - "*.plist"
+          - "*.entitlements"
     settings:
       base:
         # Set per target, not at the project level: XcodeGen writes its own
@@ -60,6 +67,13 @@ targets:
       - path: RimeData
         type: folder
         buildPhase: resources
+      # The .lproj pair becomes a variant group, which is what makes the
+      # microphone prompt and the keyboard's display name follow the device
+      # language instead of always appearing in Chinese.
+      - path: Resources
+        excludes:
+          - "*.plist"
+          - "*.entitlements"
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1"

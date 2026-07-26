@@ -8,9 +8,9 @@ enum MobileASRError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .emptyAudio:
-            return "没有录到可识别的声音。"
+            return MobileL10n.t(.asrNoAudio)
         case .emptyTranscript:
-            return "模型没有返回文字，请靠近麦克风后重试。"
+            return MobileL10n.t(.asrNoText)
         }
     }
 }
@@ -41,7 +41,7 @@ actor MobileASRService: MobileASRServing {
 
     func prepare(model: String) async throws -> String {
         if whisperKit != nil, loadedModel == model {
-            return "WhisperKit \(model) 已加载"
+            return MobileL10n.t(.asrModelLoaded, model)
         }
 
         let configuration = WhisperKitConfig(
@@ -55,7 +55,7 @@ actor MobileASRService: MobileASRServing {
         let kit = try await WhisperKit(configuration)
         whisperKit = kit
         loadedModel = model
-        return "WhisperKit \(model) 已预热"
+        return MobileL10n.t(.asrModelWarmed, model)
     }
 
     func transcribe(samples: [Float], model: String, mode: VoiceOutputMode) async throws -> String {

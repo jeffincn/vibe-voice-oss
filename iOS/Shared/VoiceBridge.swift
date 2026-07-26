@@ -8,6 +8,20 @@ enum VoiceBridgeStatus: String, Codable, Sendable {
     case ready
     case consumed
     case failed
+
+    /// The raw values are persistence keys shared across two processes, so they
+    /// stay as stable identifiers and the wording lives here instead.
+    var displayName: String {
+        switch self {
+        case .idle: MobileL10n.t(.bridgeStatusIdle)
+        case .requested: MobileL10n.t(.bridgeStatusRequested)
+        case .recording: MobileL10n.t(.bridgeStatusRecording)
+        case .processing: MobileL10n.t(.bridgeStatusProcessing)
+        case .ready: MobileL10n.t(.bridgeStatusReady)
+        case .consumed: MobileL10n.t(.bridgeStatusConsumed)
+        case .failed: MobileL10n.t(.bridgeStatusFailed)
+        }
+    }
 }
 
 struct VoiceBridgeState: Codable, Equatable, Sendable {
@@ -119,7 +133,7 @@ final class VoiceBridgeStore {
             state.mode = mode
             state.targetDocumentID = documentID
             state.text = ""
-            state.message = "请打开 Vibe Voice 开始录音"
+            state.message = MobileL10n.t(.bridgeOpenAppToRecord)
         }
     }
 
@@ -162,7 +176,7 @@ final class VoiceBridgeStore {
             guard state.status == .recording || state.status == .processing else { return }
             state.status = .failed
             state.text = ""
-            state.message = "上次语音任务被系统中断，请重新录音"
+            state.message = MobileL10n.t(.bridgeInterrupted)
             recovered = true
         }
         return recovered

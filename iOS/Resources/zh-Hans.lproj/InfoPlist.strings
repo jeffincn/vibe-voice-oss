@@ -1,0 +1,5 @@
+/* Shown in the iOS microphone permission prompt for the containing app. */
+"NSMicrophoneUsageDescription" = "Vibe Voice 使用麦克风将语音转换为文字。";
+
+/* Home screen and Settings › Keyboards. */
+"CFBundleDisplayName" = "Vibe Voice";

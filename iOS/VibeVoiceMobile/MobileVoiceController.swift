@@ -15,13 +15,13 @@ final class MobileVoiceController: ObservableObject {
 
         var label: String {
             switch self {
-            case .idle: "待机"
-            case .requestingPermission: "请求麦克风权限"
-            case .recording: "正在录音"
-            case .processing: "正在本地转写"
-            case .preparingModel: "下载并预热模型"
-            case .ready: "结果已发送到键盘"
-            case let .failed(message): "失败：\(message)"
+            case .idle: MobileL10n.t(.phaseIdle)
+            case .requestingPermission: MobileL10n.t(.phaseRequestingPermission)
+            case .recording: MobileL10n.t(.phaseRecording)
+            case .processing: MobileL10n.t(.phaseProcessing)
+            case .preparingModel: MobileL10n.t(.phasePreparingModel)
+            case .ready: MobileL10n.t(.phaseReady)
+            case let .failed(message): MobileL10n.t(.phaseFailed, message)
             }
         }
     }
@@ -29,7 +29,7 @@ final class MobileVoiceController: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var level: Float = 0
     @Published private(set) var transcript = ""
-    @Published private(set) var modelStatus = "尚未准备"
+    @Published private(set) var modelStatus = MobileL10n.t(.modelNotPrepared)
     @Published private(set) var outputMode: VoiceOutputMode
 
     private let bridge: VoiceBridgeStore
@@ -45,7 +45,7 @@ final class MobileVoiceController: ObservableObject {
         self.asr = asr
         outputMode = bridge.load().mode
         if bridge.recoverInterruptedWork() {
-            phase = .failed("上次语音任务被系统中断，请重新录音")
+            phase = .failed(MobileL10n.t(.bridgeInterrupted))
         }
         observeAudioSession()
     }
@@ -58,14 +58,14 @@ final class MobileVoiceController: ObservableObject {
     func prepareModel() {
         guard phase != .preparingModel, phase != .recording else { return }
         phase = .preparingModel
-        modelStatus = "准备中"
+        modelStatus = MobileL10n.t(.preparing)
         Task {
             do {
                 modelStatus = try await asr.prepare()
                 phase = .idle
             } catch {
                 fail(error)
-                modelStatus = "准备失败"
+                modelStatus = MobileL10n.t(.prepareFailed)
             }
         }
     }
@@ -77,7 +77,7 @@ final class MobileVoiceController: ObservableObject {
         phase = .requestingPermission
         Task {
             guard await AudioProcessor.requestRecordPermission() else {
-                failMessage("麦克风权限未开启")
+                failMessage(MobileL10n.t(.microphoneDenied))
                 return
             }
             do {
@@ -93,7 +93,7 @@ final class MobileVoiceController: ObservableObject {
                 recorder = recording
                 transcript = ""
                 phase = .recording
-                bridge.publish(status: .recording, message: "正在 iPhone 上录音")
+                bridge.publish(status: .recording, message: MobileL10n.t(.phaseRecordingOnDevice))
             } catch {
                 fail(error)
             }
@@ -112,14 +112,14 @@ final class MobileVoiceController: ObservableObject {
         phase = .processing
         let mode = bridge.load().mode
         outputMode = mode
-        bridge.publish(status: .processing, message: "\(mode.label)模式处理中")
+        bridge.publish(status: .processing, message: MobileL10n.t(.phaseProcessingMode, mode.label))
 
         Task {
             do {
                 let text = try await asr.transcribe(samples: samples, mode: mode)
                 transcript = text
                 phase = .ready
-                bridge.publish(status: .ready, text: text, message: "可返回键盘插入")
+                bridge.publish(status: .ready, text: text, message: MobileL10n.t(.phaseReturnToKeyboard))
             } catch {
                 fail(error)
             }
@@ -141,12 +141,12 @@ final class MobileVoiceController: ObservableObject {
         // There is no background audio mode, so a recording cannot survive the
         // app leaving the foreground. End it here rather than let the session be
         // torn down under a UI that still says it is recording.
-        abortRecording(reason: "应用切到后台，录音已停止")
+        abortRecording(reason: MobileL10n.t(.recordingStoppedInBackground))
         guard phase != .processing,
               phase != .preparingModel else { return }
         Task {
             await asr.releaseMemory()
-            modelStatus = "已释放内存，模型保留在本机"
+            modelStatus = MobileL10n.t(.modelUnloaded)
         }
     }
 
@@ -175,7 +175,7 @@ final class MobileVoiceController: ObservableObject {
                 guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
                       AVAudioSession.InterruptionType(rawValue: raw) == .began else { return }
                 Task { @MainActor in
-                    self?.abortRecording(reason: "录音被系统中断，请重新录音")
+                    self?.abortRecording(reason: MobileL10n.t(.recordingInterrupted))
                 }
             },
             center.addObserver(
@@ -190,7 +190,7 @@ final class MobileVoiceController: ObservableObject {
                       AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable
                 else { return }
                 Task { @MainActor in
-                    self?.abortRecording(reason: "录音输入设备已断开，请重新录音")
+                    self?.abortRecording(reason: MobileL10n.t(.recordingRouteLost))
                 }
             },
         ]

@@ -4,7 +4,7 @@ struct MobileHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var bridgeState = VoiceBridgeState.idle
     @State private var bridgeWatcher: VoiceBridgeWatcher?
-    @State private var rimeStatus = "尚未准备"
+    @State private var rimeStatus = MobileL10n.t(.modelNotPrepared)
     @State private var isPreparingRime = false
     @StateObject private var voiceController = MobileVoiceController()
     private let bridge = VoiceBridgeStore()
@@ -49,7 +49,7 @@ struct MobileHomeView: View {
                 .font(.title2.bold())
                 .foregroundStyle(.tint)
                 .accessibilityIdentifier("home.hero")
-            Text("Rime 全拼与语音输入的移动端工作区。键盘目前提供字母、候选与语音键，数字、符号与 Shift 仍在开发中。")
+            Text(MobileL10n.t(.homeHero))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -59,9 +59,9 @@ struct MobileHomeView: View {
 
     private var setupCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("启用键盘", systemImage: "keyboard")
+            Label(MobileL10n.t(.homeEnableKeyboardTitle), systemImage: "keyboard")
                 .font(.headline)
-            Text("设置 → 通用 → 键盘 → 键盘 → 添加新键盘 → Vibe Voice。语音桥接需要“允许完全访问”；基础中英文输入将保持离线可用。")
+            Text(MobileL10n.t(.homeEnableKeyboardBody))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -71,7 +71,7 @@ struct MobileHomeView: View {
     private var bridgeCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("语音桥接", systemImage: "mic.fill")
+                Label(MobileL10n.t(.homeBridgeTitle), systemImage: "mic.fill")
                     .font(.headline)
                 Spacer()
                 Text(bridgeState.status.rawValue)
@@ -80,7 +80,7 @@ struct MobileHomeView: View {
             }
             Text(voiceController.phase.label)
                 .font(.subheadline.weight(.medium))
-            Picker("输出", selection: Binding(
+            Picker(MobileL10n.t(.homeOutputTitle), selection: Binding(
                 get: { voiceController.outputMode },
                 set: { voiceController.selectOutputMode($0) }
             )) {
@@ -93,7 +93,9 @@ struct MobileHomeView: View {
             ProgressView(value: Double(voiceController.level))
                 .tint(voiceController.phase == .recording ? .red : .accentColor)
             HStack {
-                Button(voiceController.phase == .recording ? "停止并转写" : "开始录音") {
+                Button(voiceController.phase == .recording
+                    ? MobileL10n.t(.homeStopAndTranscribe)
+                    : MobileL10n.t(.homeStartRecording)) {
                     if voiceController.phase == .recording {
                         voiceController.stopAndTranscribe()
                     } else {
@@ -102,7 +104,7 @@ struct MobileHomeView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier("voice.record")
-                Button("重置") {
+                Button(MobileL10n.t(.homeBridgeReset)) {
                     voiceController.reset()
                     refreshBridgeState()
                 }
@@ -112,10 +114,10 @@ struct MobileHomeView: View {
                 Text(voiceController.transcript)
                     .textSelection(.enabled)
             }
-            Text("iOS 不允许第三方键盘扩展直接使用麦克风。键盘发起请求后，请切到此页录音；转写完成再切回原输入框，结果会自动插入。")
+            Text(MobileL10n.t(.homeBridgeBody))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text("“翻译”使用 Whisper 的语音转英文能力；“整理”在设备上清理空白并补齐句末标点，不上传文本。")
+            Text(MobileL10n.t(.homeOutputBody))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -124,26 +126,28 @@ struct MobileHomeView: View {
 
     private var modelCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("本地模型", systemImage: "cpu")
+            Label(MobileL10n.t(.homeLocalModelTitle), systemImage: "cpu")
                 .font(.headline)
             LabeledContent("WhisperKit tiny", value: voiceController.modelStatus)
-            Button("下载并预热语音模型") {
+            Button(MobileL10n.t(.homeLocalModelButton)) {
                 voiceController.prepareModel()
             }
             .buttonStyle(.bordered)
             .disabled(voiceController.phase == .preparingModel || voiceController.phase == .recording)
             .accessibilityIdentifier("model.prepare")
-            Text("应用进入后台且没有录音或转写任务时，会自动卸载模型释放内存；下载文件仍保留在设备上。")
+            Text(MobileL10n.t(.homeLocalModelBody))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            LabeledContent("Qwen3-ASR", value: "实验性")
-            LabeledContent("Rime 全拼", value: rimeStatus)
-            Button(isPreparingRime ? "正在部署词库…" : "重新准备 Rime") {
+            LabeledContent("Qwen3-ASR", value: MobileL10n.t(.rimeExperimental))
+            LabeledContent(MobileL10n.t(.rimeSectionTitle), value: rimeStatus)
+            Button(isPreparingRime
+                ? MobileL10n.t(.rimeDeploying)
+                : MobileL10n.t(.rimeRedeploy)) {
                 prepareRime(fullCheck: true)
             }
             .buttonStyle(.bordered)
             .disabled(isPreparingRime)
-            Text("首次启用键盘前，请至少打开一次主应用。词库部署完成后，键盘扩展直接复用共享数据，不在输入时执行维护任务。")
+            Text(MobileL10n.t(.rimeFootnote))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -152,17 +156,17 @@ struct MobileHomeView: View {
 
     private var privacyCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("隐私与数据", systemImage: "lock.shield")
+            Label(MobileL10n.t(.homePrivacyTitle), systemImage: "lock.shield")
                 .font(.headline)
-            Text("语音转写只在本机进行，不上传音频或文字。转写结果写入键盘共享容器，插入后立即删除；键盘的拼音学习记录保存在共享容器内，仅本机可读。")
+            Text(MobileL10n.t(.homePrivacyBody))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Button("清除共享数据与拼音学习记录", role: .destructive) {
+            Button(MobileL10n.t(.homePrivacyClearButton), role: .destructive) {
                 clearSharedData()
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("privacy.clear")
-            Text("清除后键盘会重新从零学习，已部署的词库不受影响。")
+            Text(MobileL10n.t(.homePrivacyClearBody))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -174,7 +178,7 @@ struct MobileHomeView: View {
         bridge.reset()
         RimeEngineFactory.clearLearningData()
         refreshBridgeState()
-        rimeStatus = "已清除学习记录"
+        rimeStatus = MobileL10n.t(.rimeLearningCleared)
     }
 
     private func startObservingBridge() {
@@ -195,14 +199,14 @@ struct MobileHomeView: View {
     private func prepareRime(fullCheck: Bool = false) {
         guard !isPreparingRime else { return }
         isPreparingRime = true
-        rimeStatus = "准备中"
+        rimeStatus = MobileL10n.t(.preparing)
         Task {
             let message = await Task.detached(priority: .userInitiated) {
                 do {
                     _ = try RimeEngineFactory.prepareForMainApp(fullCheck: fullCheck)
-                    return "已就绪"
+                    return MobileL10n.t(.rimeReady)
                 } catch {
-                    return "失败：\(error.localizedDescription)"
+                    return MobileL10n.t(.rimeFailed, error.localizedDescription)
                 }
             }.value
             rimeStatus = message

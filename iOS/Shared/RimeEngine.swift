@@ -62,9 +62,9 @@ enum RimeEngineError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .resourcesMissing:
-            return "应用内缺少 Rime 拼音词库。"
+            return MobileL10n.t(.rimeDictionaryMissing)
         case .appGroupUnavailable:
-            return "无法访问键盘共享容器。"
+            return MobileL10n.t(.rimeContainerUnavailable)
         }
     }
 }

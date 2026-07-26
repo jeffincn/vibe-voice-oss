@@ -132,10 +132,10 @@ final class KeyboardViewController: UIInputViewController {
             candidateStack.heightAnchor.constraint(equalTo: candidateScroll.frameLayoutGuide.heightAnchor),
         ])
 
-        configurePageButton(previousPageButton, title: "◀", label: "上一页候选") { [weak self] in
+        configurePageButton(previousPageButton, title: "◀", label: MobileL10n.t(.candidatePreviousPage)) { [weak self] in
             self?.turnCandidatePage(forward: false)
         }
-        configurePageButton(nextPageButton, title: "▶", label: "下一页候选") { [weak self] in
+        configurePageButton(nextPageButton, title: "▶", label: MobileL10n.t(.candidateNextPage)) { [weak self] in
             self?.turnCandidatePage(forward: true)
         }
 
@@ -196,7 +196,9 @@ final class KeyboardViewController: UIInputViewController {
             )
         }
         planeButton.setTitle(plane.alternateLabel, for: .normal)
-        planeButton.accessibilityLabel = plane == .letters ? "数字与符号" : "字母"
+        planeButton.accessibilityLabel = MobileL10n.t(
+            plane == .letters ? .keyNumbersPlane : .keyLettersPlane
+        )
     }
 
     private func makeKeyRow(_ keys: [KeyboardKey], inset: Bool) -> UIStackView {
@@ -270,11 +272,11 @@ final class KeyboardViewController: UIInputViewController {
             // VoiceOver announces a bare glyph inconsistently across voices.
             return shift.isRaised ? text.uppercased() : text
         case .shift:
-            return shift == .locked ? "大写锁定" : "上档"
+            return MobileL10n.t(shift == .locked ? .keyCapsLock : .keyShift)
         case let .plane(target):
-            return target == .symbols ? "更多符号" : "数字与符号"
+            return MobileL10n.t(target == .symbols ? .keySymbolsPlane : .keyNumbersPlane)
         case .backspace:
-            return "删除"
+            return MobileL10n.t(.keyDelete)
         }
     }
 
@@ -292,18 +294,18 @@ final class KeyboardViewController: UIInputViewController {
         }, for: .touchUpInside)
 
         let globe = keyButton("🌐")
-        globe.accessibilityLabel = "切换键盘"
+        globe.accessibilityLabel = MobileL10n.t(.keySwitchKeyboard)
         globe.widthAnchor.constraint(equalToConstant: 44).isActive = true
         globe.addTarget(self, action: #selector(handleGlobe(_:event:)), for: .allTouchEvents)
 
         languageButton.setTitle(language.toggleLabel, for: .normal)
-        languageButton.accessibilityLabel = "中英切换"
+        languageButton.accessibilityLabel = MobileL10n.t(.keyToggleLanguage)
         style(button: languageButton)
         languageButton.widthAnchor.constraint(equalToConstant: 48).isActive = true
         languageButton.addAction(UIAction { [weak self] _ in self?.toggleLanguage() }, for: .touchUpInside)
 
-        let space = keyButton("空格")
-        space.accessibilityLabel = "空格"
+        let space = keyButton(MobileL10n.t(.keySpace))
+        space.accessibilityLabel = MobileL10n.t(.keySpace)
         space.setContentHuggingPriority(.defaultLow, for: .horizontal)
         space.addAction(UIAction { [weak self] _ in self?.handleSpace() }, for: .touchUpInside)
 
@@ -314,7 +316,7 @@ final class KeyboardViewController: UIInputViewController {
         configureVoiceMenu()
 
         let enter = keyButton("↵")
-        enter.accessibilityLabel = "换行"
+        enter.accessibilityLabel = MobileL10n.t(.keyNewline)
         enter.widthAnchor.constraint(equalToConstant: 44).isActive = true
         enter.addAction(UIAction { [weak self] _ in self?.handleReturn() }, for: .touchUpInside)
 
@@ -515,7 +517,7 @@ final class KeyboardViewController: UIInputViewController {
     /// that has forgotten the language.
     private var idlePreeditText: String {
         if rimeDegradedReason != nil, language == .chinese {
-            return "⚠️ 拼音降级"
+            return MobileL10n.t(.pinyinDegradedBadge)
         }
         return language.toggleLabel
     }
@@ -545,7 +547,7 @@ final class KeyboardViewController: UIInputViewController {
         // The index is part of the title because the digit keys select by it.
         button.setTitle("\(index + 1) \(candidate.text)", for: .normal)
         button.titleLabel?.font = .preferredFont(forTextStyle: .headline)
-        button.accessibilityLabel = "候选 \(index + 1)：\(candidate.text)"
+        button.accessibilityLabel = MobileL10n.t(.candidateAccessibility, index + 1, candidate.text)
         button.addAction(UIAction { [weak self] _ in
             guard let self, let text = engine.selectCandidate(at: index) else { return }
             insertIntoDocument(text)
@@ -591,7 +593,7 @@ final class KeyboardViewController: UIInputViewController {
             deliver(ready)
         case .awaitExplicitInsert(let ready):
             pendingResult = ready
-            statusLabel.text = "结果已就绪，回到原输入框或点麦克风插入"
+            statusLabel.text = MobileL10n.t(.resultReadyElsewhere)
             updateVoiceButton()
         case .nothing:
             pendingResult = nil
@@ -607,9 +609,9 @@ final class KeyboardViewController: UIInputViewController {
             return state.message
         }
         if let rimeDegradedReason {
-            return "拼音降级：\(rimeDegradedReason)"
+            return MobileL10n.t(.pinyinDegradedStatus, rimeDegradedReason)
         }
-        return state.status.rawValue
+        return state.status.displayName
     }
 
     private func deliver(_ state: VoiceBridgeState) {
@@ -617,7 +619,7 @@ final class KeyboardViewController: UIInputViewController {
         lastInsertedRequestID = state.requestID
         pendingResult = nil
         bridge.markConsumed(requestID: state.requestID)
-        statusLabel.text = "已插入"
+        statusLabel.text = MobileL10n.t(.resultInserted)
         updateVoiceButton()
     }
 
@@ -639,17 +641,17 @@ final class KeyboardViewController: UIInputViewController {
 
     private func updateVoiceButton() {
         if pendingResult == nil {
-            voiceButton.setTitle("🎙 \(voiceMode.label)", for: .normal)
-            voiceButton.accessibilityLabel = "语音输入，\(voiceMode.label)模式"
+            voiceButton.setTitle(MobileL10n.t(.voiceKeyTitle, voiceMode.label), for: .normal)
+            voiceButton.accessibilityLabel = MobileL10n.t(.voiceKeyAccessibility, voiceMode.label)
         } else {
-            voiceButton.setTitle("🎙 插入", for: .normal)
-            voiceButton.accessibilityLabel = "插入已完成的语音结果"
+            voiceButton.setTitle(MobileL10n.t(.voiceKeyInsertTitle), for: .normal)
+            voiceButton.accessibilityLabel = MobileL10n.t(.voiceKeyInsertAccessibility)
         }
     }
 
     private func configureVoiceMenu() {
         voiceButton.menu = UIMenu(
-            title: "语音输出模式",
+            title: MobileL10n.t(.voiceModeMenuTitle),
             children: VoiceOutputMode.allCases.map { mode in
                 UIAction(
                     title: mode.label,
@@ -667,6 +669,6 @@ final class KeyboardViewController: UIInputViewController {
         bridge.setMode(mode)
         updateVoiceButton()
         configureVoiceMenu()
-        statusLabel.text = "已选择\(mode.label)模式"
+        statusLabel.text = MobileL10n.t(.voiceModeSelected, mode.label)
     }
 }
