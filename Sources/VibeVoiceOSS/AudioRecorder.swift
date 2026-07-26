@@ -31,9 +31,33 @@ final class AudioRecorder: @unchecked Sendable {
     var onPCMFrame: ((Data) -> Void)?
 
     private var engine = AVAudioEngine()
-    private let lock = NSLock()
     private let sessionLock = NSLock()
-    /// Final capture buffer, already downsampled to 16 kHz mono.
+
+    /// Everything past the raw de-interleave runs here.
+    ///
+    /// The tap closure is called on a real-time audio thread. It used to take a
+    /// mutex that `stop()`, `cancel()` and device switching also take on the main
+    /// thread, which is a priority inversion: the render thread waits on a
+    /// lower-priority thread, misses its deadline, and the audio unit answers with
+    /// a dropout. Serial dispatch keeps the ordering the ring logic depends on
+    /// while leaving the render thread free.
+    private let processingQueue = DispatchQueue(
+        label: "app.vibevoice.oss.audio-processing",
+        qos: .userInitiated
+    )
+    /// Snapshot taken when a session starts, so reading a handler on the processing
+    /// queue cannot race a reassignment.
+    private var activeHandlers = Handlers()
+    /// Fallback rate for buffers that arrive with an implausible format.
+    private var processingInputRate: Double = 48_000
+
+    private struct Handlers {
+        var level: ((Float) -> Void)?
+        var bands: ((AudioBands) -> Void)?
+        var pcm: ((Data) -> Void)?
+    }
+
+    /// Final capture buffer, already downsampled to 16 kHz mono. Owned by `processingQueue`.
     private var samples: [Float] = []
     /// Safety ceiling (~30 min @ 16 kHz) so a forgotten session cannot exhaust memory.
     private let maxFinalSamples = 16_000 * 60 * 30
@@ -131,14 +155,20 @@ final class AudioRecorder: @unchecked Sendable {
             }
 
             sampleRate = hardware.sampleRate
-            lock.withLock {
+            try installCaptureTapLocked(hardware: hardware, deviceName: device.name)
+
+            // After the tap, because it settles on the rate the tap was accepted at.
+            // The engine is not running yet, so no buffer can arrive mid-reset.
+            let configuredRate = sampleRate
+            let handlers = Handlers(level: onLevel, bands: onBands, pcm: onPCMFrame)
+            processingQueue.sync {
                 samples.removeAll(keepingCapacity: true)
                 pcmCarry.removeAll(keepingCapacity: true)
                 smoothedBands = .silent
-                resampler = StreamingResampler(inputRate: sampleRate)
+                processingInputRate = configuredRate
+                activeHandlers = handlers
+                resampler = StreamingResampler(inputRate: configuredRate)
             }
-
-            try installCaptureTapLocked(hardware: hardware, deviceName: device.name)
 
             do {
                 engine.prepare()
@@ -285,14 +315,15 @@ final class AudioRecorder: @unchecked Sendable {
     }
 
     func stop() throws -> Data {
-        let recorded: [Float] = sessionLock.withLock {
-            let recorded = lock.withLock { samples }
-            tearDownEngineLocked()
-            lock.withLock {
-                samples.removeAll(keepingCapacity: false)
-                pcmCarry.removeAll(keepingCapacity: false)
-                smoothedBands = .silent
-            }
+        sessionLock.withLock { tearDownEngineLocked() }
+        // Removing the tap first means this sync drains every buffer already handed to
+        // the queue. Reading before the tear-down dropped whatever was still in flight,
+        // which is the tail of the recording — usually the last word.
+        let recorded: [Float] = processingQueue.sync {
+            let recorded = samples
+            samples.removeAll(keepingCapacity: false)
+            pcmCarry.removeAll(keepingCapacity: false)
+            smoothedBands = .silent
             return recorded
         }
         guard !recorded.isEmpty else { throw AudioRecorderError.noSamples }
@@ -313,13 +344,11 @@ final class AudioRecorder: @unchecked Sendable {
 
     /// Discard an in-progress capture without requiring samples (e.g. superseded start).
     func cancel() {
-        sessionLock.withLock {
-            tearDownEngineLocked()
-            lock.withLock {
-                samples.removeAll(keepingCapacity: false)
-                pcmCarry.removeAll(keepingCapacity: false)
-                smoothedBands = .silent
-            }
+        sessionLock.withLock { tearDownEngineLocked() }
+        processingQueue.sync {
+            samples.removeAll(keepingCapacity: false)
+            pcmCarry.removeAll(keepingCapacity: false)
+            smoothedBands = .silent
         }
     }
 
@@ -339,16 +368,13 @@ final class AudioRecorder: @unchecked Sendable {
         engine = AVAudioEngine()
     }
 
+    /// Tap callback. Runs on a real-time audio thread with a hard deadline, so it does
+    /// the one thing that cannot be deferred — copying out of a buffer the tap reclaims
+    /// as soon as this returns — and hands the rest to `processingQueue`.
     private func append(buffer: AVAudioPCMBuffer) {
         let frameCount = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
         guard frameCount > 0, channelCount > 0 else { return }
-
-        // Keep resampler aligned with whatever format the tap actually delivers.
-        let bufferRate = buffer.format.sampleRate
-        if bufferRate >= 8_000, abs(bufferRate - sampleRate) > 0.5 {
-            sampleRate = bufferRate
-        }
 
         var mono = [Float](repeating: 0, count: frameCount)
         if let channels = buffer.floatChannelData {
@@ -370,47 +396,58 @@ final class AudioRecorder: @unchecked Sendable {
             return
         }
 
+        let bufferRate = buffer.format.sampleRate
+        let frames = mono
+        processingQueue.async { [weak self] in
+            self?.process(mono: frames, tapRate: bufferRate)
+        }
+    }
+
+    /// Level metering, band smoothing, resampling and PCM framing. Owns every piece of
+    /// mutable capture state, so it must only ever run on `processingQueue`.
+    private func process(mono: [Float], tapRate: Double) {
+        dispatchPrecondition(condition: .onQueue(processingQueue))
+        let frameCount = mono.count
+        guard frameCount > 0 else { return }
+
+        // Keep the resampler aligned with whatever format the tap actually delivers,
+        // which is not always the format the engine reported at install time.
+        if tapRate >= 8_000 {
+            processingInputRate = tapRate
+        }
+
         let meanSquare = mono.reduce(0) { $0 + $1 * $1 } / Float(frameCount)
         let rms = sqrt(meanSquare)
         // Map typical speech (-45...-8 dBFS) into a useful, gently compressed 0...1 range.
         let decibels = 20 * log10(max(rms, 0.000_01))
         let normalizedLevel = max(0, min(1, (decibels + 45) / 37))
-        onLevel?(normalizedLevel)
+        activeHandlers.level?(normalizedLevel)
 
         let rawBands = AudioBandEstimator.estimate(samples: mono)
-        let bands: AudioBands = lock.withLock {
-            smoothedBands = AudioBandEstimator.follow(current: smoothedBands, target: rawBands)
-            return smoothedBands
-        }
-        onBands?(bands)
+        smoothedBands = AudioBandEstimator.follow(current: smoothedBands, target: rawBands)
+        activeHandlers.bands?(smoothedBands)
 
-        let pcmChunk: Data = lock.withLock {
-            resampler.updateInputRate(sampleRate)
-            let resampled = resampler.push(mono)
-            // Store the final audio already downsampled to 16 kHz — keeping the 48 kHz stream
-            // for the whole session tripled memory and forced a second full resample at stop().
-            // Bounded so a runaway-long session degrades gracefully instead of exhausting memory.
-            if samples.count < maxFinalSamples, !resampled.isEmpty {
-                let room = maxFinalSamples - samples.count
-                samples.append(contentsOf: resampled.count <= room ? resampled : Array(resampled.prefix(room)))
-            }
-            let encoded = StreamingResampler.int16LE(from: resampled)
-            pcmCarry.append(encoded)
-            let wholeFrames = (pcmCarry.count / pcmFrameBytes) * pcmFrameBytes
-            guard wholeFrames > 0 else { return Data() }
-            // Rebuild both sides so Data.startIndex stays 0 — repeated removeFirst() drifts
-            // startIndex and later 0-based slicing traps on long recordings.
-            let emitted = Data(pcmCarry.prefix(wholeFrames))
-            pcmCarry = Data(pcmCarry.suffix(pcmCarry.count - wholeFrames))
-            return emitted
+        resampler.updateInputRate(processingInputRate)
+        let resampled = resampler.push(mono)
+        // Store the final audio already downsampled to 16 kHz — keeping the 48 kHz stream
+        // for the whole session tripled memory and forced a second full resample at stop().
+        // Bounded so a runaway-long session degrades gracefully instead of exhausting memory.
+        if samples.count < maxFinalSamples, !resampled.isEmpty {
+            let room = maxFinalSamples - samples.count
+            samples.append(contentsOf: resampled.count <= room ? resampled : Array(resampled.prefix(room)))
         }
-        if !pcmChunk.isEmpty {
-            // Emit one concatenated blob of whole frames; session may split if needed.
-            var offset = 0
-            while offset + pcmFrameBytes <= pcmChunk.count {
-                onPCMFrame?(pcmChunk.subdata(in: offset..<(offset + pcmFrameBytes)))
-                offset += pcmFrameBytes
-            }
+        pcmCarry.append(StreamingResampler.int16LE(from: resampled))
+        let wholeFrames = (pcmCarry.count / pcmFrameBytes) * pcmFrameBytes
+        guard wholeFrames > 0 else { return }
+        // Rebuild both sides so Data.startIndex stays 0 — repeated removeFirst() drifts
+        // startIndex and later 0-based slicing traps on long recordings.
+        let emitted = Data(pcmCarry.prefix(wholeFrames))
+        pcmCarry = Data(pcmCarry.suffix(pcmCarry.count - wholeFrames))
+
+        var offset = 0
+        while offset + pcmFrameBytes <= emitted.count {
+            activeHandlers.pcm?(emitted.subdata(in: offset..<(offset + pcmFrameBytes)))
+            offset += pcmFrameBytes
         }
     }
 

@@ -8,3 +8,4 @@ dist/
 .env.*
 .swiftpm/xcode/xcuserdata/
 .swiftpm/config/registries.json
+__pycache__/

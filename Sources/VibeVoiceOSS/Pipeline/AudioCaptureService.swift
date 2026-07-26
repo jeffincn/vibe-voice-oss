@@ -22,15 +22,34 @@ enum AudioCaptureServiceError: LocalizedError {
 
 /// Continuous AVAudioEngine capture that streams 16 kHz mono Float frames (no full-session buffer).
 final class AudioCaptureService: @unchecked Sendable {
-    /// Called on the audio tap thread with 16 kHz mono samples and RMS.
+    /// Called off the audio tap thread, in capture order, with 16 kHz mono samples and RMS.
+    /// Assign before `start()`; the handlers are snapshotted when a session begins.
     var onSamples: (([Float], Float) -> Void)?
     var onLevel: ((Float) -> Void)?
     var onBands: ((AudioBands) -> Void)?
 
     private var engine = AVAudioEngine()
     private let sessionLock = NSLock()
+
+    /// Owns `converter` and the handler snapshot.
+    ///
+    /// The tap runs on a real-time audio thread. Taking `sessionLock` there meant the
+    /// render thread could block behind `start()` / `stop()`, which hold that lock
+    /// across HAL device binds and `engine.start()` — long enough to miss the render
+    /// deadline and drop audio. Serial dispatch keeps frame ordering without it.
+    private let processingQueue = DispatchQueue(
+        label: "app.vibevoice.oss.pipeline-capture",
+        qos: .userInitiated
+    )
     private var converter = AudioFormatConverter()
+    private var activeHandlers = Handlers()
     private var sampleRate: Double = 48_000
+
+    private struct Handlers {
+        var samples: (([Float], Float) -> Void)?
+        var level: ((Float) -> Void)?
+        var bands: ((AudioBands) -> Void)?
+    }
     private(set) var activeDeviceName = "系统默认麦克风"
     private(set) var hardwareSampleRate: Double = 48_000
     private let voiceProcessing = AppleVoiceProcessingService()
@@ -113,9 +132,16 @@ final class AudioCaptureService: @unchecked Sendable {
 
             sampleRate = hardware.sampleRate
             hardwareSampleRate = hardware.sampleRate
-            converter.reset(inputSampleRate: sampleRate)
-
             try installCaptureTapLocked(hardware: hardware, deviceName: device.name)
+
+            // After the tap, because it settles on the rate the tap was accepted at.
+            // The engine is not running yet, so no buffer can arrive mid-reset.
+            let configuredRate = sampleRate
+            let handlers = Handlers(samples: onSamples, level: onLevel, bands: onBands)
+            processingQueue.sync {
+                activeHandlers = handlers
+                converter.reset(inputSampleRate: configuredRate)
+            }
 
             do {
                 engine.prepare()
@@ -144,6 +170,9 @@ final class AudioCaptureService: @unchecked Sendable {
         sessionLock.withLock {
             tearDownEngineLocked()
         }
+        // The tap is gone, so this drains what it already handed over and then drops the
+        // handlers — nothing from the finished session can reach the segmenter afterwards.
+        processingQueue.sync { activeHandlers = Handlers() }
         SpeechPipelineLog.capture.info("capture stopped")
     }
 
@@ -232,17 +261,48 @@ final class AudioCaptureService: @unchecked Sendable {
         return false
     }
 
+    /// Tap callback on a real-time audio thread. Copies out of the buffer — which the
+    /// tap reclaims on return — and defers conversion and delivery to `processingQueue`.
     private func handleTap(buffer: AVAudioPCMBuffer) {
-        let (samples, rms) = sessionLock.withLock { () -> ([Float], Float) in
-            converter.convert(buffer: buffer)
+        guard let copy = Self.detachedCopy(of: buffer) else { return }
+        processingQueue.async { [weak self] in
+            self?.process(buffer: copy)
         }
+    }
+
+    private static func detachedCopy(of buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        let frames = buffer.frameLength
+        guard frames > 0,
+              let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: frames)
+        else { return nil }
+        copy.frameLength = frames
+        let channels = Int(buffer.format.channelCount)
+        if let source = buffer.floatChannelData, let destination = copy.floatChannelData {
+            for channel in 0..<channels {
+                destination[channel].update(from: source[channel], count: Int(frames))
+            }
+        } else if let source = buffer.int16ChannelData, let destination = copy.int16ChannelData {
+            for channel in 0..<channels {
+                destination[channel].update(from: source[channel], count: Int(frames))
+            }
+        } else {
+            return nil
+        }
+        return copy
+    }
+
+    private func process(buffer: AVAudioPCMBuffer) {
+        dispatchPrecondition(condition: .onQueue(processingQueue))
+        let (samples, rms) = converter.convert(buffer: buffer)
         guard !samples.isEmpty else { return }
 
         let decibels = 20 * log10(max(rms, 0.000_01))
         let normalizedLevel = max(0, min(1, (decibels + 45) / 37))
-        onLevel?(normalizedLevel)
-        onBands?(AudioBandEstimator.estimate(samples: samples))
-        onSamples?(samples, rms)
+        activeHandlers.level?(normalizedLevel)
+        if let bands = activeHandlers.bands {
+            bands(AudioBandEstimator.estimate(samples: samples))
+        }
+        activeHandlers.samples?(samples, rms)
     }
 
     private func waitForValidHardwareFormat(
