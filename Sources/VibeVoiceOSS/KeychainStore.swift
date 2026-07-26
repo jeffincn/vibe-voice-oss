@@ -2,13 +2,14 @@ import Foundation
 import Security
 
 /// Stores API keys in the macOS Keychain when the app has a stable code-signing
-/// identity, falling back to UserDefaults otherwise.
+/// identity, falling back to a restricted local file otherwise.
 ///
 /// Keychain item ACLs are bound to the app's designated requirement. With a
 /// persistent certificate (Apple Development / local self-signed, see
 /// scripts/build-app.sh) the requirement survives rebuilds, so reads never
 /// trigger the login-password dialog. Ad-hoc signatures change on every build
-/// and would prompt each time, so those builds keep secrets in UserDefaults.
+/// and would prompt each time, so those builds fall back to
+/// ``CredentialFileStore``.
 enum KeychainStore {
     static let service = "app.vibevoice.oss.macos"
     /// Preference domain used by the pre-open-source local build.
@@ -24,8 +25,12 @@ enum KeychainStore {
 
     /// True when secrets should live in the Keychain: the running binary carries a
     /// certificate-backed (non-ad-hoc) signature and we're not inside a unit test.
-    /// Tests stay on UserDefaults so they never touch the developer's real keychain.
+    /// Tests use the file fallback so they never touch the developer's real keychain.
     static let usesKeychain: Bool = isRunningInTests ? false : hasStableCodeSignature
+
+    /// True when this build cannot use the Keychain and keeps API keys in a
+    /// clear-text local file instead, which Settings surfaces to the user.
+    static var usesPlaintextFallback: Bool { !usesKeychain && !isRunningInTests }
 
     // MARK: - Primary API
 
@@ -34,17 +39,17 @@ enum KeychainStore {
             if let value = keychainGet(account) {
                 return value
             }
-            // One-time migration: pull any plaintext value left by UserDefaults-era
-            // builds into the Keychain and scrub the plaintext copy.
-            if let plaintext = defaultsValue(account) {
+            // One-time migration: pull any clear-text value left by a fallback-mode
+            // build into the Keychain and scrub the clear-text copies.
+            if let plaintext = fallbackValue(account) {
                 if keychainSet(plaintext, account: account) {
-                    removeDefaultsCopies(account)
+                    clearFallbackCopies(account)
                 }
                 return plaintext
             }
             return nil
         }
-        return defaultsValue(account)
+        return fallbackValue(account)
     }
 
     @discardableResult
@@ -52,11 +57,12 @@ enum KeychainStore {
         if usesKeychain {
             let ok = keychainSet(value, account: account)
             if ok {
-                removeDefaultsCopies(account)
+                clearFallbackCopies(account)
             }
             return ok
         }
-        UserDefaults.standard.set(value, forKey: defaultsKey(account))
+        fileStore.set(value, for: account.rawValue)
+        removeDefaultsCopies(account)
         return true
     }
 
@@ -65,7 +71,7 @@ enum KeychainStore {
         if usesKeychain {
             keychainDelete(account)
         }
-        UserDefaults.standard.removeObject(forKey: defaultsKey(account))
+        clearFallbackCopies(account)
         return true
     }
 
@@ -118,10 +124,9 @@ enum KeychainStore {
 
     // MARK: - Signature inspection
 
-    private static var isRunningInTests: Bool {
+    static let isRunningInTests: Bool =
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
             || NSClassFromString("XCTestCase") != nil
-    }
 
     /// Ad-hoc signatures carry no certificate chain; anything with a leaf
     /// certificate has a designated requirement that survives rebuilds.
@@ -198,36 +203,54 @@ enum KeychainStore {
         return status == errSecSuccess || status == errSecItemNotFound
     }
 
-    // MARK: - UserDefaults backend
+    // MARK: - Clear-text fallback backend
+
+    private static var fileStore: CredentialFileStore { .shared }
+
+    /// Value from the restricted credential file, migrating forward any clear-text
+    /// copy left in the preferences plist by an older build and scrubbing it there.
+    private static func fallbackValue(_ account: Account) -> String? {
+        if let value = fileStore.value(for: account.rawValue) {
+            return value
+        }
+        guard let legacy = legacyDefaultsValue(account) else { return nil }
+        if !usesKeychain {
+            fileStore.set(legacy, for: account.rawValue)
+        }
+        removeDefaultsCopies(account)
+        return legacy
+    }
+
+    private static func clearFallbackCopies(_ account: Account) {
+        fileStore.remove(account.rawValue)
+        removeDefaultsCopies(account)
+    }
 
     private static func defaultsKey(_ account: Account) -> String {
         "\(service).secure.\(account.rawValue)"
     }
 
-    /// Current plaintext value, or one from keychain-era backup keys (migrating it forward).
-    private static func defaultsValue(_ account: Account) -> String? {
-        if let v = UserDefaults.standard.string(forKey: defaultsKey(account))?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
-            return v
-        }
-        for suffix in [account.rawValue] + previousServices.map({ "\($0).\(account.rawValue)" }) {
-            let key = "\(service).backup.\(suffix)"
-            if let v = UserDefaults.standard.string(forKey: key)?
-                .trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {
-                if !usesKeychain {
-                    UserDefaults.standard.set(v, forKey: defaultsKey(account))
-                }
-                return v
+    /// Every preference key a previous build may have written the secret to.
+    private static func legacyDefaultsKeys(_ account: Account) -> [String] {
+        let suffixes = [account.rawValue]
+            + previousServices.map { "\($0).\(account.rawValue)" }
+        return [defaultsKey(account)] + suffixes.map { "\(service).backup.\($0)" }
+    }
+
+    private static func legacyDefaultsValue(_ account: Account) -> String? {
+        for key in legacyDefaultsKeys(account) {
+            if let value = UserDefaults.standard.string(forKey: key)?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
+                return value
             }
         }
         return nil
     }
 
-    /// Scrub every plaintext copy once the value is safely in the Keychain.
+    /// Scrub every clear-text preference copy once the value lives elsewhere.
     private static func removeDefaultsCopies(_ account: Account) {
-        UserDefaults.standard.removeObject(forKey: defaultsKey(account))
-        for suffix in [account.rawValue] + previousServices.map({ "\($0).\(account.rawValue)" }) {
-            UserDefaults.standard.removeObject(forKey: "\(service).backup.\(suffix)")
+        for key in legacyDefaultsKeys(account) {
+            UserDefaults.standard.removeObject(forKey: key)
         }
     }
 

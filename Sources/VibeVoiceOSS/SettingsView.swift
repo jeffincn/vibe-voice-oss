@@ -476,6 +476,9 @@ private struct SettingsForm: View {
                 caption(L10n.t(.llmModelKeyCaption))
                 caption(L10n.t(.providerProfileCaption))
                 caption(L10n.t(.apiKeyStorageCaption))
+                if KeychainStore.usesPlaintextFallback {
+                    warningCaption(L10n.t(.credentialsPlaintextWarning))
+                }
             } else {
                 caption(L10n.t(.llmFeaturesOffCaption))
             }
