@@ -154,13 +154,19 @@ final class SpeechPipelineCoordinator: ObservableObject, @unchecked Sendable {
         let targetRMS: Float = 0.1
         let instantGain = max(1, min(12, targetRMS / max(rms, 0.000_05)))
         agcGain = agcGain * 0.9 + instantGain * 0.1
+        // Never amplify past the headroom this block leaves. The smoothed gain is driven
+        // by RMS, so a block whose peak is far above its average — a plosive, a chair
+        // scrape — was multiplied straight into the clamp below, and VAD then had to
+        // judge a square wave.
+        let peak = samples.reduce(Float.zero) { max($0, abs($1)) }
+        let appliedGain = peak > 0 ? min(agcGain, 0.98 / peak) : agcGain
         let gained: [Float]
-        if agcGain <= 1.05 {
+        if appliedGain <= 1.05 {
             gained = samples
         } else {
-            gained = samples.map { max(-1, min(1, $0 * agcGain)) }
+            gained = samples.map { max(-1, min(1, $0 * appliedGain)) }
         }
-        let gainedRMS = min(1, rms * agcGain)
+        let gainedRMS = min(1, rms * appliedGain)
         let decibels = 20 * log10(max(gainedRMS, 0.000_01))
         let normalizedLevel = max(0, min(1, (decibels + 45) / 37))
         let bands = AudioBandEstimator.estimate(samples: gained)

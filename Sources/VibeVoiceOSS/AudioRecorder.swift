@@ -356,12 +356,22 @@ final class AudioRecorder: @unchecked Sendable {
         }
 
         let meanSquare = recorded.reduce(Float.zero) { $0 + $1 * $1 } / Float(recorded.count)
-        let rms = sqrt(meanSquare)
-        // Bring quiet microphones toward -20 dBFS, capped to avoid boosting room noise excessively.
-        let gain = max(1, min(8, 0.1 / max(rms, 0.000_01)))
+        let gain = Self.exportGain(rms: sqrt(meanSquare), peak: peak)
         let normalized = recorded.map { max(-1, min(1, $0 * gain)) }
         // `recorded` is already 16 kHz mono, so encoding is a header wrap (no second resample).
         return WAVEncoder.encode(samples: normalized, inputSampleRate: Double(WAVEncoder.outputSampleRate))
+    }
+
+    /// Boost a quiet capture toward -20 dBFS for export.
+    ///
+    /// The RMS target alone is not enough: a recording whose peak sits far above its
+    /// average — a quiet voice plus one cough or desk knock — asked for the full 8x and
+    /// clipped everything above -18 dBFS into a square wave. Limiting by the headroom
+    /// the loudest sample leaves means the boost can never reach the clamp.
+    static func exportGain(rms: Float, peak: Float) -> Float {
+        let towardTarget = min(8, 0.1 / max(rms, 0.000_01))
+        let headroom = 0.98 / max(peak, 0.000_01)
+        return max(1, min(towardTarget, headroom))
     }
 
     /// Discard an in-progress capture without requiring samples (e.g. superseded start).
