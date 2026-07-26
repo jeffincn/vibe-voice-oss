@@ -221,7 +221,10 @@ final class KeyboardViewController: UIInputViewController {
             textDocumentProxy.insertText(committed)
             refreshComposition()
         }
-        let state = bridge.request(mode: voiceMode)
+        let state = bridge.request(
+            mode: voiceMode,
+            documentID: textDocumentProxy.documentIdentifier
+        )
         statusLabel.text = state.message
     }
 

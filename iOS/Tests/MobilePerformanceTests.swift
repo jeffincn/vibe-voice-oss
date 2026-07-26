@@ -21,14 +21,15 @@ final class MobilePerformanceTests: XCTestCase {
     }
 
     func testBridgeRoundTripLatency() throws {
-        let suite = "VoiceBridgePerfTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
-        let bridge = VoiceBridgeStore(defaults: defaults)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VoiceBridgePerf-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bridge = VoiceBridgeStore(directory: directory)
+        let field = UUID()
 
         measure(metrics: [XCTClockMetric(), XCTMemoryMetric()]) {
             for _ in 0..<100 {
-                let request = bridge.request(mode: .original)
+                let request = bridge.request(mode: .original, documentID: field)
                 bridge.publish(status: .ready, text: "hello")
                 bridge.markConsumed(requestID: request.requestID)
             }

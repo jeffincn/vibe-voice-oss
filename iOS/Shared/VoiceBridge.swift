@@ -11,9 +11,16 @@ enum VoiceBridgeStatus: String, Codable, Sendable {
 }
 
 struct VoiceBridgeState: Codable, Equatable, Sendable {
+    /// A transcript older than this is never inserted on its own. Speech that the
+    /// user has forgotten about must not surface in whatever they type next.
+    static let readyLifetime: TimeInterval = 300
+
     var requestID: UUID
     var status: VoiceBridgeStatus
     var mode: VoiceOutputMode
+    /// The text field that asked for dictation, so the result can be delivered
+    /// back to that field only. `nil` when no field is waiting for a result.
+    var targetDocumentID: UUID?
     var text: String
     var message: String
     var updatedAt: Date
@@ -23,93 +30,186 @@ struct VoiceBridgeState: Codable, Equatable, Sendable {
             requestID: UUID(),
             status: .idle,
             mode: .polished,
+            targetDocumentID: nil,
             text: "",
             message: "",
             updatedAt: Date()
         )
     }
+
+    /// A transcript is available and recent enough to be worth inserting.
+    func hasFreshResult(now: Date = Date()) -> Bool {
+        status == .ready
+            && !text.isEmpty
+            && now.timeIntervalSince(updatedAt) <= Self.readyLifetime
+    }
+
+    /// `documentID` is the field that requested this dictation.
+    func targets(documentID: UUID?) -> Bool {
+        guard let targetDocumentID, let documentID else { return false }
+        return targetDocumentID == documentID
+    }
 }
 
+/// Cross-process handoff between the keyboard extension and the containing app.
+///
+/// The state lives in a coordinated file in the App Group container rather than
+/// in shared `UserDefaults`. `cfprefsd` caches preference reads per process, so
+/// the extension can keep seeing a stale value after the app writes, and the
+/// read-modify-write updates both sides perform would silently lose each other.
+/// `NSFileCoordinator` gives a consistent view and serialises mutations.
 final class VoiceBridgeStore {
     static let appGroupID = "group.app.vibevoice.oss.shared"
-    private static let stateKey = "voiceBridge.state.v1"
 
-    private let defaults: UserDefaults
+    /// Builds before 0.7.0 kept the transcript here and never cleared it.
+    private static let legacyDefaultsKey = "voiceBridge.state.v1"
+    private static let fileName = "voice-bridge.v2.json"
+
+    private let fileURL: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    init(defaults: UserDefaults? = nil) {
-        self.defaults = defaults
-            ?? UserDefaults(suiteName: Self.appGroupID)
-            ?? .standard
+    init(directory: URL? = nil) {
+        let base = directory ?? Self.defaultDirectory()
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        fileURL = base.appendingPathComponent(Self.fileName, isDirectory: false)
+        Self.purgeLegacyPlaintextState()
     }
 
     func load() -> VoiceBridgeState {
-        guard let data = defaults.data(forKey: Self.stateKey),
-              let state = try? decoder.decode(VoiceBridgeState.self, from: data) else {
-            return .idle
+        var state = VoiceBridgeState.idle
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(
+            readingItemAt: fileURL,
+            options: [],
+            error: &coordinationError
+        ) { url in
+            state = decodeState(at: url) ?? state
         }
         return state
     }
 
     @discardableResult
-    func request(mode: VoiceOutputMode) -> VoiceBridgeState {
-        let state = VoiceBridgeState(
-            requestID: UUID(),
-            status: .requested,
-            mode: mode,
-            text: "",
-            message: "请打开 Vibe Voice 开始录音",
-            updatedAt: Date()
-        )
-        save(state)
-        return state
+    func request(mode: VoiceOutputMode, documentID: UUID?) -> VoiceBridgeState {
+        mutate { state in
+            state.requestID = UUID()
+            state.status = .requested
+            state.mode = mode
+            state.targetDocumentID = documentID
+            state.text = ""
+            state.message = "请打开 Vibe Voice 开始录音"
+        }
     }
 
-    func publish(status: VoiceBridgeStatus, text: String = "", message: String = "") {
-        var state = load()
-        state.status = status
-        state.text = text
-        state.message = message
-        state.updatedAt = Date()
-        save(state)
+    @discardableResult
+    func publish(
+        status: VoiceBridgeStatus,
+        text: String = "",
+        message: String = ""
+    ) -> VoiceBridgeState {
+        mutate { state in
+            state.status = status
+            state.text = text
+            state.message = message
+        }
     }
 
-    func setMode(_ mode: VoiceOutputMode) {
-        var state = load()
-        state.mode = mode
-        state.updatedAt = Date()
-        save(state)
+    @discardableResult
+    func setMode(_ mode: VoiceOutputMode) -> VoiceBridgeState {
+        mutate { $0.mode = mode }
     }
 
-    func markConsumed(requestID: UUID) {
-        var state = load()
-        guard state.requestID == requestID else { return }
-        state.status = .consumed
-        state.updatedAt = Date()
-        save(state)
+    /// Drops the transcript along with the status. A result that has been
+    /// inserted must not stay readable in the shared container afterwards.
+    @discardableResult
+    func markConsumed(requestID: UUID) -> VoiceBridgeState {
+        mutate { state in
+            guard state.requestID == requestID else { return }
+            state.status = .consumed
+            state.text = ""
+            state.targetDocumentID = nil
+        }
     }
 
+    /// Turns a recording or transcription that the system killed into an
+    /// actionable failure instead of a phase the UI can never leave.
     @discardableResult
     func recoverInterruptedWork() -> Bool {
-        var state = load()
-        guard state.status == .recording || state.status == .processing else {
-            return false
+        var recovered = false
+        mutate { state in
+            guard state.status == .recording || state.status == .processing else { return }
+            state.status = .failed
+            state.text = ""
+            state.message = "上次语音任务被系统中断，请重新录音"
+            recovered = true
         }
-        state.status = .failed
-        state.text = ""
-        state.message = "上次语音任务被系统中断，请重新录音"
-        state.updatedAt = Date()
-        save(state)
-        return true
+        return recovered
     }
 
-    func reset() {
-        save(.idle)
+    @discardableResult
+    func reset() -> VoiceBridgeState {
+        mutate { $0 = .idle }
     }
 
-    private func save(_ state: VoiceBridgeState) {
+    // MARK: - Coordinated storage
+
+    @discardableResult
+    private func mutate(_ transform: (inout VoiceBridgeState) -> Void) -> VoiceBridgeState {
+        var result = VoiceBridgeState.idle
+        var changed = false
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(
+            writingItemAt: fileURL,
+            options: .forMerging,
+            error: &coordinationError
+        ) { url in
+            var state = decodeState(at: url) ?? .idle
+            let original = state
+            transform(&state)
+            guard state != original else {
+                result = state
+                return
+            }
+            state.updatedAt = Date()
+            writeState(state, to: url)
+            result = state
+            changed = true
+        }
+        if changed {
+            VoiceBridgeSignal.postChange()
+        }
+        return result
+    }
+
+    private func decodeState(at url: URL) -> VoiceBridgeState? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? decoder.decode(VoiceBridgeState.self, from: data)
+    }
+
+    private func writeState(_ state: VoiceBridgeState, to url: URL) {
         guard let data = try? encoder.encode(state) else { return }
-        defaults.set(data, forKey: Self.stateKey)
+        // The payload is transcribed speech. Keep it unreadable while the device
+        // is locked; neither the app nor a keyboard extension runs locked.
+        do {
+            try data.write(to: url, options: [.atomic, .completeFileProtection])
+        } catch {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    private static func defaultDirectory() -> URL {
+        let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: appGroupID
+        )
+        return (container ?? FileManager.default.temporaryDirectory)
+            .appendingPathComponent("VoiceBridge", isDirectory: true)
+    }
+
+    /// Deletes the plaintext transcript that older builds left in App Group
+    /// `UserDefaults`, where it outlived the insertion that consumed it.
+    private static func purgeLegacyPlaintextState() {
+        guard let defaults = UserDefaults(suiteName: appGroupID),
+              defaults.object(forKey: legacyDefaultsKey) != nil else { return }
+        defaults.removeObject(forKey: legacyDefaultsKey)
     }
 }
