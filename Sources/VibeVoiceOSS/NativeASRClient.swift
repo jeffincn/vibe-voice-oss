@@ -184,7 +184,8 @@ actor NativeASRClient {
         }
     }
 
-    /// Retries transient download failures; auth errors and cancellation propagate immediately.
+    /// Retries transient download failures. Anything a retry cannot fix — credentials, a
+    /// missing repository, a full disk — is surfaced immediately with what to do about it.
     private func withDownloadRetries<T: Sendable>(
         attempts: Int = 3,
         onProgress: (@Sendable (String) -> Void)?,
@@ -195,21 +196,20 @@ actor NativeASRClient {
             try Task.checkCancellation()
             do {
                 return try await operation()
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as URLError where error.code == .cancelled {
-                throw CancellationError()
             } catch {
-                let text = error.localizedDescription.lowercased()
-                if text.contains("401") || text.contains("403")
-                    || text.contains("unauthorized") || text.contains("forbidden")
-                    || text.contains("gated") {
-                    throw error
-                }
-                lastError = error
-                if attempt < attempts {
-                    onProgress?("下载中断（第 \(attempt) 次）：\(error.localizedDescription)。正在自动重试…")
-                    try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+                let failure = ModelDownloadFailure.classify(error)
+                switch failure {
+                case .cancelled:
+                    throw CancellationError()
+                case .permanent:
+                    let advice = failure.advice.map { " \($0)" } ?? ""
+                    throw TranscriptionError.localRuntime("\(error.localizedDescription)\(advice)")
+                case .transient:
+                    lastError = error
+                    if attempt < attempts {
+                        onProgress?("下载中断（第 \(attempt) 次）：\(error.localizedDescription)。正在自动重试…")
+                        try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+                    }
                 }
             }
         }
