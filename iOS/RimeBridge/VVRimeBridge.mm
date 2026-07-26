@@ -159,8 +159,13 @@ NSString *TakeCommit(RimeApi *api, RimeSessionId session) {
 }
 
 - (NSDictionary<NSString *, id> *)snapshot {
-    NSDictionary<NSString *, id> *empty =
-        @{@"preedit": @"", @"candidates": @[], @"highlightedIndex": @0};
+    NSDictionary<NSString *, id> *empty = @{
+        @"preedit": @"",
+        @"candidates": @[],
+        @"highlightedIndex": @0,
+        @"pageNumber": @0,
+        @"isLastPage": @YES,
+    };
     RimeApi *api = CurrentAPI();
     if (!self.session || !api || !api->get_context || !api->free_context) {
         return empty;
@@ -190,11 +195,15 @@ NSString *TakeCommit(RimeApi *api, RimeSessionId session) {
         [candidates addObject:@{@"text": text ?: @"", @"comment": comment ?: @""}];
     }
     NSInteger highlighted = context.menu.highlighted_candidate_index;
+    NSInteger pageNumber = context.menu.page_no;
+    BOOL isLastPage = context.menu.is_last_page != False;
     api->free_context(&context);
     return @{
         @"preedit": preedit ?: @"",
         @"candidates": candidates,
         @"highlightedIndex": @(highlighted > 0 ? highlighted : 0),
+        @"pageNumber": @(pageNumber > 0 ? pageNumber : 0),
+        @"isLastPage": @(isLastPage),
     };
 }
 

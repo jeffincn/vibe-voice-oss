@@ -4,9 +4,9 @@ import XCTest
 final class RimeEngineTests: XCTestCase {
     func testFallbackFullPinyinProducesCandidateAndCommits() {
         let engine = PrototypeRimeEngine()
-        "nihao".forEach { engine.process(letter: $0) }
+        "nihao".forEach { engine.process(character: $0) }
 
-        XCTAssertFalse(engine.process(letter: "1").handled)
+        XCTAssertFalse(engine.process(character: "1").handled)
 
         XCTAssertEqual(engine.snapshot.preedit, "nihao")
         XCTAssertEqual(engine.snapshot.candidates.first?.text, "你好")
@@ -16,7 +16,7 @@ final class RimeEngineTests: XCTestCase {
 
     func testFallbackBackspaceEditsCompositionBeforeHostText() {
         let engine = PrototypeRimeEngine()
-        "ni".forEach { engine.process(letter: $0) }
+        "ni".forEach { engine.process(character: $0) }
 
         engine.backspace()
 
@@ -34,7 +34,7 @@ final class RimeEngineTests: XCTestCase {
             performMaintenance: true,
             fullCheck: true
         )
-        "nihao".forEach { engine.process(letter: $0) }
+        "nihao".forEach { engine.process(character: $0) }
 
         XCTAssertEqual(engine.snapshot.preedit.replacingOccurrences(of: " ", with: ""), "nihao")
         XCTAssertTrue(

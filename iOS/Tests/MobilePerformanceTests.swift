@@ -15,7 +15,7 @@ final class MobilePerformanceTests: XCTestCase {
 
         measure(metrics: [XCTClockMetric(), XCTMemoryMetric()]) {
             for _ in 0..<50 {
-                "nihao".forEach { engine.process(letter: $0) }
+                "nihao".forEach { engine.process(character: $0) }
                 _ = engine.commitBestCandidate()
             }
         }

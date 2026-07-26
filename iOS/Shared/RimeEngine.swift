@@ -9,8 +9,19 @@ struct RimeSnapshot: Equatable, Sendable {
     var preedit: String
     var candidates: [RimeCandidate]
     var highlightedIndex: Int
+    /// Zero-based index of the candidate page being shown.
+    var pageNumber: Int
+    var isLastPage: Bool
 
-    static let empty = RimeSnapshot(preedit: "", candidates: [], highlightedIndex: 0)
+    static let empty = RimeSnapshot(
+        preedit: "",
+        candidates: [],
+        highlightedIndex: 0,
+        pageNumber: 0,
+        isLastPage: true
+    )
+
+    var isComposing: Bool { !preedit.isEmpty }
 }
 
 /// What one key did to the composition.
@@ -30,10 +41,15 @@ struct RimeKeyOutcome: Equatable, Sendable {
 protocol RimeEngine: AnyObject {
     var snapshot: RimeSnapshot { get }
 
+    /// Offers any printable ASCII character to the engine. Letters extend the
+    /// composition; punctuation reaches the schema's punctuator. The outcome
+    /// says whether the engine took the key, so the caller can type it instead.
     @discardableResult
-    func process(letter: Character) -> RimeKeyOutcome
+    func process(character: Character) -> RimeKeyOutcome
     @discardableResult
     func backspace() -> RimeKeyOutcome
+    @discardableResult
+    func turnPage(forward: Bool) -> RimeKeyOutcome
     func selectCandidate(at index: Int) -> String?
     func commitBestCandidate() -> String?
     func reset()
@@ -56,7 +72,10 @@ enum RimeEngineError: LocalizedError {
 /// Production wrapper around librime. The Objective-C++ bridge owns the native
 /// session while this type keeps UIKit independent from the C API.
 final class LibrimeEngine: RimeEngine {
+    // X11 keysyms, which is what librime's process_key expects.
     private static let backspaceKeyCode = 0xff08
+    private static let pageUpKeyCode = 0xff55
+    private static let pageDownKeyCode = 0xff56
 
     private let bridge: VVRimeBridge
 
@@ -103,14 +122,17 @@ final class LibrimeEngine: RimeEngine {
         return RimeSnapshot(
             preedit: preedit,
             candidates: candidates,
-            highlightedIndex: highlightedIndex
+            highlightedIndex: highlightedIndex,
+            pageNumber: (value["pageNumber"] as? NSNumber)?.intValue ?? 0,
+            isLastPage: (value["isLastPage"] as? NSNumber)?.boolValue ?? true
         )
     }
 
     @discardableResult
-    func process(letter: Character) -> RimeKeyOutcome {
-        guard letter.isASCII, letter.isLetter || letter == "'",
-              let scalar = String(letter.lowercased()).unicodeScalars.first else {
+    func process(character: Character) -> RimeKeyOutcome {
+        guard character.isASCII,
+              let scalar = character.unicodeScalars.first,
+              (0x20...0x7e).contains(scalar.value) else {
             return .ignored(snapshot)
         }
         return outcome(from: bridge.processKeyCode(Int(scalar.value)))
@@ -119,6 +141,13 @@ final class LibrimeEngine: RimeEngine {
     @discardableResult
     func backspace() -> RimeKeyOutcome {
         outcome(from: bridge.processKeyCode(Self.backspaceKeyCode))
+    }
+
+    @discardableResult
+    func turnPage(forward: Bool) -> RimeKeyOutcome {
+        outcome(from: bridge.processKeyCode(
+            forward ? Self.pageDownKeyCode : Self.pageUpKeyCode
+        ))
     }
 
     func selectCandidate(at index: Int) -> String? {
@@ -280,16 +309,18 @@ final class PrototypeRimeEngine: RimeEngine {
         return RimeSnapshot(
             preedit: composition,
             candidates: words.map { RimeCandidate(text: $0, comment: nil) },
-            highlightedIndex: 0
+            highlightedIndex: 0,
+            pageNumber: 0,
+            isLastPage: true
         )
     }
 
     @discardableResult
-    func process(letter: Character) -> RimeKeyOutcome {
-        guard letter.isASCII, letter.isLetter || letter == "'" else {
+    func process(character: Character) -> RimeKeyOutcome {
+        guard character.isASCII, character.isLetter || character == "'" else {
             return .ignored(snapshot)
         }
-        composition.append(Character(letter.lowercased()))
+        composition.append(Character(character.lowercased()))
         return RimeKeyOutcome(commit: nil, handled: true, snapshot: snapshot)
     }
 
@@ -298,6 +329,12 @@ final class PrototypeRimeEngine: RimeEngine {
         guard !composition.isEmpty else { return .ignored(snapshot) }
         composition.removeLast()
         return RimeKeyOutcome(commit: nil, handled: true, snapshot: snapshot)
+    }
+
+    /// The fallback lexicon never produces more than one page.
+    @discardableResult
+    func turnPage(forward: Bool) -> RimeKeyOutcome {
+        .ignored(snapshot)
     }
 
     func selectCandidate(at index: Int) -> String? {

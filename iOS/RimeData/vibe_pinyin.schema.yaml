@@ -17,6 +17,10 @@ engine:
   processors:
     - ascii_composer
     - speller
+    # Must follow the speller so letters still build a syllable. It turns the
+    # punctuation keys into their Chinese forms; without it the keyboard could
+    # only ever type half-width punctuation in Chinese mode.
+    - punctuator
     - selector
     - navigator
     - express_editor
@@ -38,6 +42,33 @@ speller:
     - derive/un$/uen/
     - derive/ui$/uei/
     - derive/iu$/iou/
+
+# Defined inline rather than through `import_preset: default`, because this
+# project ships its own minimal Rime data directory with no punctuation.yaml.
+# Anything absent here falls through to librime returning the key unhandled,
+# and the keyboard types the ASCII character itself.
+punctuator:
+  half_shape:
+    "'": { pair: ["‘", "’"] }
+    '"': { pair: ["“", "”"] }
+    ",": "，"
+    ".": "。"
+    "!": "！"
+    "?": "？"
+    ":": "："
+    ";": "；"
+    "(": "（"
+    ")": "）"
+    "<": "《"
+    ">": "》"
+    "[": "【"
+    "]": "】"
+    "\\": "、"
+    "^": "……"
+    "_": "——"
+    "~": "～"
+    "`": "·"
+    "$": "￥"
 
 translator:
   dictionary: pinyin_simp
