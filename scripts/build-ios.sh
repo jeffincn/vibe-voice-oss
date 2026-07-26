@@ -20,6 +20,7 @@ if ! command -v xcodegen >/dev/null 2>&1; then
 fi
 
 zsh "$ROOT/scripts/verify-librime-ios.sh"
+zsh "$ROOT/scripts/verify-rime-data.sh"
 
 mkdir -p "$DERIVED_ROOT" "$RESULT_ROOT" "$PACKAGE_ROOT"
 # Projects stored under Documents may inherit File Provider metadata that

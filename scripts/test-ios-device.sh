@@ -27,6 +27,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 zsh "$ROOT/scripts/verify-librime-ios.sh"
+zsh "$ROOT/scripts/verify-rime-data.sh"
 
 xcrun devicectl list devices --json-output "$DEVICE_JSON" >/dev/null
 device_record=$(jq -c --arg model "$EXPECTED_MODEL" '

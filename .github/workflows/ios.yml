@@ -13,6 +13,7 @@ on:
       - "iOS/**"
       - "scripts/build-ios.sh"
       - "scripts/verify-librime-ios.sh"
+      - "scripts/verify-rime-data.sh"
       - ".github/workflows/ios.yml"
   push:
     branches:
@@ -22,6 +23,7 @@ on:
       - "iOS/**"
       - "scripts/build-ios.sh"
       - "scripts/verify-librime-ios.sh"
+      - "scripts/verify-rime-data.sh"
       - ".github/workflows/ios.yml"
 
 permissions:
@@ -47,6 +49,12 @@ jobs:
       # whether it is still the artefact prepare-librime-ios.sh produced.
       - name: Verify vendored librime archives
         run: zsh scripts/verify-librime-ios.sh
+
+      # librime reads these at deployment time on a device, so a malformed
+      # schema is otherwise invisible until the keyboard degrades in someone's
+      # hands.
+      - name: Verify the Rime data files
+        run: zsh scripts/verify-rime-data.sh
 
       - name: Generate Xcode project
         run: xcodegen generate --spec iOS/project.yml --project iOS
