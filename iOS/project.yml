@@ -90,6 +90,19 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios.tests
         GENERATE_INFOPLIST_FILE: YES
+  VibeVoiceMobileIntegrationTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: IntegrationTests
+      - path: Tests/Fixtures
+        buildPhase: resources
+    dependencies:
+      - target: VibeVoiceMobile
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios.integrationtests
+        GENERATE_INFOPLIST_FILE: YES
   VibeVoiceMobileUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -102,6 +115,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios.uitests
         GENERATE_INFOPLIST_FILE: YES
 schemes:
+  # Hermetic: no network, safe to run on every change.
   VibeVoiceMobile:
     build:
       targets:
@@ -114,3 +128,14 @@ schemes:
       targets:
         - VibeVoiceMobileTests
         - VibeVoiceMobileUITests
+  # Downloads the real WhisperKit model. Opt in.
+  VibeVoiceMobileIntegration:
+    build:
+      targets:
+        VibeVoiceMobile: all
+        VibeVoiceKeyboard: all
+        VibeVoiceMobileIntegrationTests: [test]
+    test:
+      gatherCoverageData: false
+      targets:
+        - VibeVoiceMobileIntegrationTests

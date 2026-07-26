@@ -49,6 +49,28 @@ struct VoiceBridgeState: Codable, Equatable, Sendable {
         guard let targetDocumentID, let documentID else { return false }
         return targetDocumentID == documentID
     }
+
+    /// What the keyboard should do with this state for the field it is
+    /// currently attached to. It lives here rather than in the view controller
+    /// so the rule deciding where transcribed speech ends up can be tested
+    /// without a host application.
+    func delivery(
+        toDocument documentID: UUID?,
+        alreadyInserted: UUID?,
+        now: Date = Date()
+    ) -> VoiceBridgeDelivery {
+        guard hasFreshResult(now: now), requestID != alreadyInserted else { return .nothing }
+        return targets(documentID: documentID) ? .insert(self) : .awaitExplicitInsert(self)
+    }
+}
+
+enum VoiceBridgeDelivery: Equatable, Sendable {
+    /// This field asked for the dictation, so insert it.
+    case insert(VoiceBridgeState)
+    /// A result exists but belongs to another field. Inserting it here would
+    /// put speech somewhere the user never asked for it, so wait for a tap.
+    case awaitExplicitInsert(VoiceBridgeState)
+    case nothing
 }
 
 /// Cross-process handoff between the keyboard extension and the containing app.

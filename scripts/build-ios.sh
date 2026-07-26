@@ -5,6 +5,9 @@ ROOT="${0:A:h:h}"
 IOS_ROOT="$ROOT/iOS"
 PROJECT="$IOS_ROOT/VibeVoiceMobile.xcodeproj"
 SCHEME="VibeVoiceMobile"
+INTEGRATION_SCHEME="VibeVoiceMobileIntegration"
+# The integration scheme downloads the WhisperKit model, so it is opt in.
+RUN_INTEGRATION="${VIBEVOICE_RUN_INTEGRATION_TESTS:-0}"
 DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-14-Pro-Max"
 TASK_CACHE_ROOT="${TMPDIR%/}/vibevoice-ios-0.7.0"
 DERIVED_ROOT="$TASK_CACHE_ROOT/DerivedData"
@@ -70,6 +73,21 @@ for prefix in "${runtime_prefixes[@]}"; do
         -only-testing:VibeVoiceMobileTests \
         -only-testing:VibeVoiceMobileUITests
 
+    if [[ "$RUN_INTEGRATION" == "1" ]]; then
+        print "TESTING iOS $runtime_name — model integration"
+        xcodebuild test \
+            -project "$PROJECT" \
+            -scheme "$INTEGRATION_SCHEME" \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -derivedDataPath "$DERIVED_ROOT/iOS${prefix}" \
+            -clonedSourcePackagesDirPath "$PACKAGE_ROOT" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            -parallel-testing-enabled NO \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 1800 \
+            -maximum-test-execution-time-allowance 2400
+    fi
+
     app_path="$DERIVED_ROOT/iOS${prefix}/Build/Products/Debug-iphonesimulator/VibeVoiceMobile.app"
     xcrun simctl install "$simulator_id" "$app_path"
     xcrun simctl launch --terminate-running-process \
@@ -90,3 +108,7 @@ xcodebuild build \
 print "DEVICE BUILD PASSED — generic arm64 iOS"
 
 print "iOS simulator matrix complete: $passed passed, $skipped skipped"
+if [[ "$RUN_INTEGRATION" != "1" ]]; then
+    print "note: model integration tests were skipped."
+    print "note: set VIBEVOICE_RUN_INTEGRATION_TESTS=1 to download and exercise WhisperKit."
+fi

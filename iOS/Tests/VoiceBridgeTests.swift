@@ -58,6 +58,47 @@ final class VoiceBridgeTests: XCTestCase {
         XCTAssertFalse(state.targets(documentID: nil))
     }
 
+    func testDeliveryOnlyInsertsIntoTheRequestingField() {
+        let bridge = VoiceBridgeStore(directory: directory)
+        let requestingField = UUID()
+        let request = bridge.request(mode: .original, documentID: requestingField)
+        bridge.publish(status: .ready, text: "你好")
+        let state = bridge.load()
+
+        XCTAssertEqual(
+            state.delivery(toDocument: requestingField, alreadyInserted: nil),
+            .insert(state)
+        )
+        XCTAssertEqual(
+            state.delivery(toDocument: UUID(), alreadyInserted: nil),
+            .awaitExplicitInsert(state)
+        )
+        XCTAssertEqual(
+            state.delivery(toDocument: nil, alreadyInserted: nil),
+            .awaitExplicitInsert(state)
+        )
+        XCTAssertEqual(
+            state.delivery(toDocument: requestingField, alreadyInserted: request.requestID),
+            .nothing
+        )
+    }
+
+    func testDeliveryIgnoresAnExpiredResult() {
+        var state = VoiceBridgeState.idle
+        state.status = .ready
+        state.text = "你好"
+        state.targetDocumentID = UUID()
+
+        XCTAssertEqual(
+            state.delivery(
+                toDocument: state.targetDocumentID,
+                alreadyInserted: nil,
+                now: state.updatedAt.addingTimeInterval(VoiceBridgeState.readyLifetime + 1)
+            ),
+            .nothing
+        )
+    }
+
     func testStaleResultIsNoLongerFresh() {
         var state = VoiceBridgeState.idle
         state.status = .ready

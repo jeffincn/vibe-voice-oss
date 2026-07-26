@@ -397,22 +397,21 @@ final class KeyboardViewController: UIInputViewController {
     /// keyboard happened to attach to next.
     private func refreshBridge() {
         let state = bridge.load()
-        guard state.hasFreshResult() else {
+        switch state.delivery(
+            toDocument: textDocumentProxy.documentIdentifier,
+            alreadyInserted: lastInsertedRequestID
+        ) {
+        case .insert(let ready):
+            deliver(ready)
+        case .awaitExplicitInsert(let ready):
+            pendingResult = ready
+            statusLabel.text = "结果已就绪，回到原输入框或点麦克风插入"
+            updateVoiceButton()
+        case .nothing:
             pendingResult = nil
             statusLabel.text = state.message.isEmpty ? state.status.rawValue : state.message
             updateVoiceButton()
-            return
         }
-
-        if state.requestID != lastInsertedRequestID,
-           state.targets(documentID: textDocumentProxy.documentIdentifier) {
-            deliver(state)
-            return
-        }
-
-        pendingResult = state
-        statusLabel.text = "结果已就绪，回到原输入框或点麦克风插入"
-        updateVoiceButton()
     }
 
     private func deliver(_ state: VoiceBridgeState) {

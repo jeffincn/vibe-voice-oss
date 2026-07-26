@@ -5,6 +5,9 @@ ROOT="${0:A:h:h}"
 IOS_ROOT="$ROOT/iOS"
 PROJECT="$IOS_ROOT/VibeVoiceMobile.xcodeproj"
 SCHEME="VibeVoiceMobile"
+# The device gate is only meaningful against the real model, so unlike the
+# simulator matrix it always runs the integration scheme as well.
+INTEGRATION_SCHEME="VibeVoiceMobileIntegration"
 EXPECTED_MODEL="iPhone 14 Pro Max"
 EXPECTED_OS_PREFIX="26."
 TASK_CACHE_ROOT="${TMPDIR%/}/vibevoice-ios-0.7.0"
@@ -93,7 +96,27 @@ xcodebuild test \
     DEVELOPMENT_TEAM="$team_id" \
     CODE_SIGN_STYLE=Automatic
 
+integration_bundle="${result_bundle%.xcresult}-integration.xcresult"
+xcodebuild test \
+    -project "$PROJECT" \
+    -scheme "$INTEGRATION_SCHEME" \
+    -destination "platform=iOS,id=$device_udid" \
+    -derivedDataPath "$DERIVED_ROOT" \
+    -clonedSourcePackagesDirPath "$PACKAGE_ROOT" \
+    -onlyUsePackageVersionsFromResolvedFile \
+    -resultBundlePath "$integration_bundle" \
+    -allowProvisioningUpdates \
+    -allowProvisioningDeviceRegistration \
+    -parallel-testing-enabled NO \
+    -test-timeouts-enabled YES \
+    -default-test-execution-time-allowance 1800 \
+    -maximum-test-execution-time-allowance 2400 \
+    DEVELOPMENT_TEAM="$team_id" \
+    CODE_SIGN_STYLE=Automatic
+
 xcrun xcresulttool get test-results summary \
     --path "$result_bundle"
+xcrun xcresulttool get test-results summary \
+    --path "$integration_bundle"
 print "PHYSICAL DEVICE TEST PASSED — evidence: $result_bundle"
 print "Complete docs/ios-device-acceptance.md before final acceptance."
