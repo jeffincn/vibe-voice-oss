@@ -85,6 +85,29 @@ final class StreamingResamplerTests: XCTestCase {
         XCTAssertLessThan(output.count, 1_700)
     }
 
+    /// RMS of a tone after 48 kHz → 16 kHz conversion, skipping the filter's settling.
+    private func downsampledRMS(toneHz: Double) -> Float {
+        var resampler = StreamingResampler(inputRate: 48_000, outputRate: 16_000)
+        let input = (0..<48_000).map { index in
+            Float(sin(2 * Double.pi * toneHz * Double(index) / 48_000))
+        }
+        let output = resampler.push(input)
+        let settled = output.dropFirst(2_000)
+        let meanSquare = settled.reduce(Float.zero) { $0 + $1 * $1 } / Float(settled.count)
+        return sqrt(meanSquare)
+    }
+
+    func testSpeechBandSurvivesDownsampling() {
+        XCTAssertEqual(downsampledRMS(toneHz: 1_000), 0.707, accuracy: 0.03)
+    }
+
+    func testContentAboveNyquistIsRemovedBeforeItCanFold() {
+        // 12 kHz would alias to 4 kHz — squarely inside the speech band — if it reached
+        // the decimator. Linear interpolation alone barely touches it.
+        let aliasing = downsampledRMS(toneHz: 12_000)
+        XCTAssertLessThan(aliasing, 0.1, "expected roughly -23 dB, got \(aliasing)")
+    }
+
     func testInt16EncodingRoundTripScale() {
         let data = StreamingResampler.int16LE(from: [0, 1, -1])
         XCTAssertEqual(data.count, 6)

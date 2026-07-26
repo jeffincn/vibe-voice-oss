@@ -31,6 +31,9 @@ enum WAVEncoder {
         return output
     }
 
+    /// Linear interpolation with no band limiting, so downsampling here aliases. Every
+    /// capture path already arrives at 16 kHz through `StreamingResampler`, which filters;
+    /// this stays for the equal-rate passthrough and for callers that only need length.
     static func resample(samples: [Float], from inputRate: Double, to outputRate: Double) -> [Float] {
         guard !samples.isEmpty, inputRate > 0, outputRate > 0 else { return [] }
         guard abs(inputRate - outputRate) > 0.5 else { return samples }
