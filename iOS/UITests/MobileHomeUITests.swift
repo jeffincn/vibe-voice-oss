@@ -35,4 +35,23 @@ final class MobileHomeUITests: XCTestCase {
         original.tap()
         XCTAssertTrue(original.isSelected)
     }
+
+    func testInputPlaygroundSupportsChatComposer() {
+        let app = launchInChinese()
+
+        let playground = app.buttons["playground.open"]
+        XCTAssertTrue(playground.waitForExistence(timeout: 10))
+        playground.tap()
+
+        XCTAssertTrue(app.navigationBars["Vibe Voice 测试对话"].waitForExistence(timeout: 5))
+        let input = app.textFields["playground.input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("你好")
+
+        let send = app.buttons["playground.send"]
+        XCTAssertTrue(send.isEnabled)
+        send.tap()
+        XCTAssertTrue(app.staticTexts["你好"].waitForExistence(timeout: 3))
+    }
 }

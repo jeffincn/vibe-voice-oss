@@ -140,6 +140,19 @@ enum MobileL10n {
         case homePrivacyBody
         case homePrivacyClearButton
         case homePrivacyClearBody
+
+        // MARK: Input playground
+        case playgroundTitle
+        case playgroundSubtitle
+        case playgroundConversationName
+        case playgroundHint
+        case playgroundPlaceholder
+        case playgroundSend
+        case playgroundVoice
+        case playgroundVoiceStop
+        case playgroundEmpty
+        case playgroundYou
+        case playgroundAssistant
     }
 
     private final class LanguageBox: @unchecked Sendable {
@@ -281,6 +294,18 @@ enum MobileL10n {
         .homePrivacyBody: "语音转写只在本机进行，不上传音频或文字。转写结果写入键盘共享容器，插入后立即删除；键盘的拼音学习记录保存在共享容器内，仅本机可读。",
         .homePrivacyClearButton: "清除共享数据与拼音学习记录",
         .homePrivacyClearBody: "清除后键盘会重新从零学习，已部署的词库不受影响。",
+
+        .playgroundTitle: "Input Playground",
+        .playgroundSubtitle: "在类似 iMessage 的窗口里测试键盘与语音输入",
+        .playgroundConversationName: "Vibe Voice 测试对话",
+        .playgroundHint: "可用地球键切换到 Vibe Voice 键盘，也可以点麦克风测试语音桥接。",
+        .playgroundPlaceholder: "输入消息…",
+        .playgroundSend: "发送",
+        .playgroundVoice: "语音",
+        .playgroundVoiceStop: "停止",
+        .playgroundEmpty: "输入一条消息开始测试",
+        .playgroundYou: "你",
+        .playgroundAssistant: "Vibe Voice",
     ]
 
     // MARK: - English
@@ -380,5 +405,17 @@ enum MobileL10n {
         .homePrivacyBody: "Transcription runs entirely on this device; no audio or text is uploaded. Results are written to the keyboard's shared container and deleted as soon as they are inserted. The keyboard's pinyin learning data stays in that container and is readable only on this device.",
         .homePrivacyClearButton: "Clear shared data and pinyin learning",
         .homePrivacyClearBody: "The keyboard starts learning from scratch afterwards. The deployed dictionary is unaffected.",
+
+        .playgroundTitle: "Input Playground",
+        .playgroundSubtitle: "Test keyboard and voice input in an iMessage-style window",
+        .playgroundConversationName: "Vibe Voice Test Chat",
+        .playgroundHint: "Use the globe key to choose Vibe Voice, or tap the mic to test the voice bridge.",
+        .playgroundPlaceholder: "Message…",
+        .playgroundSend: "Send",
+        .playgroundVoice: "Voice",
+        .playgroundVoiceStop: "Stop",
+        .playgroundEmpty: "Type a message to start testing",
+        .playgroundYou: "You",
+        .playgroundAssistant: "Vibe Voice",
     ]
 }

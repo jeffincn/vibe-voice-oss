@@ -15,6 +15,7 @@ struct MobileHomeView: View {
                 VStack(spacing: 18) {
                     hero
                     setupCard
+                    playgroundCard
                     bridgeCard
                     modelCard
                     privacyCard
@@ -65,6 +66,37 @@ struct MobileHomeView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
+        .cardStyle()
+    }
+
+    private var playgroundCard: some View {
+        NavigationLink {
+            InputPlaygroundView(voiceController: voiceController)
+        } label: {
+            HStack(spacing: 12) {
+                Label {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(MobileL10n.t(.playgroundTitle))
+                            .font(.headline)
+                        Text(MobileL10n.t(.playgroundSubtitle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                } icon: {
+                    Image(systemName: "message.and.waveform")
+                        .font(.title2)
+                        .foregroundStyle(.tint)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("playground.open")
         .cardStyle()
     }
 
