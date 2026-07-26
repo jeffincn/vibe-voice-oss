@@ -281,6 +281,9 @@ enum AudioInputDevices {
         guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value) == noErr else {
             return nil
         }
-        return value?.takeUnretainedValue() as String?
+        // Retained, not unretained: this selector family follows the Copy rule, so the
+        // caller owns the string. Every device enumeration — and one runs on each device
+        // change notification and each Settings open — leaked one per property read.
+        return value?.takeRetainedValue() as String?
     }
 }
