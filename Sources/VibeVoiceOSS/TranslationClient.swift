@@ -164,7 +164,7 @@ struct TranslationClient: Sendable {
             throw TranslationError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "未知错误"
+            let message = HTTPErrorBody.summarize(data)
             throw TranslationError.server(
                 status: http.statusCode,
                 message: profile.authHint(status: http.statusCode, host: modelsURL.host, body: message)
@@ -204,7 +204,7 @@ struct TranslationClient: Sendable {
             throw TranslationError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "未知错误"
+            let message = HTTPErrorBody.summarize(data)
             throw TranslationError.server(
                 status: http.statusCode,
                 message: profile.authHint(status: http.statusCode, host: url.host, body: message)
@@ -371,7 +371,7 @@ struct TranslationClient: Sendable {
             throw TranslationError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "未知错误"
+            let message = HTTPErrorBody.summarize(data)
             throw TranslationError.server(
                 status: http.statusCode,
                 message: Self.authHintIfNeeded(

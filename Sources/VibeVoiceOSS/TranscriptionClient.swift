@@ -163,8 +163,10 @@ struct TranscriptionClient: Sendable {
                 data.append(byte)
                 if data.count > 8_192 { break }
             }
-            let message = String(data: data, encoding: .utf8) ?? "未知错误"
-            throw TranscriptionError.server(status: http.statusCode, message: message)
+            throw TranscriptionError.server(
+                status: http.statusCode,
+                message: HTTPErrorBody.summarize(data)
+            )
         }
 
         let contentType = http.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
@@ -177,9 +179,15 @@ struct TranscriptionClient: Sendable {
             return trimmed
         }
 
+        // A transcript JSON is kilobytes; anything past this is a misrouted response
+        // (proxy page, model dump) that would otherwise be buffered in full.
+        let responseByteLimit = 32 * 1024 * 1024
         var data = Data()
         for try await byte in bytes {
             data.append(byte)
+            guard data.count <= responseByteLimit else {
+                throw TranscriptionError.invalidResponse
+            }
         }
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let rawText = object["text"] as? String else {

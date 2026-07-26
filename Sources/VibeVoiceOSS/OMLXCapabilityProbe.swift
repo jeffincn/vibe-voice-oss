@@ -184,7 +184,7 @@ enum OMLXCapabilityProbe {
                     note: "stream=true 仍返回 JSON（本机无结果 SSE）"
                 )
             }
-            let message = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
+            let message = HTTPErrorBody.summarize(data, fallback: "HTTP \(http.statusCode)")
             return SSEProbe(endpointOK: false, supportsSSE: false, note: message)
         } catch {
             return SSEProbe(endpointOK: false, supportsSSE: false, note: error.localizedDescription)

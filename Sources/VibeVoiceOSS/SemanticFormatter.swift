@@ -838,7 +838,7 @@ struct SemanticFormatterClient: Sendable {
             throw SemanticFormatterError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "未知错误"
+            let message = HTTPErrorBody.summarize(data)
             throw SemanticFormatterError.server(
                 status: http.statusCode,
                 message: TranslationClient.authHintIfNeeded(
