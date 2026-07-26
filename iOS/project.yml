@@ -9,10 +9,13 @@ settings:
     MARKETING_VERSION: 0.7.0
     CURRENT_PROJECT_VERSION: 44
     SWIFT_VERSION: 5.0
-    SWIFT_STRICT_CONCURRENCY: targeted
+    # Under Swift 5 these are warnings, but they are the only thing that can
+    # find an actor boundary crossed by the audio capture thread.
+    SWIFT_STRICT_CONCURRENCY: complete
     CODE_SIGN_STYLE: Automatic
-    DEVELOPMENT_TEAM: ""
-    TARGETED_DEVICE_FAMILY: "1"
+    # DEVELOPMENT_TEAM is deliberately unset: writing an empty string into the
+    # project pins automatic signing to "no team" in the Xcode UI. Device builds
+    # pass it on the xcodebuild command line instead.
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
 packages:
   ArgmaxOSS:
@@ -31,6 +34,10 @@ targets:
         buildPhase: resources
     settings:
       base:
+        # Set per target, not at the project level: XcodeGen writes its own
+        # default of "1,2" into every target, which silently overrides a
+        # project-level value and ships an iPad build nothing tests.
+        TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios
         INFOPLIST_FILE: Resources/AppInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/VibeVoiceMobile.entitlements
@@ -55,10 +62,14 @@ targets:
         buildPhase: resources
     settings:
       base:
+        TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_BUNDLE_IDENTIFIER: app.vibevoice.oss.ios.keyboard
         INFOPLIST_FILE: Resources/KeyboardInfo.plist
         CODE_SIGN_ENTITLEMENTS: Resources/VibeVoiceKeyboard.entitlements
         SKIP_INSTALL: YES
+        # Fails the compile on unavailable API instead of at App Store
+        # validation, which is the only other place this is checked.
+        APPLICATION_EXTENSION_API_ONLY: YES
         SWIFT_OBJC_BRIDGING_HEADER: RimeBridge/VVRimeBridge.h
         OTHER_LDFLAGS: "$(inherited) -lc++"
     dependencies:
