@@ -43,6 +43,26 @@ final class EndpointSecurityTests: XCTestCase {
         }
     }
 
+    /// A box on the same LAN is not loopback: the key crosses a wire someone else
+    /// can be on, which is the case a self-hosted setup most easily gets wrong.
+    func testPrivateNetworkHostsRejectCredentialsOverCleartext() throws {
+        let hosts = [
+            "http://192.168.1.20:8000/v1/chat/completions",
+            "http://10.0.0.5:8000/v1/chat/completions",
+            "http://mac-studio.local:8000/v1/chat/completions",
+        ]
+        for host in hosts {
+            XCTAssertFalse(
+                EndpointSecurity.allowsCredentialTransmission(to: try url(host), apiKey: "sk-secret"),
+                "expected LAN host to be refused: \(host)"
+            )
+            XCTAssertTrue(
+                EndpointSecurity.allowsCredentialTransmission(to: try url(host), apiKey: ""),
+                "with no key there is nothing to protect: \(host)"
+            )
+        }
+    }
+
     func testAmbiguousLoopbackNotationsFailClosed() throws {
         // Shorthand / decimal forms are not parsed as loopback; they must not carry a key.
         let hosts = [
