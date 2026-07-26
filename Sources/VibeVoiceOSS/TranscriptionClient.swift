@@ -139,7 +139,7 @@ struct TranscriptionClient: Sendable {
             throw TranscriptionError.insecureEndpoint
         }
 
-        let boundary = "VibeVoiceOSS-\(UUID().uuidString)"
+        let boundary = MultipartForm.randomBoundary(prefix: "VibeVoiceOSS")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 30
@@ -349,32 +349,21 @@ struct TranscriptionClient: Sendable {
         configuration: TranscriptionConfiguration,
         stream: Bool
     ) -> Data {
-        var body = Data()
-        func addField(_ name: String, _ value: String) {
-            guard !value.isEmpty else { return }
-            body.appendUTF8("--\(boundary)\r\n")
-            body.appendUTF8("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
-            body.appendUTF8("\(value)\r\n")
-        }
-
-        addField("model", configuration.model)
-        addField("language", configuration.language)
-        addField("prompt", configuration.prompt)
-        addField("response_format", "json")
+        var form = MultipartForm(boundary: boundary)
+        form.addField("model", configuration.model)
+        form.addField("language", configuration.language)
+        form.addField("prompt", configuration.prompt)
+        form.addField("response_format", "json")
         if stream {
-            addField("stream", "true")
+            form.addField("stream", "true")
         }
-        body.appendUTF8("--\(boundary)\r\n")
-        body.appendUTF8("Content-Disposition: form-data; name=\"file\"; filename=\"recording.wav\"\r\n")
-        body.appendUTF8("Content-Type: audio/wav\r\n\r\n")
-        body.append(wav)
-        body.appendUTF8("\r\n--\(boundary)--\r\n")
-        return body
+        form.addFile("file", filename: "recording.wav", contentType: "audio/wav", data: wav)
+        return form.finished()
     }
 }
 
-private extension Data {
+extension Data {
     mutating func appendUTF8(_ string: String) {
-        append(string.data(using: .utf8)!)
+        append(Data(string.utf8))
     }
 }

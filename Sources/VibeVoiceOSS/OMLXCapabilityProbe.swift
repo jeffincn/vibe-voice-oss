@@ -151,7 +151,7 @@ enum OMLXCapabilityProbe {
         configuration: TranscriptionConfiguration,
         wav: Data
     ) async -> SSEProbe {
-        let boundary = "VibeProbe-\(UUID().uuidString)"
+        let boundary = MultipartForm.randomBoundary(prefix: "VibeProbe")
         var request = URLRequest(url: transcriptionURL)
         request.httpMethod = "POST"
         request.timeoutInterval = 20
@@ -207,22 +207,13 @@ enum OMLXCapabilityProbe {
         language: String,
         stream: Bool
     ) -> Data {
-        var body = Data()
-        func field(_ name: String, _ value: String) {
-            body.append(Data("--\(boundary)\r\n".utf8))
-            body.append(Data("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
-            body.append(Data("\(value)\r\n".utf8))
-        }
-        field("model", model)
-        if !language.isEmpty { field("language", language) }
-        field("response_format", "json")
-        if stream { field("stream", "true") }
-        body.append(Data("--\(boundary)\r\n".utf8))
-        body.append(Data("Content-Disposition: form-data; name=\"file\"; filename=\"probe.wav\"\r\n".utf8))
-        body.append(Data("Content-Type: audio/wav\r\n\r\n".utf8))
-        body.append(wav)
-        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
-        return body
+        var form = MultipartForm(boundary: boundary)
+        form.addField("model", model)
+        form.addField("language", language)
+        form.addField("response_format", "json")
+        if stream { form.addField("stream", "true") }
+        form.addFile("file", filename: "probe.wav", contentType: "audio/wav", data: wav)
+        return form.finished()
     }
 
     /// 100 ms of silence @ 16 kHz mono PCM16.
