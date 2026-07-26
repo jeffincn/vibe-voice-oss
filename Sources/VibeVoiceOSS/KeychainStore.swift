@@ -194,6 +194,15 @@ enum KeychainStore {
         var add = baseQuery(account)
         add[kSecValueData as String] = data
         add[kSecAttrLabel as String] = "Vibe Voice OSS"
+        // Keep the secret unreadable while the machine is locked and out of iCloud.
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+        add[kSecAttrSynchronizable as String] = false
+        let status = SecItemAdd(add as CFDictionary, nil)
+        if status == errSecSuccess { return true }
+        guard status == errSecParam else { return false }
+        // A file-based login keychain rejects the data-protection attributes.
+        add.removeValue(forKey: kSecAttrAccessible as String)
+        add.removeValue(forKey: kSecAttrSynchronizable as String)
         return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
     }
 
@@ -269,18 +278,18 @@ enum KeychainStore {
 
     // MARK: - Legacy Keychain Cleanup
 
-    /// Delete Keychain entries left over from pre-rename builds. When the current
-    /// build stores secrets in the Keychain itself, only the previous services are
-    /// purged; UserDefaults-mode builds also clear the current service (reads by an
-    /// ad-hoc build would prompt, so those entries are unusable anyway).
+    /// Delete Keychain entries left over from pre-rename builds.
+    ///
+    /// Only the previous service names are purged. An earlier version also wiped the
+    /// current service when running without a stable signature, on the theory that an
+    /// ad-hoc build could not read those entries anyway — but the entries belong to
+    /// the user's certificate-signed install, so running an ad-hoc build once
+    /// destroyed the keys stored by the signed one.
     /// `SecItemDelete` does NOT trigger the login-password dialog — only reads do.
     static func cleanupLegacyKeychainEntries() {
-        let doneKey = usesKeychain
-            ? "\(service).keychain-cleanup-v3-keychain"
-            : "\(service).keychain-cleanup-v2"
+        let doneKey = "\(service).keychain-cleanup-v4"
         guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
-        let services = usesKeychain ? previousServices : [service] + previousServices
-        for svc in services {
+        for svc in previousServices {
             let query: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: svc,
