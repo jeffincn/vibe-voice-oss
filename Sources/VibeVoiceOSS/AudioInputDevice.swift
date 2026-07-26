@@ -155,6 +155,18 @@ enum AudioInputDevices {
         setDefaultDevice(kAudioHardwarePropertyDefaultInputDevice, id: id)
     }
 
+    /// Put back the system default input that a capture session repointed.
+    ///
+    /// Pinning the default is how the IO unit is made to wake on the chosen hardware,
+    /// but it is a machine-wide setting: without this, picking a mic in Settings also
+    /// silently changes which microphone every other app records from, and it stays
+    /// changed after the app quits.
+    @discardableResult
+    static func restoreInputRoute(_ id: AudioDeviceID?) -> Bool {
+        guard let id, defaultInputDeviceID() != id, isAlive(deviceID: id) else { return false }
+        return setDefaultDevice(kAudioHardwarePropertyDefaultInputDevice, id: id)
+    }
+
     static func isAlive(deviceID: AudioDeviceID) -> Bool {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyDeviceIsAlive,

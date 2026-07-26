@@ -73,6 +73,8 @@ final class AudioRecorder: @unchecked Sendable {
     /// Node that currently owns the tap (`inputNode` or an intermediate mixer).
     private weak var tapNode: AVAudioNode?
     private var routeRestoreGeneration = 0
+    /// System default input from before this session repointed it.
+    private var preservedInputDeviceID: AudioDeviceID?
     /// Bumped on every tear-down so a delayed start won't installTap on a replaced engine.
     private var engineGeneration = 0
     private var boundDeviceID: AudioDeviceID?
@@ -111,13 +113,32 @@ final class AudioRecorder: @unchecked Sendable {
                 sessionLock.withLock { tearDownEngineLocked() }
             }
         }
+        restoreSystemInputRoute()
         throw lastError ?? AudioInputDeviceError.unavailable(requestedName)
+    }
+
+    /// Put the system default input back where the user had it. Choosing a mic in this
+    /// app should not decide which microphone Zoom or FaceTime picks up afterwards.
+    private func restoreSystemInputRoute() {
+        let preserved: AudioDeviceID? = sessionLock.withLock {
+            defer { preservedInputDeviceID = nil }
+            return preservedInputDeviceID
+        }
+        AudioInputDevices.restoreInputRoute(preserved)
     }
 
     private func startSession(device: AudioInputDevice) async throws {
         // Bluetooth HFP mics (e.g. DJI Mic Mini) often steal system output when opened.
         // Capture headphones first, then restore after binding input + starting the engine.
         let preservedOutput = AudioInputDevices.captureOutputRoute()
+
+        // Only on the first switch of a session — a retry must not record the device we
+        // just selected ourselves as the one to put back.
+        sessionLock.withLock {
+            if preservedInputDeviceID == nil {
+                preservedInputDeviceID = AudioInputDevices.defaultInputDeviceID()
+            }
+        }
 
         // Pin system default *input* before (re)creating the engine so the IO unit
         // wakes up on the selected hardware. Changing the device then immediately
@@ -316,6 +337,7 @@ final class AudioRecorder: @unchecked Sendable {
 
     func stop() throws -> Data {
         sessionLock.withLock { tearDownEngineLocked() }
+        restoreSystemInputRoute()
         // Removing the tap first means this sync drains every buffer already handed to
         // the queue. Reading before the tear-down dropped whatever was still in flight,
         // which is the tail of the recording — usually the last word.
@@ -345,6 +367,7 @@ final class AudioRecorder: @unchecked Sendable {
     /// Discard an in-progress capture without requiring samples (e.g. superseded start).
     func cancel() {
         sessionLock.withLock { tearDownEngineLocked() }
+        restoreSystemInputRoute()
         processingQueue.sync {
             samples.removeAll(keepingCapacity: false)
             pcmCarry.removeAll(keepingCapacity: false)

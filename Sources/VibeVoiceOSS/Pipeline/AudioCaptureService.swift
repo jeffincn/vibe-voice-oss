@@ -57,6 +57,8 @@ final class AudioCaptureService: @unchecked Sendable {
     private var isTapInstalled = false
     private weak var tapNode: AVAudioNode?
     private var routeRestoreGeneration = 0
+    /// System default input from before this session repointed it.
+    private var preservedInputDeviceID: AudioDeviceID?
     private var engineGeneration = 0
     private var boundDeviceID: AudioDeviceID?
 
@@ -91,11 +93,29 @@ final class AudioCaptureService: @unchecked Sendable {
                 sessionLock.withLock { tearDownEngineLocked() }
             }
         }
+        restoreSystemInputRoute()
         throw lastError ?? AudioInputDeviceError.unavailable(requestedName)
+    }
+
+    /// Put the system default input back where the user had it. Listening in this app
+    /// should not decide which microphone every other app records from afterwards.
+    private func restoreSystemInputRoute() {
+        let preserved: AudioDeviceID? = sessionLock.withLock {
+            defer { preservedInputDeviceID = nil }
+            return preservedInputDeviceID
+        }
+        AudioInputDevices.restoreInputRoute(preserved)
     }
 
     private func startSession(device: AudioInputDevice) async throws {
         let preservedOutput = AudioInputDevices.captureOutputRoute()
+        // Only on the first switch of a session — a retry must not record the device we
+        // just selected ourselves as the one to put back.
+        sessionLock.withLock {
+            if preservedInputDeviceID == nil {
+                preservedInputDeviceID = AudioInputDevices.defaultInputDeviceID()
+            }
+        }
         _ = AudioInputDevices.setDefaultInputDevice(device.id)
         _ = AudioInputDevices.restoreOutputRoute(preservedOutput)
 
@@ -170,6 +190,7 @@ final class AudioCaptureService: @unchecked Sendable {
         sessionLock.withLock {
             tearDownEngineLocked()
         }
+        restoreSystemInputRoute()
         // The tap is gone, so this drains what it already handed over and then drops the
         // handlers — nothing from the finished session can reach the segmenter afterwards.
         processingQueue.sync { activeHandlers = Handlers() }
