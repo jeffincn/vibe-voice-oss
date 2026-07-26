@@ -138,8 +138,11 @@ final class MobileVoiceController: ObservableObject {
     }
 
     func handleBackgroundTransition() {
-        guard phase != .recording,
-              phase != .processing,
+        // There is no background audio mode, so a recording cannot survive the
+        // app leaving the foreground. End it here rather than let the session be
+        // torn down under a UI that still says it is recording.
+        abortRecording(reason: "应用切到后台，录音已停止")
+        guard phase != .processing,
               phase != .preparingModel else { return }
         Task {
             await asr.releaseMemory()

@@ -53,9 +53,6 @@ final class KeyboardViewController: UIInputViewController {
         configureLayout()
         refreshComposition()
         refreshBridge()
-        if let rimeDegradedReason {
-            statusLabel.text = "拼音降级：\(rimeDegradedReason)"
-        }
         startBridgeObservation()
     }
 
@@ -409,9 +406,21 @@ final class KeyboardViewController: UIInputViewController {
             updateVoiceButton()
         case .nothing:
             pendingResult = nil
-            statusLabel.text = state.message.isEmpty ? state.status.rawValue : state.message
+            statusLabel.text = idleStatusText(for: state)
             updateVoiceButton()
         }
+    }
+
+    /// A degraded Rime session outlives any single bridge update, so it keeps
+    /// the status line whenever the bridge has nothing more urgent to say.
+    private func idleStatusText(for state: VoiceBridgeState) -> String {
+        if !state.message.isEmpty {
+            return state.message
+        }
+        if let rimeDegradedReason {
+            return "拼音降级：\(rimeDegradedReason)"
+        }
+        return state.status.rawValue
     }
 
     private func deliver(_ state: VoiceBridgeState) {
