@@ -22,6 +22,16 @@ actor WebSocketStreamingASRClient: StreamingASRClient {
     private var finalText: String?
     private var closed = false
     private let session: URLSession
+    private var keepAlive: Task<Void, Never>?
+
+    /// How long to wait for the server's `final` after `end`. Without a bound the
+    /// UI sits on "finalizing" for the rest of the app's life if it never arrives.
+    private static let finalResponseTimeout: Duration = .seconds(30)
+    /// A frame larger than this is not a transcript, and buffering it would let the
+    /// far end decide how much memory the app allocates.
+    private static let maximumMessageBytes = 4 * 1024 * 1024
+    /// Proxies and load balancers close idle sockets, and a pause in speech is idle.
+    private static let keepAliveInterval: Duration = .seconds(15)
 
     init(url: URL, apiKey: String, onEvent: @escaping StreamingASRPartialHandler) {
         self.url = url
@@ -42,10 +52,12 @@ actor WebSocketStreamingASRClient: StreamingASRClient {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
         let socket = session.webSocketTask(with: request)
+        socket.maximumMessageSize = Self.maximumMessageBytes
         task = socket
         socket.resume()
         try await sendJSON(["type": "session.start"])
         receiveLoop()
+        startKeepAlive()
     }
 
     func appendPCM(_ frame: Data) async throws {
@@ -55,8 +67,22 @@ actor WebSocketStreamingASRClient: StreamingASRClient {
     }
 
     func finish() async throws -> String {
+        if let finalText { return finalText }
+        // Storing a second continuation would strand the first one, leaving that
+        // caller suspended forever.
+        guard finalContinuation == nil else {
+            throw TranscriptionError.invalidResponse
+        }
         try await sendJSON(["type": "commit"])
         try await sendJSON(["type": "end"])
+
+        let deadline = Task { [weak self] in
+            try? await Task.sleep(for: Self.finalResponseTimeout)
+            guard !Task.isCancelled else { return }
+            await self?.failPendingFinal(with: TranscriptionError.timedOut)
+        }
+        defer { deadline.cancel() }
+
         return try await withCheckedThrowingContinuation { continuation in
             if let finalText {
                 continuation.resume(returning: finalText)
@@ -67,13 +93,42 @@ actor WebSocketStreamingASRClient: StreamingASRClient {
     }
 
     func cancel() async {
-        closed = true
-        task?.cancel(with: .goingAway, reason: nil)
-        task = nil
+        teardown()
         if let continuation = finalContinuation {
             finalContinuation = nil
             continuation.resume(throwing: CancellationError())
         }
+    }
+
+    private func failPendingFinal(with error: Error) {
+        guard let continuation = finalContinuation else { return }
+        finalContinuation = nil
+        teardown()
+        continuation.resume(throwing: error)
+    }
+
+    private func teardown() {
+        closed = true
+        keepAlive?.cancel()
+        keepAlive = nil
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+    }
+
+    private func startKeepAlive() {
+        keepAlive?.cancel()
+        keepAlive = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.keepAliveInterval)
+                guard !Task.isCancelled, let self, await self.sendPing() else { return }
+            }
+        }
+    }
+
+    private func sendPing() -> Bool {
+        guard !closed, let task else { return false }
+        task.sendPing { _ in }
+        return true
     }
 
     private func sendJSON(_ object: [String: Any]) async throws {
