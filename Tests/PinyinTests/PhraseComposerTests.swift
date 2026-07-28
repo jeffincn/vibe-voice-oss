@@ -15,7 +15,8 @@ struct PhraseComposerTests {
         let url = repoRoot.appendingPathComponent("Resources/InputMethod/RimeData/pinyin_simp.dict.yaml")
         lex.loadSynchronously(
             from: url,
-            phraseOverlayURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/common-phrases.tsv")
+            phraseOverlayURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/common-phrases.tsv"),
+            includeSharedCorrections: false
         )
         return lex
     }()
@@ -25,7 +26,8 @@ struct PhraseComposerTests {
         ext.loadSynchronously(
             properURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/proper-nouns.tsv"),
             termsURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/tech-terms.tsv"),
-            zhURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/term-zh.tsv")
+            zhURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/term-zh.tsv"),
+            includeSharedCorrections: false
         )
         return ext
     }()

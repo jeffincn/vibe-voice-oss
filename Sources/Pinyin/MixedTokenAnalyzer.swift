@@ -1,4 +1,5 @@
 import Foundation
+import VibeVoiceShared
 
 /// How mixed Chinese + English compositions should be rendered before display.
 public enum MixedOutputStyle: String, CaseIterable, Sendable, Codable {
@@ -97,10 +98,11 @@ public final class ExternalLexicon: @unchecked Sendable {
             return
         }
         lock.unlock()
-        let properMap = Self.loadTSV(named: "proper-nouns", subdirectory: "Lexicon", bundle: bundle)
-        let termMap = Self.loadTSV(named: "tech-terms", subdirectory: "Lexicon", bundle: bundle)
+        var properMap = Self.loadTSV(named: "proper-nouns", subdirectory: "Lexicon", bundle: bundle)
+        var termMap = Self.loadTSV(named: "tech-terms", subdirectory: "Lexicon", bundle: bundle)
         let zhMap = Self.loadTSV(named: "term-zh", subdirectory: "Lexicon", bundle: bundle)
-        let projectMap = Self.loadProjectTSV()
+        var projectMap = Self.loadProjectTSV()
+        Self.mergeSharedCorrections(proper: &properMap, terms: &termMap, project: &projectMap)
         lock.lock()
         proper = properMap
         terms = termMap
@@ -113,12 +115,40 @@ public final class ExternalLexicon: @unchecked Sendable {
         )
     }
 
-    public func loadSynchronously(properURL: URL?, termsURL: URL?, zhURL: URL?, projectURL: URL? = nil) {
+    /// Drop the in-memory cache so the next `ensureLoaded` re-reads disk + shared corrections.
+    public func invalidate() {
         lock.lock()
-        proper = properURL.flatMap { Self.parseTSV(url: $0) } ?? [:]
-        terms = termsURL.flatMap { Self.parseTSV(url: $0) } ?? [:]
+        ready = false
+        proper = [:]
+        terms = [:]
+        termZH = [:]
+        project = [:]
+        lock.unlock()
+    }
+
+    public func loadSynchronously(
+        properURL: URL?,
+        termsURL: URL?,
+        zhURL: URL?,
+        projectURL: URL? = nil,
+        includeSharedCorrections: Bool = true
+    ) {
+        lock.lock()
+        var properMap = properURL.flatMap { Self.parseTSV(url: $0) } ?? [:]
+        var termMap = termsURL.flatMap { Self.parseTSV(url: $0) } ?? [:]
         termZH = zhURL.flatMap { Self.parseTSV(url: $0) } ?? [:]
-        project = projectURL.flatMap { Self.parseTSV(url: $0) } ?? Self.loadProjectTSV()
+        var projectMap = projectURL.flatMap { Self.parseTSV(url: $0) } ?? [:]
+        if includeSharedCorrections {
+            if projectMap.isEmpty {
+                projectMap = Self.loadProjectTSV()
+            }
+            Self.mergeSharedCorrections(proper: &properMap, terms: &termMap, project: &projectMap)
+        } else if projectMap.isEmpty, let projectURL {
+            projectMap = Self.parseTSV(url: projectURL) ?? [:]
+        }
+        proper = properMap
+        terms = termMap
+        project = projectMap
         ready = true
         lock.unlock()
     }
@@ -153,12 +183,43 @@ public final class ExternalLexicon: @unchecked Sendable {
     }
 
     public static func projectLexiconURL() -> URL {
+        // Prefer the shared corrections file; keep the legacy path for readers.
+        SharedCorrectionLexicon.shared.storageURL
+    }
+
+    public static func legacyProjectLexiconURL() -> URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("VibeVoiceOSS/Lexicon/project.tsv", isDirectory: false)
     }
 
     private static func loadProjectTSV() -> [String: String] {
-        parseTSV(url: projectLexiconURL()) ?? [:]
+        // Shared corrections first; fall back to legacy project.tsv via migration helper.
+        let shared = SharedCorrectionLexicon.shared.pinyinCodeMap()
+        if !shared.isEmpty { return shared }
+        return parseTSV(url: legacyProjectLexiconURL()) ?? [:]
+    }
+
+    private static func mergeSharedCorrections(
+        proper: inout [String: String],
+        terms: inout [String: String],
+        project: inout [String: String]
+    ) {
+        let lexicon = SharedCorrectionLexicon.shared
+        lexicon.reload()
+        for entry in lexicon.allEntries() {
+            guard !entry.pinyinCode.isEmpty else { continue }
+            // Never clobber bundled proper/tech tables — shared rows fill gaps
+            // and remain available via the project fallback map.
+            project[entry.pinyinCode] = entry.canonical
+            switch entry.kind {
+            case .proper where proper[entry.pinyinCode] == nil:
+                proper[entry.pinyinCode] = entry.canonical
+            case .term where terms[entry.pinyinCode] == nil:
+                terms[entry.pinyinCode] = entry.canonical
+            default:
+                break
+            }
+        }
     }
 
     private static func loadTSV(named: String, subdirectory: String, bundle: Bundle) -> [String: String] {

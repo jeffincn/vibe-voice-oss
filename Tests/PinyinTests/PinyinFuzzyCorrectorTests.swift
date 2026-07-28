@@ -14,7 +14,8 @@ struct PinyinFuzzyCorrectorTests {
         let lex = PinyinLexicon()
         lex.loadSynchronously(
             from: repoRoot.appendingPathComponent("Resources/InputMethod/RimeData/pinyin_simp.dict.yaml"),
-            phraseOverlayURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/common-phrases.tsv")
+            phraseOverlayURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/common-phrases.tsv"),
+            includeSharedCorrections: false
         )
         return lex
     }()

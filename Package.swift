@@ -44,6 +44,7 @@ let package = Package(
         // Pinyin engine shared by the IMK server (and Voice settings that tune it).
         .target(
             name: "VibeVoicePinyin",
+            dependencies: ["VibeVoiceShared"],
             path: "Sources/Pinyin"
         ),
         .target(

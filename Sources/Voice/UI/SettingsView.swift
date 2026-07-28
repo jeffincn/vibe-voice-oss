@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import VibeVoicePinyin
+import VibeVoiceShared
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -284,6 +285,11 @@ private struct SettingsForm: View {
             }
             .buttonStyle(.bordered)
             caption(L10n.t(.importProjectVocabularyCaption))
+            caption(L10n.t(
+                .sharedCorrectionLexiconStatus,
+                "\(SharedCorrectionLexicon.shared.count)",
+                SharedCorrectionLexicon.shared.storageURL.path
+            ))
             if let message = projectVocabularyMessage {
                 caption(message)
             }
@@ -306,6 +312,8 @@ private struct SettingsForm: View {
             FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path)
         } ?? root
         let count = ProjectVocabularyImporter.importFromRepository(at: repo)
+        SharedCorrectionLexicon.shared.reload()
+        ExternalLexicon.shared.invalidate()
         ExternalLexicon.shared.ensureLoaded()
         projectVocabularyMessage = L10n.t(.importProjectVocabularyDone, "\(count)")
     }

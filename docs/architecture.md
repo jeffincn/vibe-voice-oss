@@ -59,7 +59,21 @@ IME-only code lives under `Sources/InputMethod` and `Sources/Pinyin`. Rime schem
 
 ## Shared bridge
 
-`VibeVoiceShared.InputMethodBridgeStore` lets the IME request a voice session from the menu-bar app through a JSON file under Application Support plus a Darwin notification. That is the only runtime coupling between the two products.
+`VibeVoiceShared.InputMethodBridgeStore` lets the IME request a voice session from the menu-bar app through a JSON file under Application Support plus a Darwin notification.
+
+## Shared correction lexicon
+
+`VibeVoiceShared.SharedCorrectionLexicon` stores cross-product vocabulary at:
+
+`~/Library/Application Support/VibeVoiceOSS/Lexicon/shared-corrections.v1.tsv`
+
+```text
+canonical	pinyin_code	aliases	kind	weight	source
+魔法棒	mofabang	魔法帮|魔发棒	phrase	12000	user
+Core ML	coreml	扣肉ML	proper	100	project
+```
+
+`source` records provenance (`project` / `migrated` / `user`). Pinyin overlays use `pinyin_code`; Voice merges `canonical` into the ASR hotspot and feeds alias→canonical rows (with source labels) into LLM role/cleanup context. Bundle Lexicon TSVs remain IME-only defaults.
 
 Voice Settings also imports `VibeVoicePinyin` so fuzzy-pinyin and project-vocabulary toggles stay in sync with the IME.
 
