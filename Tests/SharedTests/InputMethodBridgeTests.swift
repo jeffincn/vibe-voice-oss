@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import VibeVoiceInputShared
+@testable import VibeVoiceShared
 
 struct InputMethodBridgeTests {
     @Test func roundTripsStateWithRestrictedFilePermissions() throws {

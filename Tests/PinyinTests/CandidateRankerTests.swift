@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import VibeVoiceInputShared
+@testable import VibeVoicePinyin
 
 struct CandidateRankerTests {
     /// The repo copy, because in a test process `Bundle.main` is xctest rather
@@ -10,7 +10,7 @@ struct CandidateRankerTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Resources/CandidateRanker/VibeCandidateRanker.mlmodelc", isDirectory: true)
+            .appendingPathComponent("Resources/InputMethod/CandidateRanker/VibeCandidateRanker.mlmodelc", isDirectory: true)
     }
 
     private static func isolatedDefaults() -> UserDefaults {

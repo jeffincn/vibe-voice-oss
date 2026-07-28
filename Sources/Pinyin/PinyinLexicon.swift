@@ -100,9 +100,13 @@ public final class PinyinLexicon: @unchecked Sendable {
         if let phraseOverlayURL {
             Self.mergePhraseOverlay(&built, url: phraseOverlayURL)
         } else {
+            // Repo: Resources/InputMethod/{RimeData,Lexicon}
+            // Bundle: Contents/Resources/{RimeData,Lexicon}
+            // `url` points at a file inside RimeData, so climb to the parent of
+            // RimeData (where Lexicon sits as a sibling).
             let defaultOverlay = url
-                .deletingLastPathComponent() // RimeData
-                .deletingLastPathComponent() // Resources
+                .deletingLastPathComponent() // filename → RimeData/
+                .deletingLastPathComponent() // → Resources[/InputMethod]/
                 .appendingPathComponent("Lexicon/common-phrases.tsv")
             Self.mergePhraseOverlay(&built, url: defaultOverlay)
         }

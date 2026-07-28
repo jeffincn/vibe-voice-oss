@@ -2,13 +2,13 @@
 import AppKit
 import Foundation
 
-/// Builds `VibeVoiceOSS.icns` from the shipped `Resources/VibeTypeIcon.png`.
+/// Builds `Resources/Voice/VibeVoiceOSS.icns` from `Resources/InputMethod/VibeTypeIcon.png`.
 let root = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()
     .deletingLastPathComponent()
-let sourceURL = root.appendingPathComponent("Resources/VibeTypeIcon.png")
+let sourceURL = root.appendingPathComponent("Resources/InputMethod/VibeTypeIcon.png")
 let outputURL = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first
-    ?? root.appendingPathComponent("Resources/VibeVoiceOSS.icns").path)
+    ?? root.appendingPathComponent("Resources/Voice/VibeVoiceOSS.icns").path)
 
 guard let source = NSImage(contentsOf: sourceURL) else {
     fputs("error: missing icon source at \(sourceURL.path)\n", stderr)

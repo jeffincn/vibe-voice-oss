@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import VibeVoiceInputShared
+@testable import VibeVoicePinyin
 
 struct PhraseComposerTests {
     private static let repoRoot: URL = {
@@ -12,17 +12,20 @@ struct PhraseComposerTests {
 
     private static let lexicon: PinyinLexicon = {
         let lex = PinyinLexicon()
-        let url = repoRoot.appendingPathComponent("Resources/RimeData/pinyin_simp.dict.yaml")
-        lex.loadSynchronously(from: url)
+        let url = repoRoot.appendingPathComponent("Resources/InputMethod/RimeData/pinyin_simp.dict.yaml")
+        lex.loadSynchronously(
+            from: url,
+            phraseOverlayURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/common-phrases.tsv")
+        )
         return lex
     }()
 
     private static let external: ExternalLexicon = {
         let ext = ExternalLexicon()
         ext.loadSynchronously(
-            properURL: repoRoot.appendingPathComponent("Resources/Lexicon/proper-nouns.tsv"),
-            termsURL: repoRoot.appendingPathComponent("Resources/Lexicon/tech-terms.tsv"),
-            zhURL: repoRoot.appendingPathComponent("Resources/Lexicon/term-zh.tsv")
+            properURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/proper-nouns.tsv"),
+            termsURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/tech-terms.tsv"),
+            zhURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/term-zh.tsv")
         )
         return ext
     }()

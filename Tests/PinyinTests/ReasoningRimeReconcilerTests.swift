@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import VibeVoiceInputShared
+@testable import VibeVoicePinyin
 
 struct ReasoningRimeReconcilerTests {
     @Test func prefersRimePeerDifferingOnlyInLastCharacter() {
@@ -35,8 +35,8 @@ struct MagicWandPhraseTests {
     private static let lexicon: PinyinLexicon = {
         let lex = PinyinLexicon()
         lex.loadSynchronously(
-            from: repoRoot.appendingPathComponent("Resources/RimeData/pinyin_simp.dict.yaml"),
-            phraseOverlayURL: repoRoot.appendingPathComponent("Resources/Lexicon/common-phrases.tsv")
+            from: repoRoot.appendingPathComponent("Resources/InputMethod/RimeData/pinyin_simp.dict.yaml"),
+            phraseOverlayURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/common-phrases.tsv")
         )
         return lex
     }()

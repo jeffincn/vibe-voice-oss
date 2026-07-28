@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import VibeVoiceInputShared
+import VibeVoicePinyin
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -296,9 +296,10 @@ private struct SettingsForm: View {
         // a developer checkout; otherwise scan the process working directory.
         let candidates = [
             URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent(),
+                .deletingLastPathComponent() // UI
+                .deletingLastPathComponent() // Voice
+                .deletingLastPathComponent() // Sources
+                .deletingLastPathComponent(), // repo root
             root,
         ]
         let repo = candidates.first { url in

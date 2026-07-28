@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import VibeVoiceInputShared
+@testable import VibeVoicePinyin
 
 struct PinyinFuzzyCorrectorTests {
     private static let repoRoot: URL = {
@@ -13,8 +13,8 @@ struct PinyinFuzzyCorrectorTests {
     private static let lexicon: PinyinLexicon = {
         let lex = PinyinLexicon()
         lex.loadSynchronously(
-            from: repoRoot.appendingPathComponent("Resources/RimeData/pinyin_simp.dict.yaml"),
-            phraseOverlayURL: repoRoot.appendingPathComponent("Resources/Lexicon/common-phrases.tsv")
+            from: repoRoot.appendingPathComponent("Resources/InputMethod/RimeData/pinyin_simp.dict.yaml"),
+            phraseOverlayURL: repoRoot.appendingPathComponent("Resources/InputMethod/Lexicon/common-phrases.tsv")
         )
         return lex
     }()

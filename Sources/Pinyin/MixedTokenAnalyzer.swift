@@ -74,7 +74,7 @@ public struct MixedComposition: Equatable, Sendable {
     }
 }
 
-/// Loads proper-noun / tech-term / zh-translation tables shipped under Resources/Lexicon.
+/// Loads proper-noun / tech-term / zh-translation tables shipped under Resources/InputMethod/Lexicon.
 public final class ExternalLexicon: @unchecked Sendable {
     public static let shared = ExternalLexicon()
 

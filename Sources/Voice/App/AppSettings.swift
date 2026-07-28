@@ -1,5 +1,5 @@
 import Foundation
-import VibeVoiceInputShared
+import VibeVoicePinyin
 
 struct TargetLanguage: Identifiable, Hashable {
     let id: String

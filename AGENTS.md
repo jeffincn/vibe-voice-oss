@@ -19,7 +19,12 @@ Vibe Voice OSS is a SwiftPM-based macOS menu-bar app (Apple Silicon, macOS 15+).
 | Artifact | Path |
 |----------|------|
 | SwiftPM manifest | `Package.swift` |
-| App metadata | `Resources/Info.plist` |
+| Voice app sources | `Sources/Voice/` |
+| IMK pinyin sources | `Sources/InputMethod/` |
+| Shared bridge | `Sources/Shared/` |
+| Pinyin engine | `Sources/Pinyin/` |
+| App metadata | `Resources/Voice/Info.plist` |
+| IMK resources | `Resources/InputMethod/` |
 | Build & package script | `scripts/build-app.sh` |
 | Staging output | `dist/Vibe Voice OSS.app` |
 | System install | `/Applications/Vibe Voice OSS.app` |
@@ -47,7 +52,7 @@ swift build
 
 ### R2 — Increment `CFBundleVersion` on Every Change
 
-Before building, increment the integer value of `CFBundleVersion` in `Resources/Info.plist` by 1. This lets the user confirm whether a new build contains the latest changes. Do NOT modify `CFBundleShortVersionString` unless explicitly asked.
+Before building, increment the integer value of `CFBundleVersion` in `Resources/Voice/Info.plist` by 1. This lets the user confirm whether a new build contains the latest changes. Do NOT modify `CFBundleShortVersionString` unless explicitly asked.
 
 ### R3 — Automatic Signing Identity Detection
 
@@ -92,7 +97,7 @@ Agents MUST NOT:
 
 ### R3a — Hardened Runtime
 
-The app is signed with `--options runtime` and `Resources/VibeVoiceOSS.entitlements`. This blocks code injection and process-memory reads that would expose decrypted API keys, and is a prerequisite for notarization.
+The app is signed with `--options runtime` and `Resources/Voice/VibeVoiceOSS.entitlements`. This blocks code injection and process-memory reads that would expose decrypted API keys, and is a prerequisite for notarization.
 
 The hardened runtime denies the microphone and Apple Events unless the entitlements ask for them, so the file must keep:
 
@@ -169,7 +174,7 @@ When a persistent identity is used (tiers 1–3), this warning is unnecessary.
 ```
 Agent modifies source code
   │
-  ├─ Increment CFBundleVersion in Resources/Info.plist
+  ├─ Increment CFBundleVersion in Resources/Voice/Info.plist
   │
   ├─ Run: zsh scripts/build-app.sh
   │    │
@@ -342,7 +347,7 @@ Agents MUST default to conversational replies, matching the "内容整理" inten
 
 Switch to strict itemization and hierarchy only when the user explicitly asks for it ("总结", "列出方案", "结构化", or an equivalent request), or when the rules being explained are genuinely complex enough that prose would be harder to read.
 
-This mirrors the `StructureIntensity` contract in `Sources/VibeVoiceOSS/SemanticFormatter.swift`; keep the two in sync when either changes.
+This mirrors the `StructureIntensity` contract in `Sources/Voice/LLM/SemanticFormatter.swift`; keep the two in sync when either changes.
 
 ---
 

@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import Foundation
 import ServiceManagement
-import VibeVoiceInputShared
+import VibeVoiceShared
 
 @MainActor
 final class AppState: ObservableObject {

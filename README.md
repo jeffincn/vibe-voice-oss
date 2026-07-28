@@ -87,6 +87,8 @@ Insertion prefers Accessibility APIs; some Electron/Chromium editors fall back t
 
 ## Development
 
+Monorepo layout: `Sources/Voice` (dictation app), `Sources/InputMethod` (IMK pinyin), `Sources/Pinyin` + `Sources/Shared` (engine / bridge). See [docs/architecture.md](docs/architecture.md).
+
 ```bash
 swift test
 swift build
