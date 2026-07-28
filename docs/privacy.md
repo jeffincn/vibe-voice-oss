@@ -4,6 +4,8 @@
 
 Vibe Voice sends audio and text only to the HTTP/WebSocket endpoints configured in Settings. The default endpoints are on `127.0.0.1`. If you point Settings at a remote service, that service receives the payloads you send (audio for ASR; text for translation / structure / prompt compile).
 
+When Professional Roles are enabled, the configured LLM also receives the selected candidate role descriptions (professional background, terminology, and writing boundaries) together with the transcript. Role profiles themselves are stored locally in the app's SQLite database.
+
 The app does not ship a mandatory cloud backend and does not upload recordings to a fixed third-party URL hard-coded in the source.
 
 ## What stays local

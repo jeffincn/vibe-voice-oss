@@ -88,6 +88,18 @@ final class DataStore {
         execute("CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage(created_at)")
         execute("CREATE INDEX IF NOT EXISTS idx_pipeline_run_started ON pipeline_run(started_at)")
         execute("CREATE INDEX IF NOT EXISTS idx_stage_duration_run ON stage_duration(run_id)")
+        execute("""
+            CREATE TABLE IF NOT EXISTS role_profile (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                background TEXT NOT NULL,
+                terminology TEXT NOT NULL DEFAULT '',
+                style_guide TEXT NOT NULL DEFAULT '',
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )
+        """)
     }
 
     // MARK: - Token Usage
@@ -279,6 +291,66 @@ final class DataStore {
             }
             return true
         }
+    }
+
+    // MARK: - Professional Roles
+
+    func ensureDefaultRoleProfiles() {
+        for profile in RoleProfile.defaultProfiles where roleProfile(id: profile.id) == nil {
+            saveRoleProfile(profile)
+        }
+    }
+
+    func loadRoleProfiles() -> [RoleProfile] {
+        let sql = "SELECT id, name, symbol, background, terminology, style_guide, created_at, updated_at FROM role_profile ORDER BY created_at ASC"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        var profiles: [RoleProfile] = []
+        while sqlite3_step(stmt) == SQLITE_ROW,
+              let id = columnText(stmt, 0), let name = columnText(stmt, 1),
+              let symbol = columnText(stmt, 2), let background = columnText(stmt, 3),
+              let terminology = columnText(stmt, 4), let styleGuide = columnText(stmt, 5) {
+            profiles.append(RoleProfile(
+                id: id, name: name, symbol: symbol, background: background,
+                terminology: terminology, styleGuide: styleGuide,
+                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 6)),
+                updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 7))
+            ))
+        }
+        return profiles
+    }
+
+    func roleProfile(id: String) -> RoleProfile? {
+        loadRoleProfiles().first { $0.id == id }
+    }
+
+    func saveRoleProfile(_ profile: RoleProfile) {
+        let sql = """
+            INSERT OR REPLACE INTO role_profile
+            (id, name, symbol, background, terminology, style_guide, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?)
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, profile.id, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, profile.name, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 3, profile.symbol, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 4, profile.background, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 5, profile.terminology, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 6, profile.styleGuide, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_double(stmt, 7, profile.createdAt.timeIntervalSince1970)
+        sqlite3_bind_double(stmt, 8, profile.updatedAt.timeIntervalSince1970)
+        sqlite3_step(stmt)
+    }
+
+    func deleteRoleProfile(id: String) {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "DELETE FROM role_profile WHERE id = ?", -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+        sqlite3_step(stmt)
     }
 
     // MARK: - Helpers

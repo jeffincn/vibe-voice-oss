@@ -155,6 +155,16 @@ enum L10n {
         case panePerformance
         case uiLanguage
         case uiLanguageCaption
+        case mixedOutputStyle
+        case mixedOutputStyleCaption
+        case mixedOutputDeveloper
+        case mixedOutputSmartChinese
+        case mixedOutputOriginal
+        case fuzzyPinyin
+        case fuzzyPinyinCaption
+        case importProjectVocabulary
+        case importProjectVocabularyCaption
+        case importProjectVocabularyDone
         case settingsASRMode
         case settingsEngine
         case settingsModel
@@ -542,8 +552,8 @@ enum L10n {
         .intensityAutoCaption: "按字数自动选择轻度或内容整理",
         .intensityCleanCaption: "标点、错词、口头语与基本分段",
         .intensityUltraConciseCaption: "比内容整理更狠地压缩：只留关键要点",
-        .intensityStructuredCaption: "理解关系并重组为段落、清单或步骤",
-        .intensityRewriteCaption: "压缩冗余并改写成正式文档表达",
+        .intensityStructuredCaption: "重组为自然段落；仅当内容本身并列时才用清单",
+        .intensityRewriteCaption: "严格条目化与层级结构，改写成正式文档表达",
 
         .promptTargetChat: "通用 Chat",
         .promptTargetResearch: "Deep Research",
@@ -568,6 +578,16 @@ enum L10n {
         .panePerformance: "性能与耗时",
         .uiLanguage: "界面语言",
         .uiLanguageCaption: "只影响 App 界面文案，不影响识别语言或输出语言。",
+        .mixedOutputStyle: "拼音混合输出",
+        .mixedOutputStyleCaption: "输入法把拼音与英文专有名词拼成整行时的呈现方式；技术品牌始终保留英文。",
+        .mixedOutputDeveloper: "开发者模式（术语留英文）",
+        .mixedOutputSmartChinese: "智能中文（术语转中文）",
+        .mixedOutputOriginal: "保持混排原样",
+        .fuzzyPinyin: "模糊拼音（可选）",
+        .fuzzyPinyinCaption: "默认关闭，按标准拼音区分平翘舌。开启后仅容错 n/l 与前后鼻音（in/ing 等），不会再混淆 z/zh、c/ch、s/sh。",
+        .importProjectVocabulary: "导入当前仓库词汇",
+        .importProjectVocabularyCaption: "从本机打开的 git 仓库抽取类名、函数名和分支名，供输入法保护英文专有名词。",
+        .importProjectVocabularyDone: "已导入 %@ 条项目词汇",
         .settingsASRMode: "ASR 模式",
         .settingsEngine: "识别引擎",
         .settingsModel: "模型",
@@ -633,7 +653,7 @@ enum L10n {
         .customPrompt: "自定义整理 / 输出 Prompt",
         .customPromptCaption: "用于规定信息结构、取舍和文案风格；整理会优先采纳最后一次明确的自我修正。",
         .outputLanguageCombination: "输出语言组合",
-        .outputLanguageCombinationCaption: "原文始终排在第一段；最多再选 3 种翻译语言，共最多 4 段输出。",
+        .outputLanguageCombinationCaption: "原文和翻译可独立选择；最多选 3 种翻译语言，共最多 4 段输出。",
         .providerProfileCaption: "按模型名自动选择 Provider Profile：qwen → Qwen，nemotron → NVIDIA Nemotron，其余 → OpenAI 兼容。",
         .apiKeyStorageCaption: "API Key 保存在 macOS 钥匙串；无证书签名的临时构建会退回本机受限文件（权限 0600）。",
         .structuredEmojiCaptionOn: "分区标题会带修饰性 Emoji（如 ✅ 📌）。",
@@ -902,8 +922,8 @@ enum L10n {
         .intensityAutoCaption: "Pick light cleanup or restructure from length automatically",
         .intensityCleanCaption: "Punctuation, typos, filler words, and basic paragraphs",
         .intensityUltraConciseCaption: "Compress harder than restructure — keep only key points",
-        .intensityStructuredCaption: "Infer relationships and rebuild as paragraphs, lists, or steps",
-        .intensityRewriteCaption: "Cut redundancy and rewrite as polished document prose",
+        .intensityStructuredCaption: "Rebuild as natural paragraphs; lists only when the content is genuinely parallel",
+        .intensityRewriteCaption: "Strict itemization and hierarchy, rewritten as polished document prose",
 
         .promptTargetChat: "General chat",
         .promptTargetResearch: "Deep Research",
@@ -928,6 +948,16 @@ enum L10n {
         .panePerformance: "Performance",
         .uiLanguage: "Interface language",
         .uiLanguageCaption: "Affects App UI only — not recognition language or output language.",
+        .mixedOutputStyle: "Mixed pinyin output",
+        .mixedOutputStyleCaption: "How the input method renders a full line that mixes pinyin with English proper nouns. Brand names always stay English.",
+        .mixedOutputDeveloper: "Developer (keep terms in English)",
+        .mixedOutputSmartChinese: "Smart Chinese (translate common terms)",
+        .mixedOutputOriginal: "Keep mixed style",
+        .fuzzyPinyin: "Fuzzy pinyin (optional)",
+        .fuzzyPinyinCaption: "Off by default — standard Hanyu Pinyin keeps z/zh, c/ch, s/sh distinct. When on, only n/l and nasal finals (in/ing…) are tolerated.",
+        .importProjectVocabulary: "Import project vocabulary",
+        .importProjectVocabularyCaption: "Scan the open git repository for class, function, and branch names so the IME can protect them as proper nouns.",
+        .importProjectVocabularyDone: "Imported %@ project terms",
         .settingsASRMode: "ASR mode",
         .settingsEngine: "Engine",
         .settingsModel: "Model",
@@ -993,7 +1023,7 @@ enum L10n {
         .customPrompt: "Custom cleanup / output Prompt",
         .customPromptCaption: "Defines structure, omissions, and writing style; the last explicit correction takes priority.",
         .outputLanguageCombination: "Output language combination",
-        .outputLanguageCombinationCaption: "The original is always first; choose up to 3 translation languages for at most 4 sections.",
+        .outputLanguageCombinationCaption: "Choose the original and up to 3 translation languages independently, for at most 4 sections.",
         .providerProfileCaption: "Provider Profile is selected by model name: qwen → Qwen, nemotron → NVIDIA Nemotron, otherwise OpenAI-compatible.",
         .apiKeyStorageCaption: "API keys are stored in the macOS Keychain; ad-hoc signed builds fall back to a restricted local file (mode 0600).",
         .structuredEmojiCaptionOn: "Section headings may include decorative emoji (for example ✅ 📌).",
@@ -1256,8 +1286,8 @@ enum L10n {
         .intensityAutoCaption: "長さに応じて軽い整理か構成整理を選びます",
         .intensityCleanCaption: "句読点、誤り、フィラー、基本的な段落分けを整えます",
         .intensityUltraConciseCaption: "要点だけを残して、構成整理より強く圧縮します",
-        .intensityStructuredCaption: "関係性を読み取り、段落・リスト・手順に組み直します",
-        .intensityRewriteCaption: "重複を削り、読みやすい文書として書き直します",
+        .intensityStructuredCaption: "自然な段落に組み直します。並列の内容のときだけリストにします",
+        .intensityRewriteCaption: "厳密な箇条書きと階層構造で、正式な文書に書き直します",
         .promptTargetChat: "一般チャット",
         .promptTargetResearch: "Deep Research",
         .promptTargetImage: "画像生成",
@@ -1279,6 +1309,16 @@ enum L10n {
         .panePerformance: "パフォーマンス",
         .uiLanguage: "インターフェース言語",
         .uiLanguageCaption: "App の表示だけを変更します。認識言語と出力言語には影響しません。",
+        .mixedOutputStyle: "拼音＋英語の出力",
+        .mixedOutputStyleCaption: "拼音と英語固有名詞を一行に組み立てるときの表示方法。ブランド名は常に英語のままです。",
+        .mixedOutputDeveloper: "開発者モード（用語は英語）",
+        .mixedOutputSmartChinese: "スマート中国語（用語を翻訳）",
+        .mixedOutputOriginal: "混在スタイルを維持",
+        .fuzzyPinyin: "曖昧拼音（任意）",
+        .fuzzyPinyinCaption: "既定はオフ。標準拼音どおり平舌/翹舌を区別します。オン時も n/l と前後鼻音のみで、z/zh・c/ch・s/sh は混ぜません。",
+        .importProjectVocabulary: "プロジェクト語彙を取り込む",
+        .importProjectVocabularyCaption: "開いている git リポジトリからクラス名、関数名、ブランチ名を抽出し、IME が固有名詞として保護します。",
+        .importProjectVocabularyDone: "%@ 件のプロジェクト語彙を取り込みました",
         .settingsASRMode: "ASR モード",
         .settingsEngine: "エンジン",
         .settingsModel: "モデル",
@@ -1385,7 +1425,7 @@ enum L10n {
         .customPrompt: "カスタム整理 / 出力 Prompt",
         .customPromptCaption: "情報の構成、取捨選択、文章のスタイルを指定します。最後に明示した修正を優先します。",
         .outputLanguageCombination: "出力言語の組み合わせ",
-        .outputLanguageCombinationCaption: "原文は常に最初に出力し、翻訳言語は最大3つ、合計4セクションまで選べます。",
+        .outputLanguageCombinationCaption: "原文と最大3つの翻訳言語を個別に選択できます（最大4セクション）。",
         .providerProfileCaption: "モデル名で Provider Profile を選択します：qwen → Qwen、nemotron → NVIDIA Nemotron、それ以外は OpenAI 互換です。",
         .apiKeyStorageCaption: "API Key は macOS キーチェーンに保存します。ad-hoc 署名ビルドではローカルの制限付きファイル（パーミッション 0600）に保存します。",
         .structuredEmojiCaptionOn: "見出しに装飾用 Emoji（例：✅ 📌）を付けます。",

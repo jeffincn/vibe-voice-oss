@@ -2,10 +2,22 @@
 import AppKit
 import Foundation
 
-let outputURL = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "Resources/VibeVoiceOSS.icns")
+/// Builds `VibeVoiceOSS.icns` from the shipped `Resources/VibeTypeIcon.png`.
+let root = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent()
+    .deletingLastPathComponent()
+let sourceURL = root.appendingPathComponent("Resources/VibeTypeIcon.png")
+let outputURL = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first
+    ?? root.appendingPathComponent("Resources/VibeVoiceOSS.icns").path)
+
+guard let source = NSImage(contentsOf: sourceURL) else {
+    fputs("error: missing icon source at \(sourceURL.path)\n", stderr)
+    exit(1)
+}
+
 let fileManager = FileManager.default
 let iconsetURL = fileManager.temporaryDirectory
-    .appendingPathComponent("VibeVoiceOSS-\(UUID().uuidString).iconset")
+    .appendingPathComponent("VibeType-\(UUID().uuidString).iconset")
 try fileManager.createDirectory(at: iconsetURL, withIntermediateDirectories: true)
 defer { try? fileManager.removeItem(at: iconsetURL) }
 
@@ -36,41 +48,16 @@ for (filename, pixels) in variants {
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
     NSColor.clear.setFill()
     NSRect(x: 0, y: 0, width: pixels, height: pixels).fill()
-
-    let inset = CGFloat(pixels) * 0.07
-    let tile = NSRect(x: inset, y: inset, width: CGFloat(pixels) - inset * 2, height: CGFloat(pixels) - inset * 2)
-    let tilePath = NSBezierPath(roundedRect: tile, xRadius: CGFloat(pixels) * 0.22, yRadius: CGFloat(pixels) * 0.22)
-
-    NSGraphicsContext.current?.saveGraphicsState()
-    let shadow = NSShadow()
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.28)
-    shadow.shadowBlurRadius = CGFloat(pixels) * 0.045
-    shadow.shadowOffset = NSSize(width: 0, height: -CGFloat(pixels) * 0.018)
-    shadow.set()
-    NSColor(calibratedRed: 0.035, green: 0.038, blue: 0.042, alpha: 1).setFill()
-    tilePath.fill()
-    NSGraphicsContext.current?.restoreGraphicsState()
-
-    let symbolConfiguration = NSImage.SymbolConfiguration(
-        pointSize: CGFloat(pixels) * 0.42,
-        weight: .medium
-    ).applying(NSImage.SymbolConfiguration(paletteColors: [
-        NSColor(calibratedRed: 0.96, green: 0.96, blue: 0.93, alpha: 1)
-    ]))
-
-    if let symbol = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Vibe Voice OSS")?
-        .withSymbolConfiguration(symbolConfiguration) {
-        let side = CGFloat(pixels) * 0.52
-        let symbolRect = NSRect(
-            x: (CGFloat(pixels) - side) / 2,
-            y: (CGFloat(pixels) - side) / 2,
-            width: side,
-            height: side
-        )
-        symbol.draw(in: symbolRect)
-    }
-
+    source.draw(
+        in: NSRect(x: 0, y: 0, width: pixels, height: pixels),
+        from: .zero,
+        operation: .sourceOver,
+        fraction: 1,
+        respectFlipped: true,
+        hints: [.interpolation: NSImageInterpolation.high]
+    )
     NSGraphicsContext.restoreGraphicsState()
+
     guard let png = bitmap.representation(using: .png, properties: [:]) else {
         fatalError("Cannot encode \(pixels)px icon")
     }
@@ -83,5 +70,8 @@ process.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 process.arguments = ["-c", "icns", iconsetURL.path, "-o", outputURL.path]
 try process.run()
 process.waitUntilExit()
-guard process.terminationStatus == 0 else { fatalError("iconutil failed") }
+guard process.terminationStatus == 0 else {
+    fputs("error: iconutil failed with status \(process.terminationStatus)\n", stderr)
+    exit(1)
+}
 print(outputURL.path)

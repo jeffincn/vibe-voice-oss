@@ -72,6 +72,8 @@ final class AudioRecorder: @unchecked Sendable {
     private var routeRestoreGeneration = 0
     /// System default input from before this session repointed it.
     private var preservedInputDeviceID: AudioDeviceID?
+    /// Selected mic for the active session — re-pinned after every output-route restore.
+    private var sessionInputDevice: AudioInputDevice?
     /// Bumped on every tear-down so a delayed start won't installTap on a replaced engine.
     private var engineGeneration = 0
     private var boundDeviceID: AudioDeviceID?
@@ -135,13 +137,15 @@ final class AudioRecorder: @unchecked Sendable {
             if preservedInputDeviceID == nil {
                 preservedInputDeviceID = AudioInputDevices.defaultInputDeviceID()
             }
+            sessionInputDevice = device
         }
 
         // Pin system default *input* before (re)creating the engine so the IO unit
         // wakes up on the selected hardware. Changing the device then immediately
         // calling installTap with a stale/zero format aborts in AVFAudio.
         _ = AudioInputDevices.setDefaultInputDevice(device.id)
-        _ = AudioInputDevices.restoreOutputRoute(preservedOutput)
+        // Restoring headphones can flip a BT mic back to the built-in default — re-pin.
+        reassertSessionInput(afterOutputRestore: preservedOutput)
 
         let generation: Int = try sessionLock.withLock {
             tearDownEngineLocked()
@@ -161,9 +165,7 @@ final class AudioRecorder: @unchecked Sendable {
             guard generation == engineGeneration else {
                 throw AudioRecorderError.invalidInputFormat(device: device.name)
             }
-            if boundDeviceID != device.id {
-                try bindInputDeviceLocked(device)
-            }
+            try bindInputDeviceLocked(device)
 
             let input = engine.inputNode
             let liveHW = input.inputFormat(forBus: 0)
@@ -196,15 +198,35 @@ final class AudioRecorder: @unchecked Sendable {
                 throw error
             }
 
-            // engine.start() is when macOS often flips BT output to the HFP mic — put headphones back.
-            _ = AudioInputDevices.restoreOutputRoute(preservedOutput)
+            // engine.start() often rebinds the AU to the system default — force the
+            // Settings selection again, then put headphones back without losing the mic.
+            try bindInputDeviceLocked(device)
+            reassertSessionInputLocked(afterOutputRestore: preservedOutput)
             routeRestoreGeneration += 1
             let restoreGeneration = routeRestoreGeneration
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(350))
                 guard restoreGeneration == self.routeRestoreGeneration else { return }
-                _ = AudioInputDevices.restoreOutputRoute(preservedOutput)
+                self.reassertSessionInput(afterOutputRestore: preservedOutput)
             }
+        }
+    }
+
+    /// Restore headphones/speakers, then immediately re-pin the session mic so a
+    /// Bluetooth HFP handshake cannot leave us on the built-in default.
+    private func reassertSessionInput(afterOutputRestore snapshot: AudioOutputRouteSnapshot) {
+        sessionLock.withLock {
+            reassertSessionInputLocked(afterOutputRestore: snapshot)
+        }
+    }
+
+    private func reassertSessionInputLocked(afterOutputRestore snapshot: AudioOutputRouteSnapshot) {
+        _ = AudioInputDevices.restoreOutputRoute(snapshot)
+        guard let device = sessionInputDevice else { return }
+        _ = AudioInputDevices.setDefaultInputDevice(device.id)
+        if let audioUnit = engine.inputNode.audioUnit {
+            try? AudioInputDevices.pinInputDevice(device, on: audioUnit)
+            boundDeviceID = device.id
         }
     }
 
@@ -213,18 +235,7 @@ final class AudioRecorder: @unchecked Sendable {
         guard let audioUnit = input.audioUnit else {
             throw AudioInputDeviceError.cannotSelect(device.name, -1)
         }
-        var deviceID = device.id
-        let selectionStatus = AudioUnitSetProperty(
-            audioUnit,
-            kAudioOutputUnitProperty_CurrentDevice,
-            kAudioUnitScope_Global,
-            0,
-            &deviceID,
-            UInt32(MemoryLayout<AudioDeviceID>.size)
-        )
-        guard selectionStatus == noErr else {
-            throw AudioInputDeviceError.cannotSelect(device.name, selectionStatus)
-        }
+        _ = try AudioInputDevices.pinInputDevice(device, on: audioUnit)
         boundDeviceID = device.id
     }
 
@@ -334,6 +345,7 @@ final class AudioRecorder: @unchecked Sendable {
 
     func stop() throws -> Data {
         sessionLock.withLock { tearDownEngineLocked() }
+        clearSessionInputPin()
         restoreSystemInputRoute()
         // Removing the tap first means this sync drains every buffer already handed to
         // the queue. Reading before the tear-down dropped whatever was still in flight,
@@ -374,6 +386,7 @@ final class AudioRecorder: @unchecked Sendable {
     /// Discard an in-progress capture without requiring samples (e.g. superseded start).
     func cancel() {
         sessionLock.withLock { tearDownEngineLocked() }
+        clearSessionInputPin()
         restoreSystemInputRoute()
         processingQueue.sync {
             samples.removeAll(keepingCapacity: false)
@@ -396,6 +409,10 @@ final class AudioRecorder: @unchecked Sendable {
         tapNode = nil
         // Fresh engine avoids AVAudioEngine tap-state desync that aborts on re-install.
         engine = AVAudioEngine()
+    }
+
+    private func clearSessionInputPin() {
+        sessionLock.withLock { sessionInputDevice = nil }
     }
 
     /// Tap callback. Runs on a real-time audio thread with a hard deadline, so it does

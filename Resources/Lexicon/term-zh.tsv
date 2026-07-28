@@ -1,0 +1,57 @@
+# english_display_or_code	zh
+candidate rerank	候选重排序
+candidate ranking	候选排序
+rate limiting	限流
+load balancing	负载均衡
+machine learning	机器学习
+deep learning	深度学习
+natural language	自然语言
+speech recognition	语音识别
+input method	输入法
+code completion	代码补全
+pull request	合并请求
+continuous integration	持续集成
+feature flag	功能开关
+API key	接口密钥
+database	数据库
+cache	缓存
+latency	延迟
+throughput	吞吐
+refactor	重构
+deploy	部署
+rollback	回滚
+hotkey	快捷键
+pipeline	管线
+tokenizer	分词器
+embedding	向量嵌入
+inference	推理
+fine-tune	微调
+prompt	提示词
+endpoint	端点
+schema	方案
+bundle	应用包
+entitlements	权限清单
+notarization	公证
+codesign	代码签名
+metallib	Metal 库
+tab	Tab 键
+shift	Shift 键
+enter	回车
+escape	Esc 键
+delete	删除键
+option	Option 键
+command	Command 键
+control	Control 键
+click	点击
+scroll	滚动
+debug	调试
+build	构建
+commit	提交
+branch	分支
+merge	合并
+docker	Docker
+macos	macOS
+swift	Swift
+python	Python
+typescript	TypeScript
+javascript	JavaScript

@@ -3,6 +3,13 @@ import XCTest
 
 @MainActor
 final class StageTimingTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        // StageTimingStore is backed by the app's shared SQLite database; isolate tests
+        // from prior local runs so retention does not change expected counts.
+        DataStore.shared.clearPipelineRuns()
+    }
+
     func testRecordsPerStageDurations() async throws {
         let store = StageTimingStore()
         store.beginSession(promptTarget: "Codex")

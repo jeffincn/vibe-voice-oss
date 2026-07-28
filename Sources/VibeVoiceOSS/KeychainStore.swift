@@ -88,8 +88,12 @@ enum KeychainStore {
 
         let fromDefaults = defaults.string(forKey: legacyKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let fromLegacyApp = preferenceValue(domain: legacyPreferenceDomain, key: legacyKey)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Tests use an isolated defaults suite and temporary credential file; do not
+        // let a developer's old local-build preferences leak into their expectations.
+        let fromLegacyApp = isRunningInTests
+            ? ""
+            : preferenceValue(domain: legacyPreferenceDomain, key: legacyKey)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
         let resolved = !fromDefaults.isEmpty ? fromDefaults : fromLegacyApp
 
         // Only scrub once the value is safely somewhere else: a failed Keychain
@@ -212,9 +216,9 @@ enum KeychainStore {
         // Keep the secret unreadable while the machine is locked and out of iCloud.
         add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
         add[kSecAttrSynchronizable as String] = false
-        let status = SecItemAdd(add as CFDictionary, nil)
-        if status == errSecSuccess { return true }
-        guard status == errSecParam else { return false }
+        let addStatus = SecItemAdd(add as CFDictionary, nil)
+        if addStatus == errSecSuccess { return true }
+        guard addStatus == errSecParam else { return false }
         // A file-based login keychain rejects the data-protection attributes.
         add.removeValue(forKey: kSecAttrAccessible as String)
         add.removeValue(forKey: kSecAttrSynchronizable as String)

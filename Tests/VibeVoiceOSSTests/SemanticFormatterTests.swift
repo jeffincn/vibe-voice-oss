@@ -20,6 +20,42 @@ final class SemanticFormatterTests: XCTestCase {
         XCTAssertEqual(mode, .structured)
     }
 
+    func testAutoModeEscalatesToRewriteOnExplicitRequest() {
+        XCTAssertEqual(SemanticFormatter.resolveMode(for: "帮我总结一下今天聊的东西", intensity: .auto), .rewrite)
+        XCTAssertEqual(SemanticFormatter.resolveMode(for: "把这些列个方案出来", intensity: .auto), .rewrite)
+        XCTAssertEqual(SemanticFormatter.resolveMode(for: "结构化一下", intensity: .auto), .rewrite)
+    }
+
+    func testAutoModeDoesNotEscalateOnIncidentalKeywords() {
+        // "方案" / "整理" as subject matter must not trigger strict itemization.
+        let text = String(repeating: "这是一段需要整理的技术方案说明内容。", count: 6)
+        XCTAssertEqual(SemanticFormatter.resolveMode(for: text, intensity: .auto), .structured)
+        XCTAssertEqual(SemanticFormatter.resolveMode(for: "方案我看过了", intensity: .auto), .clean)
+    }
+
+    func testStructuredPromptPrefersProseOverForcedLists() {
+        let prompt = SemanticFormatter.systemPrompt(for: .structured, useEmoji: false)
+        XCTAssertTrue(prompt.contains("自然流畅优先于条目化"))
+        XCTAssertTrue(prompt.contains("清单是例外而非常态"))
+        XCTAssertTrue(prompt.contains("不要把普通对话自动升格为"))
+    }
+
+    func testRewritePromptOwnsStrictItemization() {
+        let prompt = SemanticFormatter.systemPrompt(for: .rewrite, useEmoji: false)
+        XCTAssertTrue(prompt.contains("严格的条目化与层级结构"))
+        XCTAssertTrue(prompt.contains("小标题"))
+    }
+
+    func testStructuredFewShotsDoNotTemplateEverythingAsTaskPlan() {
+        for example in SemanticFormatter.layoutFewShotsStructuredPlain {
+            XCTAssertFalse(example.output.contains("待办："))
+            XCTAssertFalse(example.output.contains("讨论重点："))
+        }
+        // Lists survive only where the input genuinely enumerates parallel items.
+        let listy = SemanticFormatter.layoutFewShotsStructuredPlain.filter { $0.output.contains("\n- ") }
+        XCTAssertEqual(listy.count, 1)
+    }
+
     func testManualRewriteNeverOverriddenByLength() {
         let mode = SemanticFormatter.resolveMode(for: "短", intensity: .rewrite)
         XCTAssertEqual(mode, .rewrite)

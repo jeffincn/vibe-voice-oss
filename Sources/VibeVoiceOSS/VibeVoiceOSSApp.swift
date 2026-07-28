@@ -164,6 +164,16 @@ private struct MenuPanel: View {
                     Menu {
                     Text(L10n.t(.outputLanguageCombinationCaption))
                         Divider()
+                        Button {
+                            settings.setIncludeOriginalOutput(!settings.includeOriginalOutput)
+                        } label: {
+                            Label(
+                                "原文（不翻译）",
+                                systemImage: settings.includeOriginalOutput
+                                    ? "checkmark.circle.fill"
+                                    : "circle"
+                            )
+                        }
                         ForEach(TargetLanguage.translationOptions) { language in
                             let selected = settings.isTargetLanguageSelected(language)
                             Button {
@@ -185,6 +195,34 @@ private struct MenuPanel: View {
                     }
                 }
                 .disabled(!settings.llmFeaturesAvailable)
+
+                menuPickerRow("专业角色", systemImage: "person.3.fill") {
+                    Menu {
+                        Text("最多选择 3 个候选角色；自动判定后会持续锁定。")
+                        Divider()
+                        ForEach(settings.roleProfiles) { role in
+                            let selected = settings.isRoleSelected(role)
+                            Button {
+                                settings.setRoleSelected(role, selected: !selected)
+                            } label: {
+                                Label(role.name, systemImage: selected ? "checkmark.circle.fill" : role.symbol)
+                            }
+                            .disabled(!selected && !settings.canSelectMoreRoles())
+                        }
+                        Divider()
+                        if let locked = settings.lockedRole {
+                            Button("解除锁定（\(locked.name)）") { settings.lockRole(nil) }
+                        }
+                        ForEach(settings.activeRoleCandidates) { role in
+                            Button("锁定：\(role.name)") { settings.lockRole(role) }
+                        }
+                    } label: {
+                        Text(settings.roleSummary)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(AppChrome.ink)
+                            .lineLimit(1)
+                    }
+                }
 
                 Toggle(isOn: $settings.promptOptimizeEnabled) {
                     Label(L10n.t(.promptOptimize), systemImage: "sparkles")

@@ -16,6 +16,23 @@ struct OutputModePlan: Equatable, Sendable {
         var hasCustomFormattingPrompt: Bool
         var promptOptimizeEnabled: Bool
         var promptTargetLabel: String
+        var roleModeEnabled: Bool
+
+        init(
+            llmAvailable: Bool,
+            structuredOutputEnabled: Bool,
+            hasCustomFormattingPrompt: Bool,
+            promptOptimizeEnabled: Bool,
+            promptTargetLabel: String,
+            roleModeEnabled: Bool = false
+        ) {
+            self.llmAvailable = llmAvailable
+            self.structuredOutputEnabled = structuredOutputEnabled
+            self.hasCustomFormattingPrompt = hasCustomFormattingPrompt
+            self.promptOptimizeEnabled = promptOptimizeEnabled
+            self.promptTargetLabel = promptTargetLabel
+            self.roleModeEnabled = roleModeEnabled
+        }
     }
 
     let structuredOutput: Bool
@@ -33,7 +50,12 @@ struct OutputModePlan: Equatable, Sendable {
         englishOnly = mode == .english
 
         switch mode {
-        case .conversation, .english:
+        case .conversation:
+            structuredOutput = llm && capabilities.roleModeEnabled
+            promptOptimize = false
+            smartRoute = false
+            promptTargetLabel = nil
+        case .english:
             structuredOutput = false
             promptOptimize = false
             smartRoute = false
@@ -56,7 +78,9 @@ struct OutputModePlan: Equatable, Sendable {
         case .none:
             // No explicit mode: fall back to whatever the user left switched on.
             structuredOutput = llm
-                && (capabilities.structuredOutputEnabled || capabilities.hasCustomFormattingPrompt)
+                && (capabilities.structuredOutputEnabled
+                    || capabilities.hasCustomFormattingPrompt
+                    || capabilities.roleModeEnabled)
             promptOptimize = llm && capabilities.promptOptimizeEnabled
             smartRoute = false
             promptTargetLabel = promptOptimize ? capabilities.promptTargetLabel : nil

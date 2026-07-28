@@ -1,5 +1,15 @@
 # Changelog
 
+## Vibe Voice OSS 0.8.0
+
+### Professional role context
+
+- Add a dedicated **Roles** panel with editable professional background, terminology, and expression rules.
+- Ship two editable presets: **程式工程师** for technical dictation and **外贸人员** for customer conversations, quotations, and commercial negotiation.
+- Select up to three candidate roles. With multiple candidates, the configured LLM first selects the best fit and locks it until the user changes or clears it.
+- Role context is applied to cleanup, translation, Prompt compilation, and Smart Route. Explicit user System Prompts remain higher priority.
+- The result banner can switch the locked role and reprocess the saved raw ASR transcript.
+
 ## Vibe Voice OSS 0.7.0
 
 Baseline for a fresh Voice Pipeline iteration on `feat/voice-pipeline` (merged with main 0.6.0). Build numbering restarts at 1.

@@ -98,16 +98,12 @@ enum StageTimingFormatter {
     }
 
     static func displayString(from date: Date) -> String {
-        date.formatted(
-            Date.FormatStyle()
-                .year()
-                .month(.twoDigits)
-                .day(.twoDigits)
-                .hour(.twoDigits(amPM: .omitted))
-                .minute(.twoDigits)
-                .second(.twoDigits)
-                .locale(L10n.language.locale)
-        )
+        // Date.FormatStyle crashes in the command-line XCTest host on some macOS SDKs
+        // when a custom locale is applied. A short-lived formatter is safe for exports.
+        let formatter = DateFormatter()
+        formatter.locale = L10n.language.locale
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: date)
     }
 }
 
@@ -349,7 +345,7 @@ enum StageTimingExport {
         </head>
         <body>
           <h1>Vibe Voice OSS \(htmlEscape(L10n.t(.timingHeader)))</h1>
-          <p class="meta">\(htmlEscape(L10n.t(.timingHTMLGenerated, generated, sessions.count)))</p>
+          <p class="meta">\(htmlEscape(L10n.t(.timingHTMLGenerated, generated, sessions.count.formatted())))</p>
           \(rows.isEmpty ? "<p class=\"muted\">\(htmlEscape(L10n.t(.timingHTMLNoRecords)))</p>" : rows)
         </body>
         </html>

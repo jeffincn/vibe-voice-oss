@@ -56,6 +56,8 @@ final class AudioCaptureService: @unchecked Sendable {
     private var routeRestoreGeneration = 0
     /// System default input from before this session repointed it.
     private var preservedInputDeviceID: AudioDeviceID?
+    /// Selected mic for the active session — re-pinned after every output-route restore.
+    private var sessionInputDevice: AudioInputDevice?
     private var engineGeneration = 0
     private var boundDeviceID: AudioDeviceID?
 
@@ -112,9 +114,11 @@ final class AudioCaptureService: @unchecked Sendable {
             if preservedInputDeviceID == nil {
                 preservedInputDeviceID = AudioInputDevices.defaultInputDeviceID()
             }
+            sessionInputDevice = device
         }
         _ = AudioInputDevices.setDefaultInputDevice(device.id)
-        _ = AudioInputDevices.restoreOutputRoute(preservedOutput)
+        // Restoring headphones can flip a BT mic back to the built-in default — re-pin.
+        reassertSessionInput(afterOutputRestore: preservedOutput)
 
         let generation: Int = try sessionLock.withLock {
             tearDownEngineLocked()
@@ -132,9 +136,7 @@ final class AudioCaptureService: @unchecked Sendable {
             guard generation == engineGeneration else {
                 throw AudioCaptureServiceError.invalidInputFormat(device: device.name)
             }
-            if boundDeviceID != device.id {
-                try bindInputDeviceLocked(device)
-            }
+            try bindInputDeviceLocked(device)
 
             let input = engine.inputNode
             if preferVoiceProcessing {
@@ -168,13 +170,16 @@ final class AudioCaptureService: @unchecked Sendable {
                 throw error
             }
 
-            _ = AudioInputDevices.restoreOutputRoute(preservedOutput)
+            // engine.start() often rebinds the AU to the system default — force the
+            // Settings selection again, then put headphones back without losing the mic.
+            try bindInputDeviceLocked(device)
+            reassertSessionInputLocked(afterOutputRestore: preservedOutput)
             routeRestoreGeneration += 1
             let restoreGeneration = routeRestoreGeneration
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(350))
                 guard restoreGeneration == self.routeRestoreGeneration else { return }
-                _ = AudioInputDevices.restoreOutputRoute(preservedOutput)
+                self.reassertSessionInput(afterOutputRestore: preservedOutput)
             }
 
             SpeechPipelineLog.capture.info(
@@ -186,6 +191,7 @@ final class AudioCaptureService: @unchecked Sendable {
     func stop() {
         sessionLock.withLock {
             tearDownEngineLocked()
+            sessionInputDevice = nil
         }
         restoreSystemInputRoute()
         // The tap is gone, so this drains what it already handed over and then drops the
@@ -194,23 +200,30 @@ final class AudioCaptureService: @unchecked Sendable {
         SpeechPipelineLog.capture.info("capture stopped")
     }
 
+    /// Restore headphones/speakers, then immediately re-pin the session mic so a
+    /// Bluetooth HFP handshake cannot leave us on the built-in default.
+    private func reassertSessionInput(afterOutputRestore snapshot: AudioOutputRouteSnapshot) {
+        sessionLock.withLock {
+            reassertSessionInputLocked(afterOutputRestore: snapshot)
+        }
+    }
+
+    private func reassertSessionInputLocked(afterOutputRestore snapshot: AudioOutputRouteSnapshot) {
+        _ = AudioInputDevices.restoreOutputRoute(snapshot)
+        guard let device = sessionInputDevice else { return }
+        _ = AudioInputDevices.setDefaultInputDevice(device.id)
+        if let audioUnit = engine.inputNode.audioUnit {
+            try? AudioInputDevices.pinInputDevice(device, on: audioUnit)
+            boundDeviceID = device.id
+        }
+    }
+
     private func bindInputDeviceLocked(_ device: AudioInputDevice) throws {
         let input = engine.inputNode
         guard let audioUnit = input.audioUnit else {
             throw AudioInputDeviceError.cannotSelect(device.name, -1)
         }
-        var deviceID = device.id
-        let selectionStatus = AudioUnitSetProperty(
-            audioUnit,
-            kAudioOutputUnitProperty_CurrentDevice,
-            kAudioUnitScope_Global,
-            0,
-            &deviceID,
-            UInt32(MemoryLayout<AudioDeviceID>.size)
-        )
-        guard selectionStatus == noErr else {
-            throw AudioInputDeviceError.cannotSelect(device.name, selectionStatus)
-        }
+        _ = try AudioInputDevices.pinInputDevice(device, on: audioUnit)
         boundDeviceID = device.id
     }
 

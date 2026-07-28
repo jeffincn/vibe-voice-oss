@@ -10,7 +10,8 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.asrBackend, .integrated)
         XCTAssertEqual(settings.integratedASREngine, .whisperMLX)
         XCTAssertEqual(settings.whisperKitModel, IntegratedASREngine.whisperMLX.defaultModel)
-        XCTAssertTrue(settings.model.isEmpty)
+        // API keys/models can be present in the developer Keychain; the explicit backend
+        // preference still controls whether LLM processing is enabled for this suite.
         XCTAssertEqual(settings.llmBackend, .disabled)
         XCTAssertFalse(settings.llmFeaturesAvailable)
         XCTAssertFalse(settings.effectiveTargetLanguage.translates)
@@ -53,7 +54,30 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.targetLanguageIDs, ["ko", "fr", "es"])
         XCTAssertEqual(settings.targetLanguages.map(\.id), ["ko", "fr", "es"])
         XCTAssertFalse(settings.canSelectMoreTargetLanguages)
-        XCTAssertTrue(settings.outputLanguageSummary.contains("原文 +"))
+        XCTAssertFalse(settings.includeOriginalOutput)
+        XCTAssertEqual(settings.outputLanguageSummary, "韩语（한국어） + 法语（Français） + 西班牙语（Español）")
+    }
+
+    func testOriginalCanBeAddedOrRemovedIndependentlyFromTranslations() {
+        let settings = AppSettings(defaults: isolatedDefaults())
+        settings.setTargetLanguageSelected(TargetLanguage.resolve(id: "zh-Hans"), selected: true)
+
+        XCTAssertFalse(settings.includeOriginalOutput)
+        XCTAssertEqual(settings.outputLanguageSummary, "简体中文")
+
+        settings.setIncludeOriginalOutput(true)
+        XCTAssertEqual(settings.outputLanguageSummary, "原文 + 简体中文")
+
+        settings.setIncludeOriginalOutput(false)
+        XCTAssertEqual(settings.outputLanguageSummary, "简体中文")
+    }
+
+    func testOriginalOnlyCannotBeDisabledWithoutATranslation() {
+        let settings = AppSettings(defaults: isolatedDefaults())
+        settings.setIncludeOriginalOutput(false)
+
+        XCTAssertTrue(settings.includeOriginalOutput)
+        XCTAssertEqual(settings.outputLanguageSummary, "仅原文")
     }
 
     func testLegacyBilingualPreferenceMigratesToOneTranslationTarget() {
@@ -131,10 +155,28 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "whisperKitModel"), "large-v3-v20240930_626MB")
     }
 
+    func testRoleCandidatesAreLimitedToThreeAndClearingSelectionUnlocksRole() {
+        let settings = AppSettings(defaults: isolatedDefaults())
+        let first = RoleProfile.softwareEngineer
+        let second = RoleProfile.foreignTrade
+        settings.setRoleSelected(first, selected: true)
+        settings.setRoleSelected(second, selected: true)
+        settings.lockRole(first)
+
+        XCTAssertEqual(settings.activeRoleCandidates.map(\.id), [first.id, second.id])
+        XCTAssertEqual(settings.lockedRole?.id, first.id)
+
+        settings.setRoleSelected(first, selected: false)
+        XCTAssertNil(settings.lockedRole)
+        XCTAssertEqual(settings.candidateRoleIDs, [second.id])
+    }
+
     private func isolatedDefaults() -> UserDefaults {
         let suite = "VibeVoiceOSS.Tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
+        // Do not let a developer machine's shared Keychain model migrate this isolated suite into API mode.
+        defaults.set(LanguageModelBackend.disabled.rawValue, forKey: "llmBackend")
         return defaults
     }
 }

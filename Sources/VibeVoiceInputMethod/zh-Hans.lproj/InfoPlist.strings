@@ -1,0 +1,5 @@
+/* The input source list shows the raw identifier unless the bundle localizes it under that identifier. */
+"CFBundleName" = "Vibe Type";
+"CFBundleDisplayName" = "Vibe Type";
+"app.vibevoice.oss.inputmethod.pinyin" = "Vibe Type";
+"app.vibevoice.oss.inputmethod.pinyin.Hans" = "Vibe Type - 简体";

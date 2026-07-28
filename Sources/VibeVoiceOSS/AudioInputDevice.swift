@@ -167,6 +167,53 @@ enum AudioInputDevices {
         return setDefaultDevice(kAudioHardwarePropertyDefaultInputDevice, id: id)
     }
 
+    /// Read which input `AudioUnit` is currently bound to (HAL CurrentDevice).
+    static func currentInputDeviceID(of audioUnit: AudioUnit) -> AudioDeviceID? {
+        var deviceID = AudioDeviceID(kAudioObjectUnknown)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            &size
+        )
+        guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
+        return deviceID
+    }
+
+    /// Bind an IO unit to `device`, and pin it as the system default input.
+    ///
+    /// Restoring headphones after a Bluetooth HFP mic opens often flips the system
+    /// default input back to the built-in mic. Callers must re-run this after every
+    /// `restoreOutputRoute` for the rest of the capture session.
+    @discardableResult
+    static func pinInputDevice(
+        _ device: AudioInputDevice,
+        on audioUnit: AudioUnit?
+    ) throws -> Bool {
+        guard isAlive(deviceID: device.id) else {
+            throw AudioInputDeviceError.unavailable(device.name)
+        }
+        let defaultPinned = setDefaultInputDevice(device.id)
+        guard let audioUnit else { return defaultPinned }
+
+        var deviceID = device.id
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else {
+            throw AudioInputDeviceError.cannotSelect(device.name, status)
+        }
+        return defaultPinned
+    }
+
     static func isAlive(deviceID: AudioDeviceID) -> Bool {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyDeviceIsAlive,

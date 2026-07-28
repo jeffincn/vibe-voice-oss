@@ -30,6 +30,7 @@ final class ResultBannerController {
             rootView: ResultBannerView(
                 onCopy: { [weak self] in self?.appState?.copyLastTranscript() },
                 onReformat: { [weak self] in self?.appState?.reformatLastTranscript() },
+                onSelectRole: { [weak self] role in self?.appState?.rerunLastTranscript(using: role) },
                 onDismiss: { [weak self] in self?.hide() }
             )
             .environmentObject(appState)
@@ -104,6 +105,7 @@ private struct ResultBannerView: View {
     @EnvironmentObject private var appState: AppState
     let onCopy: () -> Void
     let onReformat: () -> Void
+    let onSelectRole: (RoleProfile?) -> Void
     let onDismiss: () -> Void
 
     private var preview: String {
@@ -142,6 +144,22 @@ private struct ResultBannerView: View {
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    if appState.settings.roleModeEnabled {
+                        Menu {
+                            Button("自动判定") { onSelectRole(nil) }
+                            ForEach(appState.settings.activeRoleCandidates) { role in
+                                Button(role.name) { onSelectRole(role) }
+                            }
+                        } label: {
+                            Label(
+                                appState.settings.lockedRole?.name ?? "自动判定角色",
+                                systemImage: appState.settings.lockedRole?.symbol ?? "person.3.fill"
+                            )
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
                 }
             }
 

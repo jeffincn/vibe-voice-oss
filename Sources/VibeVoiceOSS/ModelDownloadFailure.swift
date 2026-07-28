@@ -55,8 +55,8 @@ enum ModelDownloadFailure: Equatable, Sendable {
             let nsError = candidate as NSError
             switch nsError.domain {
             case NSURLErrorDomain:
-                if let code = URLError.Code(rawValue: nsError.code),
-                   let classified = classify(code) {
+                let code = URLError.Code(rawValue: nsError.code)
+                if let classified = classify(code) {
                     return classified
                 }
             case NSCocoaErrorDomain:

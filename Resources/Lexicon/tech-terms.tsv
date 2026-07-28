@@ -1,0 +1,65 @@
+# code	display	kind
+candidatererank	candidate rerank	term
+candidateranking	candidate ranking	term
+ratelimiting	rate limiting	term
+loadbalancing	load balancing	term
+machinelearning	machine learning	term
+deeplearning	deep learning	term
+naturallanguage	natural language	term
+speechrecognition	speech recognition	term
+inputmethod	input method	term
+codecompletion	code completion	term
+pullrequest	pull request	term
+continuousintegration	continuous integration	term
+featureflag	feature flag	term
+apikey	API key	term
+json	JSON	term
+yaml	YAML	term
+http	HTTP	term
+https	HTTPS	term
+websocket	WebSocket	term
+restapi	REST API	term
+grpc	gRPC	term
+protobuf	protobuf	term
+database	database	term
+cache	cache	term
+latency	latency	term
+throughput	throughput	term
+refactor	refactor	term
+deploy	deploy	term
+rollback	rollback	term
+hotkey	hotkey	term
+pipeline	pipeline	term
+tokenizer	tokenizer	term
+embedding	embedding	term
+inference	inference	term
+finetune	fine-tune	term
+prompt	prompt	term
+endpoint	endpoint	term
+schema	schema	term
+bundle	bundle	term
+entitlements	entitlements	term
+notarization	notarization	term
+codesign	codesign	term
+metallib	metallib	term
+tab	tab	term
+shift	Shift	term
+enter	Enter	term
+escape	Esc	term
+delete	Delete	term
+option	Option	term
+command	Command	term
+control	Control	term
+click	click	term
+scroll	scroll	term
+debug	debug	term
+build	build	term
+commit	commit	term
+branch	branch	term
+merge	merge	term
+docker	Docker	term
+macos	macOS	term
+swift	Swift	term
+python	Python	term
+typescript	TypeScript	term
+javascript	JavaScript	term

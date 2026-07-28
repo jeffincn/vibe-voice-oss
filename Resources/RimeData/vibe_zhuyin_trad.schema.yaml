@@ -1,0 +1,55 @@
+# Traditional Zhuyin (Bopomofo) schema. The alphabet is the standard Rime
+# Zhuyin set; the extension can map a hardware/alternate Zhuyin layout to it.
+schema:
+  schema_id: vibe_zhuyin_trad
+  name: Vibe 繁體注音
+  version: "0.7.0"
+  author: [Vibe Voice OSS contributors]
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [注音, 英文]
+engine:
+  processors: [ascii_composer, recognizer, key_binder, speller, punctuator, selector, navigator, express_editor]
+  segmentors: [ascii_segmentor, matcher, abc_segmentor, punct_segmentor, fallback_segmentor]
+  translators: [punct_translator, script_translator, table_translator@phrase, table_translator@emoji]
+  filters: [simplifier]
+key_binder:
+  import_preset: default
+recognizer:
+  import_preset: default
+speller:
+  alphabet: ㄅㄆㄇㄈㄉㄊㄋㄌㄍㄎㄏㄐㄑㄒㄓㄔㄕㄖㄗㄘㄙㄚㄛㄜㄝㄞㄟㄠㄡㄢㄣㄤㄥㄦㄧㄨㄩ
+  delimiter: " "
+punctuator:
+  half_shape:
+    ",": "，"
+    ".": "。"
+    "!": "！"
+    "?": "？"
+    ":": "："
+    ";": "；"
+    "\\": "、"
+translator:
+  dictionary: pinyin_simp
+  user_dict: vibe_user
+  enable_user_dict: true
+  enable_sentence: true
+  preedit_format:
+    - xform/ㄅ/b/
+    - xform/ㄆ/p/
+    - xform/ㄇ/m/
+    - xform/ㄈ/f/
+phrase:
+  dictionary: vibe_phrases
+  enable_completion: true
+  enable_sentence: false
+  initial_quality: 1.2
+emoji:
+  dictionary: vibe_emoji
+  enable_completion: true
+  enable_sentence: false
+  initial_quality: 1.1
+simplifier:
+  option_name: traditional
+  opencc_config: s2t.json

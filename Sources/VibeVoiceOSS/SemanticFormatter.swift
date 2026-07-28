@@ -45,6 +45,8 @@ struct SemanticFormatterConfiguration: Sendable {
     let apiKey: String
     let mode: StructureMode
     var customSystemPrompt: String = ""
+    /// Professional context, appended after the user's custom instruction.
+    var roleContextPrompt: String = ""
     /// When set, structured cleanup must emit this language (e.g. Simplified Chinese).
     var outputLanguageDirective: String? = nil
     /// Decorative emoji in structured / ultra / rewrite layouts. Default off.
@@ -78,10 +80,11 @@ enum SemanticFormatter {
     }
 
     /// Pick intensity from character count when user leaves mode on Auto.
+    /// - explicit "summarize / list the options / structure this" request → rewrite
     /// - <20 → clean
     /// - 20…100 → clean (short chat) unless multi-paragraph cues → structured
     /// - >100 → structured
-    /// `ultraConcise` / `rewrite` are never chosen automatically.
+    /// `ultraConcise` is never chosen automatically; `rewrite` only on an explicit spoken request.
     static func resolveMode(for text: String, intensity: StructureIntensity) -> StructureMode {
         switch intensity {
         case .clean: return .clean
@@ -90,6 +93,8 @@ enum SemanticFormatter {
         case .rewrite: return .rewrite
         case .auto:
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Strict itemization is opt-in: the speaker has to ask for it out loud.
+            if looksLikeDeepTidyRequest(trimmed) { return .rewrite }
             let count = trimmed.count
             if count < 20 { return .clean }
             if count > 100 { return .structured }
@@ -107,6 +112,22 @@ enum SemanticFormatter {
         }
         let newlines = text.filter { $0.isNewline }.count
         return hitCount >= 2 || newlines >= 2
+    }
+
+    /// Phrases that must stay specific enough not to fire on ordinary dictation
+    /// that merely mentions 方案 / 整理 as subject matter.
+    private static let deepTidyCues = [
+        "总结一下", "总结下", "帮我总结", "做个总结", "作个总结", "小结一下", "总结成",
+        "列出方案", "列个方案", "列一下方案", "列出要点", "列个清单", "列成清单",
+        "结构化", "整理成清单", "整理成文档", "整理成方案", "整理成报告",
+        "归纳一下", "提炼要点", "改写成正式", "写成正式",
+        "summarize this", "summarise this", "give me a summary",
+        "list the options", "structure this", "make this formal",
+    ]
+
+    static func looksLikeDeepTidyRequest(_ text: String) -> Bool {
+        let lowered = text.lowercased()
+        return deepTidyCues.contains { lowered.contains($0) }
     }
 
     /// Insert a newline after sentence terminators so the next sentence starts on a new line.
@@ -258,37 +279,29 @@ enum SemanticFormatter {
         FewShotExample(
             input: "嗯那个明天下午三点跟产品开个会吧，主要聊一下首页改版，还有就是埋点可能要补一下，另外设计稿我可能周五才能给到你们，你们先看看现有的交互。",
             output: """
-            📌 明天下午 3 点，和产品开首页改版会。
+            📌 明天下午 3 点和产品开个会，主要聊首页改版，顺便确认一下埋点要不要补。
 
-            🎯 讨论重点：
-            - 首页改版方案
-            - 埋点是否需要补齐（待确认）
-
-            ⚠️ 设计稿可能周五才能给到；可先看现有交互。
+            设计稿可能周五才能给到你们，在那之前先看看现有的交互。
             """
         ),
         FewShotExample(
             input: "今天把登录超时修了，然后导出 CSV 还没做，哦对了文档也要更新一下，接口那块小王说可能下周才有空。",
             output: """
-            ✅ 登录超时已修好。
+            ✅ 登录超时今天修好了。
 
-            📝 待办：
+            还没做完的有：
             - 导出 CSV
             - 更新文档
 
-            💡 接口改动：小王可能下周才有空。
+            接口那块小王说可能下周才有空。
             """
         ),
         FewShotExample(
             input: "我觉得这个页面加载有点慢，用户一进来就转圈，可能是接口慢也可能是前端渲染问题，你帮我看看吧。",
             output: """
-            🔍 页面一进就转圈，加载偏慢。
+            🔍 这个页面加载有点慢，用户一进来就转圈。
 
-            💬 可能原因（待确认）：
-            - 接口慢
-            - 前端渲染慢
-
-            ✨ 请先对照现有实现排查，再给结论。
+            可能是接口慢，也可能是前端渲染的问题，还没确认。麻烦你先照着现有实现排查一下再给结论。
             """
         ),
     ]
@@ -297,37 +310,29 @@ enum SemanticFormatter {
         FewShotExample(
             input: "嗯那个明天下午三点跟产品开个会吧，主要聊一下首页改版，还有就是埋点可能要补一下，另外设计稿我可能周五才能给到你们，你们先看看现有的交互。",
             output: """
-            明天下午 3 点，和产品开首页改版会。
+            明天下午 3 点和产品开个会，主要聊首页改版，顺便确认一下埋点要不要补。
 
-            讨论重点：
-            - 首页改版方案
-            - 埋点是否需要补齐（待确认）
-
-            注意：设计稿可能周五才能给到；可先看现有交互。
+            设计稿可能周五才能给到你们，在那之前先看看现有的交互。
             """
         ),
         FewShotExample(
             input: "今天把登录超时修了，然后导出 CSV 还没做，哦对了文档也要更新一下，接口那块小王说可能下周才有空。",
             output: """
-            登录超时已修好。
+            登录超时今天修好了。
 
-            待办：
+            还没做完的有：
             - 导出 CSV
             - 更新文档
 
-            接口改动：小王可能下周才有空。
+            接口那块小王说可能下周才有空。
             """
         ),
         FewShotExample(
             input: "我觉得这个页面加载有点慢，用户一进来就转圈，可能是接口慢也可能是前端渲染问题，你帮我看看吧。",
             output: """
-            页面一进就转圈，加载偏慢。
+            这个页面加载有点慢，用户一进来就转圈。
 
-            可能原因（待确认）：
-            - 接口慢
-            - 前端渲染慢
-
-            请先对照现有实现排查，再给结论。
+            可能是接口慢，也可能是前端渲染的问题，还没确认。麻烦你先照着现有实现排查一下再给结论。
             """
         ),
     ]
@@ -488,6 +493,12 @@ enum SemanticFormatter {
         - 例如「下午三点看比赛，算了四点，还是改明天上午，应该是看电影」应整理为「我打算明天上午去看电影。」
         - 只有当最后表达仍不确定时，才保留「可能、待确认」等不确定性，不得擅自补全缺失信息。
 
+        体裁保持（必须遵守）：
+        - 保持原文的说话体裁：闲聊就是闲聊，说明就是说明。
+        - 不要把普通对话自动升格为「命令模式」或「任务解决模式」，
+          例如擅自生成项目计划、日程日历、里程碑、责任人、优先级或会议纪要模板。
+        - 只有使用者自己明确要求「总结、列方案、结构化」时，才输出严格的条目化与层级结构。
+
         安全边界（必须遵守）：
         - 必须区分事实、决定、建议、倾向和不确定判断。
         - 不能把「可能、考虑、倾向、建议」改写成已经确定的结论。
@@ -565,27 +576,31 @@ enum SemanticFormatter {
             if useEmoji {
                 formHints = """
                 输出形式由语义决定，不要机械地为所有内容增加「摘要、重点、结论」：
-                - 简短消息 → 一至两个短段，行首仍可带 emoji；
+                - 默认写成自然短段落，读起来像一个人在说话，而不是像项目文档；
+                - 简短消息 → 一至两个短段，行首可带 emoji；
                 - 观点或分析 → emoji 主题 + 分段论述；
-                - 多个并列事项 → emoji 小标题 + 项目符号清单；
-                - 有先后关系 → emoji + 编号步骤；
-                - 会议讨论 → ✅ 结论 / 📝 待办；
-                - 技术内容 → 📌 背景 / 🔍 问题 / 💡 方案；
+                - 仅当原文本身就在并列多个事项时 → emoji 小标题 + 项目符号清单；
+                - 仅当原文本身就有先后顺序时 → emoji + 编号步骤；
+                - 技术内容 → 📌 背景 / 🔍 问题 / 💡 方案（仅当这几块原文都有）；
                 - 混乱的灵感 → ✨ 主题分组。
 
+                清单是例外而非常态：两三个短段能说清楚，就不要拆成条目。
+                不要给一句普通的话套上「结论 / 待办 / 下一步」这类模板标题。
                 请严格对照样例：有分区就要有修饰性 emoji；段落之间必须空行；不要输出干巴巴的一整段纯文字。
                 """
             } else {
                 formHints = """
                 输出形式由语义决定，不要机械地为所有内容增加「摘要、重点、结论」：
+                - 默认写成自然短段落，读起来像一个人在说话，而不是像项目文档；
                 - 简短消息 → 一至两个短段；
                 - 观点或分析 → 小标题 + 分段论述；
-                - 多个并列事项 → 小标题 + 项目符号清单；
-                - 有先后关系 → 编号步骤；
-                - 会议讨论 → 结论 / 待办；
-                - 技术内容 → 背景 / 问题 / 方案；
+                - 仅当原文本身就在并列多个事项时 → 小标题 + 项目符号清单；
+                - 仅当原文本身就有先后顺序时 → 编号步骤；
+                - 技术内容 → 背景 / 问题 / 方案（仅当这几块原文都有）；
                 - 混乱的灵感 → 主题分组。
 
+                清单是例外而非常态：两三个短段能说清楚，就不要拆成条目。
+                不要给一句普通的话套上「结论 / 待办 / 下一步」这类模板标题。
                 请严格对照样例：短段换行、主题之间空行分段；可用中文小标题；不要使用 emoji；不要输出一整段无换行正文。
                 """
             }
@@ -596,12 +611,17 @@ enum SemanticFormatter {
             \(chatLayoutRules(useEmoji: useEmoji))
 
             当前强度：内容整理（structured）
+            这是默认强度，目标是「读起来顺」，不是「排得整齐」。
             在轻度整理基础上，额外允许：
-            - 理解段落与信息关系，并按语义重组为可读段落；
+            - 理解段落与信息关系，并按语义重组为可读的短段落；
+            - 删除可由上下文推断的冗余主语、口头禅与重复表达，让句子自然紧凑；
             - 根据语义关系调整表达顺序，但不得改变原有结论；
-            - 使用标题、项目符号或编号步骤（仅在内容确实需要时）；
+            - 仅当内容确实并列或确实有先后时，才使用小标题、项目符号或编号步骤；
             - 提取明确的结论与待办（仅当原文已经表达这些内容时）；
             - 长文必须段落化：相关句子组成段，段与段之间空行。
+
+            自然流畅优先于条目化，不强制逐条罗列。
+            严格的条目化与层级结构留给「深度整理」，本强度不要主动使用。
 
             \(formHints)
             """
@@ -616,10 +636,12 @@ enum SemanticFormatter {
             \(chatLayoutRules(useEmoji: useEmoji))
 
             当前强度：深度整理（rewrite）
+            使用者已明确要求总结 / 列方案 / 结构化，因此这里才启用严格的条目化与层级结构。
             在内容整理基础上，额外允许：
             - 更明显地改写措辞，使其更正式、紧凑；
             - 压缩冗余；
             - 重构文章组织为清晰段落；
+            - 主动使用小标题 + 项目符号或编号步骤，建立明确的层级；
             - 转换为适合邮件、报告或方案文档的表达；
             - 长文必须分段输出：每个段落表达一个完整意思，段与段之间空行。
 
@@ -673,13 +695,13 @@ enum SemanticFormatter {
                 body += """
 
 
-                请按「内容整理」输出：按语义重组为短段 / 清单 / 步骤；多句必须换行；主题之间空行分段；分区标题带常规修饰性 emoji；不要纯文字干巴一整段。
+                请按「内容整理」输出：默认重组为自然短段，只有原文本身并列或有先后时才用清单 / 步骤；多句必须换行；主题之间空行分段；分区标题带常规修饰性 emoji；不要纯文字干巴一整段。
                 """
             } else {
                 body += """
 
 
-                请按「内容整理」输出：按语义重组为短段 / 清单 / 步骤；多句必须换行；主题之间空行分段；可用中文小标题；不要使用 emoji；不要纯文字干巴一整段。
+                请按「内容整理」输出：默认重组为自然短段，只有原文本身并列或有先后时才用清单 / 步骤；多句必须换行；主题之间空行分段；可用中文小标题；不要使用 emoji；不要纯文字干巴一整段。
                 """
             }
         case .rewrite:
@@ -687,13 +709,13 @@ enum SemanticFormatter {
                 body += """
 
 
-                请按「深度整理」输出：改写成正式短段；长文必须段落化；段与段之间空行；分区标题带常规修饰性 emoji；不要纯文字干巴一整段。
+                请按「深度整理」输出：改写成正式短段，并建立小标题 + 条目的层级结构；长文必须段落化；段与段之间空行；分区标题带常规修饰性 emoji；不要纯文字干巴一整段。
                 """
             } else {
                 body += """
 
 
-                请按「深度整理」输出：改写成正式短段；长文必须段落化；段与段之间空行；不要使用 emoji；不要纯文字干巴一整段。
+                请按「深度整理」输出：改写成正式短段，并建立小标题 + 条目的层级结构；长文必须段落化；段与段之间空行；不要使用 emoji；不要纯文字干巴一整段。
                 """
             }
         }
@@ -706,16 +728,17 @@ enum SemanticFormatter {
         mode: StructureMode,
         outputLanguageDirective: String? = nil,
         useEmoji: Bool = false,
-        customSystemPrompt: String = ""
+        customSystemPrompt: String = "",
+        roleContextPrompt: String = ""
     ) -> [[String: String]] {
         var messages: [[String: String]] = [
             [
                 "role": "system",
-                "content": TranslationClient.withCustomSystemPrompt(systemPrompt(
+                "content": TranslationClient.appendingRoleContext(to: TranslationClient.withCustomSystemPrompt(systemPrompt(
                     for: mode,
                     outputLanguageDirective: outputLanguageDirective,
                     useEmoji: useEmoji
-                ), custom: customSystemPrompt)
+                ), custom: customSystemPrompt), role: roleContextPrompt)
             ]
         ]
 
@@ -822,7 +845,8 @@ struct SemanticFormatterClient: Sendable {
                 mode: configuration.mode,
                 outputLanguageDirective: configuration.outputLanguageDirective,
                 useEmoji: configuration.useEmoji,
-                customSystemPrompt: configuration.customSystemPrompt
+                customSystemPrompt: configuration.customSystemPrompt,
+                roleContextPrompt: configuration.roleContextPrompt
             ),
             temperature: temperature,
             topP: 0.85,

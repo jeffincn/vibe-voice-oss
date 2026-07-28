@@ -1,0 +1,76 @@
+#!/bin/zsh
+set -euo pipefail
+
+INPUT_METHOD="/Library/Input Methods/VibeVoiceInputMethod.app"
+INPUT_METHOD_EXECUTABLE="$INPUT_METHOD/Contents/MacOS/VibeVoiceInputMethod"
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+if [[ ! -d "$INPUT_METHOD" ]]; then
+    echo "error: input method payload was not installed at $INPUT_METHOD" >&2
+    exit 1
+fi
+
+/usr/bin/xattr -cr "$INPUT_METHOD"
+/usr/bin/codesign --verify --deep --strict "$INPUT_METHOD"
+"$LSREGISTER" -f "$INPUT_METHOD"
+
+# Migrate away from the former per-user installation. Input methods delivered
+# by Installer belong in /Library/Input Methods, matching Apple's input-source
+# discovery path and packages such as Squirrel.
+console_user=$(/usr/bin/stat -f '%Su' /dev/console)
+console_uid=$(/usr/bin/stat -f '%u' /dev/console)
+
+# Text Input Sources lives in the logged-in user's GUI session. `sudo -u` only
+# changes the uid and leaves the process in the installer's bootstrap namespace,
+# where TISEnableInputSource and TISSelectInputSource fail with -50; joining the
+# session with `launchctl asuser` is what makes them take effect.
+run_as_console_user() {
+    /bin/launchctl asuser "$console_uid" /usr/bin/sudo -u "$console_user" "$@"
+}
+
+if [[ -n "$console_user" && "$console_user" != "root" && "$console_user" != "loginwindow" ]]; then
+    user_home=$(/usr/bin/dscl . -read "/Users/$console_user" NFSHomeDirectory 2>/dev/null \
+        | /usr/bin/awk '{print $2}')
+    if [[ -n "$user_home" ]]; then
+        /bin/rm -rf "$user_home/Library/Input Methods/VibeVoiceInputMethod.app"
+
+        # Text Input Sources caches the list of installed bundles. Removing only
+        # these generated cache files forces an immediate rescan without changing
+        # the user's selected or enabled input-source preferences.
+        user_cache=$(run_as_console_user /usr/bin/getconf DARWIN_USER_CACHE_DIR 2>/dev/null || true)
+        if [[ -n "$user_cache" ]]; then
+            /bin/rm -f \
+                "${user_cache}com.apple.IntlDataCache.le" \
+                "${user_cache}com.apple.IntlDataCache.le.kbdx"
+        fi
+    fi
+
+    # Match Squirrel's installation flow: registration is performed by the
+    # signed input-method executable itself, then the logged-in user enables and
+    # selects the mode. Calling these APIs from an unrelated helper returns
+    # success but macOS does not enable the parent input method.
+    "$INPUT_METHOD_EXECUTABLE" --register-input-source
+    # An upgrade leaves the previous build running and serving the current
+    # session. macOS relaunches the server on demand, so killing it is what
+    # makes the new binary take effect without a logout.
+    /usr/bin/killall -u "$console_user" VibeVoiceInputMethod 2>/dev/null || true
+    /usr/bin/killall -u "$console_user" TextInputMenuAgent 2>/dev/null || true
+    /usr/bin/killall -u "$console_user" TextInputSwitcher 2>/dev/null || true
+
+    # Selecting the mode is what makes it reachable: because the mode declares
+    # tsInputModeDefaultStateKey, macOS already counts it as enabled and so
+    # hides it from the "Add Input Source" sheet, leaving the user no way to
+    # turn it on by hand. A failure here is recoverable after logout, so it must
+    # not fail the installation.
+    if ! run_as_console_user "$INPUT_METHOD_EXECUTABLE" --enable-input-source; then
+        echo "warning: could not enable the input source; logout will refresh it" >&2
+    fi
+    if ! run_as_console_user "$INPUT_METHOD_EXECUTABLE" --select-input-source; then
+        echo "warning: could not select the input source; pick it from the Input menu" >&2
+    fi
+else
+    "$INPUT_METHOD_EXECUTABLE" --register-input-source
+fi
+
+echo "Installed VibeVoice Input Method at $INPUT_METHOD"
+exit 0

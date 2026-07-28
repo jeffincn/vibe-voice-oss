@@ -1,0 +1,10 @@
+{
+  "modelID": "vibe-candidate-ranker",
+  "version": "0.2.0",
+  "format": "coreml",
+  "input": "features[256]",
+  "output": "score[1]",
+  "minOS": "15.0",
+  "parameters": 256,
+  "purpose": "Dialogue-aware Rime candidate scorer with mixed-reasoning markers; never generates text"
+}

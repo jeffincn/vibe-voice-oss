@@ -1,0 +1,8 @@
+#!/bin/zsh
+set -euo pipefail
+
+# InputMethodKit may keep the old executable alive while Installer replaces the
+# bundle. Stopping it avoids running mixed old/new code after an upgrade.
+/usr/bin/killall VibeVoiceInputMethod 2>/dev/null || true
+
+exit 0

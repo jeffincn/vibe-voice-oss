@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import Foundation
 import ServiceManagement
+import VibeVoiceInputShared
 
 @MainActor
 final class AppState: ObservableObject {
@@ -135,6 +136,8 @@ final class AppState: ObservableObject {
     @Published private(set) var partialTranscript = ""
     @Published private(set) var stableTranscript = ""
     @Published private(set) var lastTranscript = ""
+    /// Untouched final ASR text, retained for role switching and safe reprocessing.
+    @Published private(set) var lastRawTranscript = ""
     @Published private(set) var transcriptCopied = false
     @Published private(set) var launchAtLoginEnabled = false
     @Published private(set) var launchAtLoginMessage = ""
@@ -154,8 +157,12 @@ final class AppState: ObservableObject {
     private var lastPipelineStatusAt = Date.distantPast
     private let translator = TranslationClient()
     private let formatter = SemanticFormatterClient()
+    private let roleResolver = RoleResolver()
     private let hotKey: HotKeyManager
     private var inputTargetPID: pid_t?
+    private let inputMethodBridge = InputMethodBridgeStore()
+    private var inputMethodRequestID: UUID?
+    private var inputMethodMonitorTask: Task<Void, Never>?
     private lazy var recordingHUD = RecordingHUDController(appState: self)
     private lazy var resultBanner = ResultBannerController(appState: self)
     private var transcriptionTask: Task<Void, Never>?
@@ -201,6 +208,9 @@ final class AppState: ObservableObject {
         let apiKey: String
         let streamingMode: StreamingMode
         let outputMode: RecordingOutputMode?
+        let roleCandidates: [RoleProfile]
+        let lockedRole: RoleProfile?
+        let inputMethodRequestID: UUID?
     }
 
     init() {
@@ -256,6 +266,30 @@ final class AppState: ObservableObject {
                 try? SMAppService.mainApp.register()
                 self.launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
             }
+        }
+        inputMethodMonitorTask = Task { @MainActor [weak self] in
+            await self?.monitorInputMethodBridge()
+        }
+    }
+
+    private func monitorInputMethodBridge() async {
+        while !Task.isCancelled {
+            _ = inputMethodBridge.recoverInterruptedWork()
+            if let state = inputMethodBridge.load() {
+                switch state.status {
+                case .requested where phase == .idle:
+                    inputMethodRequestID = state.requestID
+                    _ = inputMethodBridge.update(.recording, from: state)
+                    await beginRecording(outputMode: RecordingOutputMode(rawValue: state.mode.rawValue) ?? .smartRoute)
+                case .stopRequested where phase == .recording:
+                    finishRecording()
+                    _ = inputMethodBridge.update(.processing, from: state)
+                case .stopRequested where phase == .idle:
+                    _ = inputMethodBridge.update(.failed, from: state, message: "没有正在进行的录音")
+                default: break
+                }
+            }
+            try? await Task.sleep(for: .milliseconds(150))
         }
     }
 
@@ -313,6 +347,7 @@ final class AppState: ObservableObject {
         partialTranscript = ""
         stableTranscript = ""
         lastTranscript = ""
+        lastRawTranscript = ""
         transcriptCopied = false
         resultBanner.hide()
         phase = .transcribing // "starting" affordance while models/mic prepare
@@ -501,6 +536,7 @@ final class AppState: ObservableObject {
         }
 
         lastTranscript = text
+        lastRawTranscript = text
         partialTranscript = text
         stableTranscript = text
         connectionMessage = L10n.t(.phaseStructuring)
@@ -509,13 +545,15 @@ final class AppState: ObservableObject {
         processingGeneration += 1
         let outputMode = sessionOutputMode
         let plan = OutputModePlan(mode: outputMode, capabilities: settings.outputModeCapabilities)
+        let plannedTargetLanguages = plan.targetLanguages(fallback: settings.effectiveTargetLanguages)
         let snapshot = ProcessingSnapshot(
             wav: nil,
             transcript: text,
             generation: processingGeneration,
             configuration: settings.configuration,
-            targetLanguages: plan.targetLanguages(fallback: settings.effectiveTargetLanguages),
-            includeOriginal: plan.includeOriginal,
+            targetLanguages: plannedTargetLanguages,
+            includeOriginal: plan.includeOriginal
+                && (settings.includeOriginalOutput || plannedTargetLanguages.isEmpty),
             promptOptimizeEnabled: plan.promptOptimize,
             structuredOutputEnabled: plan.structuredOutput,
             structuredEmojiEnabled: settings.structuredEmojiEnabled,
@@ -528,7 +566,10 @@ final class AppState: ObservableObject {
             languageModel: settings.translationModel,
             apiKey: settings.llmApiKey,
             streamingMode: .batch,
-            outputMode: outputMode
+            outputMode: outputMode,
+            roleCandidates: settings.activeRoleCandidates,
+            lockedRole: settings.lockedRole,
+            inputMethodRequestID: nil
         )
         sessionOutputMode = nil
         transcriptionTask?.cancel()
@@ -654,6 +695,7 @@ final class AppState: ObservableObject {
             audioLevel = 0
             audioBands = .silent
             lastTranscript = ""
+            lastRawTranscript = ""
             partialTranscript = ""
             stableTranscript = ""
             transcriptCopied = false
@@ -710,13 +752,15 @@ final class AppState: ObservableObject {
             let outputMode = sessionOutputMode
             let plan = OutputModePlan(mode: outputMode, capabilities: settings.outputModeCapabilities)
             let streamingMode = settings.asrBackend == .api ? mode : .batch
+            let plannedTargetLanguages = plan.targetLanguages(fallback: settings.effectiveTargetLanguages)
             let snapshot = ProcessingSnapshot(
                 wav: wav,
                 transcript: nil,
                 generation: processingGeneration,
                 configuration: settings.configuration,
-                targetLanguages: plan.targetLanguages(fallback: settings.effectiveTargetLanguages),
-                includeOriginal: plan.includeOriginal,
+                targetLanguages: plannedTargetLanguages,
+                includeOriginal: plan.includeOriginal
+                    && (settings.includeOriginalOutput || plannedTargetLanguages.isEmpty),
                 promptOptimizeEnabled: plan.promptOptimize,
                 structuredOutputEnabled: plan.structuredOutput,
                 structuredEmojiEnabled: settings.structuredEmojiEnabled,
@@ -729,7 +773,10 @@ final class AppState: ObservableObject {
                 languageModel: settings.translationModel,
                 apiKey: settings.llmApiKey,
                 streamingMode: streamingMode,
-                outputMode: outputMode
+                outputMode: outputMode,
+                roleCandidates: settings.activeRoleCandidates,
+                lockedRole: settings.lockedRole,
+                inputMethodRequestID: inputMethodRequestID
             )
             transcriptionTask?.cancel()
             transcriptionTask = Task {
@@ -815,6 +862,42 @@ final class AppState: ObservableObject {
             guard snapshot.generation == processingGeneration else { return }
 
             // Pipeline: ASR → smart route | (optional structure) → (prompt optimize XOR translate)
+            lastRawTranscript = transcript
+            var resolvedRole = snapshot.lockedRole
+            if resolvedRole == nil, !snapshot.roleCandidates.isEmpty, settings.llmFeaturesAvailable {
+                if snapshot.roleCandidates.count == 1 {
+                    resolvedRole = snapshot.roleCandidates[0]
+                    settings.lockRole(resolvedRole)
+                } else {
+                    stageTiming.enter(.structuring, detail: "判定角色")
+                    phase = .structuring
+                    do {
+                        let resolution = try await roleResolver.resolve(
+                            text: transcript,
+                            candidates: snapshot.roleCandidates,
+                            endpoint: snapshot.chatEndpoint,
+                            model: snapshot.languageModel,
+                            apiKey: snapshot.apiKey
+                        )
+                        try Task.checkCancellation()
+                        guard snapshot.generation == processingGeneration else { return }
+                        resolvedRole = snapshot.roleCandidates.first { $0.id == resolution.roleID }
+                        if let resolvedRole {
+                            // Only lock a role that is still selected in the live settings.
+                            if settings.candidateRoleIDs.contains(resolvedRole.id) {
+                                settings.lockRole(resolvedRole)
+                            }
+                            connectionMessage = "角色已判定：\(resolvedRole.name)"
+                        }
+                    } catch {
+                        connectionMessage = "角色判定未完成，已按原工作流处理。"
+                    }
+                }
+            }
+            let roleContext = resolvedRole?.contextPrompt ?? ""
+            let translationConfiguration = Self.applyingRole(snapshot.translationConfiguration, context: roleContext)
+            let promptOptimizeConfiguration = Self.applyingRole(snapshot.promptOptimizeConfiguration, context: roleContext)
+            let smartRouteConfiguration = Self.applyingRole(snapshot.smartRouteConfiguration, context: roleContext)
             var working = transcript
             var output = working
 
@@ -823,10 +906,10 @@ final class AppState: ObservableObject {
                 phase = .routing
                 output = try await translator.translate(
                     text: transcript,
-                    configuration: snapshot.smartRouteConfiguration,
+                    configuration: smartRouteConfiguration,
                     onUsage: usageRecorder(
                         stage: .promptOptimization,
-                        model: snapshot.smartRouteConfiguration.model
+                        model: smartRouteConfiguration.model
                     )
                 )
                 try Task.checkCancellation()
@@ -847,7 +930,8 @@ final class AppState: ObservableObject {
                         for: transcript,
                         intensity: snapshot.structureIntensity
                     ),
-                    customSystemPrompt: snapshot.translationConfiguration.customSystemPrompt,
+                    customSystemPrompt: translationConfiguration.customSystemPrompt,
+                    roleContextPrompt: roleContext,
                     // Keep the cleaned source in its original language. Translations run afterward.
                     outputLanguageDirective: nil,
                     useEmoji: snapshot.structuredEmojiEnabled
@@ -863,14 +947,14 @@ final class AppState: ObservableObject {
 
             output = working
             if snapshot.promptOptimizeEnabled {
-                stageTiming.enter(.optimizing, detail: snapshot.promptOptimizeConfiguration.promptTarget.label)
+                stageTiming.enter(.optimizing, detail: promptOptimizeConfiguration.promptTarget.label)
                 phase = .optimizing
                 output = try await translator.translate(
                     text: working,
-                    configuration: snapshot.promptOptimizeConfiguration,
+                    configuration: promptOptimizeConfiguration,
                     onUsage: usageRecorder(
                         stage: .promptOptimization,
-                        model: snapshot.promptOptimizeConfiguration.model
+                        model: promptOptimizeConfiguration.model
                     )
                 )
                 try Task.checkCancellation()
@@ -878,7 +962,7 @@ final class AppState: ObservableObject {
             } else if !snapshot.targetLanguages.isEmpty {
                 stageTiming.enter(.translating)
                 phase = .translating
-                let baseTranslationConfig = snapshot.translationConfiguration
+                let baseTranslationConfig = translationConfiguration
                 var outputSections = snapshot.includeOriginal ? [working] : []
                 for language in snapshot.targetLanguages {
                     let activeTranslationConfig = TranslationConfiguration(
@@ -886,7 +970,8 @@ final class AppState: ObservableObject {
                         model: baseTranslationConfig.model,
                         targetLanguage: language.promptName,
                         styleHint: language.styleHint,
-                        customSystemPrompt: baseTranslationConfig.customSystemPrompt,
+                            customSystemPrompt: baseTranslationConfig.customSystemPrompt,
+                            roleContextPrompt: baseTranslationConfig.roleContextPrompt,
                         apiKey: baseTranslationConfig.apiKey,
                         task: .translate,
                         promptTarget: baseTranslationConfig.promptTarget
@@ -911,6 +996,7 @@ final class AppState: ObservableObject {
                             Do not mention the required language in the output body.
                             """,
                             customSystemPrompt: activeTranslationConfig.customSystemPrompt,
+                            roleContextPrompt: activeTranslationConfig.roleContextPrompt,
                             apiKey: activeTranslationConfig.apiKey,
                             task: activeTranslationConfig.task,
                             promptTarget: activeTranslationConfig.promptTarget
@@ -939,7 +1025,13 @@ final class AppState: ObservableObject {
             NSPasteboard.general.setString(output, forType: .string)
             do {
                 stageTiming.enter(.paste)
-                _ = try await PasteService.insert(output, into: inputTargetPID)
+                if let requestID = snapshot.inputMethodRequestID,
+                   let state = inputMethodBridge.load(), state.requestID == requestID {
+                    _ = inputMethodBridge.update(.ready, from: state, text: output)
+                    inputMethodRequestID = nil
+                } else {
+                    _ = try await PasteService.insert(output, into: inputTargetPID)
+                }
                 stageTiming.finishSession(outcome: .success)
                 phase = .success(output)
                 NSSound(named: "Pop")?.play()
@@ -1274,7 +1366,8 @@ final class AppState: ObservableObject {
 
     /// Re-run semantic formatter on the latest successful text (no new ASR).
     func reformatLastTranscript() {
-        let source = lastTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let source = (lastRawTranscript.isEmpty ? lastTranscript : lastRawTranscript)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !source.isEmpty else { return }
         switch phase {
         case .recording, .finalizing, .transcribing, .structuring, .translating, .optimizing, .routing:
@@ -1336,6 +1429,12 @@ final class AppState: ObservableObject {
                 recordingHUD.hide()
             }
         }
+    }
+
+    /// Select a role from the result banner, then reprocess the saved raw ASR text.
+    func rerunLastTranscript(using role: RoleProfile?) {
+        settings.lockRole(role)
+        reformatLastTranscript()
     }
 
     /// Abort recording or any in-flight pipeline stage without producing output.
@@ -1432,5 +1531,14 @@ final class AppState: ObservableObject {
                 phase = .failed(error.localizedDescription)
             }
         }
+    }
+
+    private static func applyingRole(
+        _ configuration: TranslationConfiguration,
+        context: String
+    ) -> TranslationConfiguration {
+        var result = configuration
+        result.roleContextPrompt = context
+        return result
     }
 }

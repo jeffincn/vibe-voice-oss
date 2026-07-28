@@ -1,0 +1,19 @@
+# Vibe Voice phrase shortcuts: text, pinyin trigger, frequency.
+---
+name: vibe_phrases
+version: "0.7.0"
+sort: by_weight
+columns: [text, code, weight]
+...
+收到，辛苦了！	shoudao	900
+收到，马上办！	shoudao	850
+收到，请稍等。	shoudao	800
+好的，我马上处理。	hao	650
+好的，谢谢！	hao	600
+稍等一下，我马上回复你。	shaodeng	600
+我看到了，稍后回复。	kan	550
+感谢你的提醒！	ganxie	500
+辛苦了，早点休息。	xinku	500
+没问题，我来处理。	meiwenti	500
+我已经记录下来了。	jilu	450
+明白了。	mingbai	450

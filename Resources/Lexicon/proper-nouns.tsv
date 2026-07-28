@@ -1,0 +1,32 @@
+# code	display	kind
+coreml	Core ML	proper
+swift	Swift	proper
+swiftui	SwiftUI	proper
+inputmethodkit	InputMethodKit	proper
+cloudflare	Cloudflare	proper
+cloudflareworkers	Cloudflare Workers	proper
+github	GitHub	proper
+gitlab	GitLab	proper
+cursor	Cursor	proper
+codex	Codex	proper
+claude	Claude	proper
+gemini	Gemini	proper
+mlx	MLX	proper
+whisper	Whisper	proper
+qwen	Qwen	proper
+qwen3asr	Qwen3-ASR	proper
+vibetype	Vibe Type	proper
+vibevoice	Vibe Voice	proper
+topview	TopView	proper
+tabcut	TabCut	proper
+whisperkit	WhisperKit	proper
+candidatereranker	CandidateReranker	proper
+macos	macOS	proper
+xcode	Xcode	proper
+huggingface	Hugging Face	proper
+openai	OpenAI	proper
+anthropic	Anthropic	proper
+pytorch	PyTorch	proper
+tensorflow	TensorFlow	proper
+onnx	ONNX	proper
+coremltools	coremltools	proper

@@ -6,6 +6,8 @@ struct TranslationConfiguration: Sendable {
     let targetLanguage: String
     let styleHint: String
     var customSystemPrompt: String = ""
+    /// Professional context appended after the user's explicit custom instructions.
+    var roleContextPrompt: String = ""
     let apiKey: String
     let task: LanguageModelTask
     /// Used only when `task == .optimizePrompt`.
@@ -296,10 +298,13 @@ struct TranslationClient: Sendable {
         let temperature: Double
         switch configuration.task {
         case .smartRoute:
-            let systemPrompt = configuration.customSystemPrompt
+            var systemPrompt = configuration.customSystemPrompt
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !systemPrompt.isEmpty else {
                 throw TranslationError.promptCompile("智能路由需要自定义 System Prompt，请在「翻译与整理」中填写。")
+            }
+            if !configuration.roleContextPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                systemPrompt += "\n\n" + configuration.roleContextPrompt
             }
             messages = [
                 ["role": "system", "content": systemPrompt],
@@ -312,9 +317,11 @@ struct TranslationClient: Sendable {
             let languageDirective = configuration.styleHint.isEmpty
                 ? "Write all IR string fields in the same language as the source dictation."
                 : configuration.styleHint
-            messages = PromptCompiler.irExtractionMessages(
+            messages = TranslationClient.appendingRoleContext(
+                to: PromptCompiler.irExtractionMessages(
                 sourceText: text,
                 languageDirective: languageDirective
+                ), role: configuration.roleContextPrompt
             )
             maxTokens = 2048
             temperature = 0.2
@@ -322,7 +329,7 @@ struct TranslationClient: Sendable {
             messages = [
                 [
                     "role": "system",
-                    "content": Self.withCustomSystemPrompt("""
+                    "content": Self.appendingRoleContext(to: Self.withCustomSystemPrompt("""
                     You are a translation engine, not a reasoning assistant.
                     Translate the following text into \(configuration.targetLanguage).
                     Rules:
@@ -333,7 +340,7 @@ struct TranslationClient: Sendable {
                     - Do not write Thinking Process, analysis, drafts, notes, or explanations.
                     - Do not use markdown or quotation marks around the result.
                     \(styleBlock)
-                    """, custom: configuration.customSystemPrompt)
+                    """, custom: configuration.customSystemPrompt), role: configuration.roleContextPrompt)
                 ],
                 [
                     "role": "user",
@@ -432,6 +439,23 @@ struct TranslationClient: Sendable {
             )
         } else {
             result.insert(["role": "system", "content": custom], at: 0)
+        }
+        return result
+    }
+
+    static func appendingRoleContext(to base: String, role: String) -> String {
+        let trimmed = role.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return base }
+        return "\(base)\n\n\(trimmed)"
+    }
+
+    static func appendingRoleContext(to messages: [[String: String]], role: String) -> [[String: String]] {
+        guard !role.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return messages }
+        var result = messages
+        if let index = result.firstIndex(where: { $0["role"] == "system" }) {
+            result[index]["content"] = appendingRoleContext(to: result[index]["content"] ?? "", role: role)
+        } else {
+            result.insert(["role": "system", "content": role], at: 0)
         }
         return result
     }

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>zh_CN</string>
 	<key>CFBundleDisplayName</key>
-	<string>Vibe Voice OSS</string>
+	<string>Vibe Type</string>
 	<key>CFBundleExecutable</key>
 	<string>VibeVoiceOSS</string>
 	<key>CFBundleIconFile</key>
@@ -15,22 +15,22 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Vibe Voice OSS</string>
+	<string>Vibe Type</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.7.0</string>
+	<string>0.8.0</string>
 	<key>CFBundleVersion</key>
-	<string>36</string>
+	<string>95</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Vibe Voice OSS 需要麦克风权限，以便将语音发送到你在设置中配置的转写服务。</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Vibe Voice OSS 需要控制其他应用的权限，以便在无法直接写入输入框时，通过模拟粘贴把识别结果送入当前应用。</string>
+	<string>Vibe Type 需要控制其他应用的权限，以便在无法直接写入输入框时，通过模拟粘贴把识别结果送入当前应用。</string>
 	<key>NSDocumentsFolderUsageDescription</key>
-	<string>Vibe Voice OSS 会在「文稿」文件夹下存放本地语音识别模型与 VAD 模型。</string>
+	<string>Vibe Type 会在「文稿」文件夹下存放本地语音识别模型与 VAD 模型。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Vibe Type 需要麦克风权限，以便将语音发送到你在设置中配置的转写服务。</string>
 </dict>
 </plist>

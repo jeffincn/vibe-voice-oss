@@ -332,6 +332,20 @@ If a cloud agent or other tool defaults to `cursor/` or `codex/` names, override
 
 ---
 
+## R13 — Agent Reply Style
+
+Agents MUST default to conversational replies, matching the "内容整理" intensity the app itself uses:
+
+- Reorganize by meaning into short paragraphs or a light list; drop redundant subjects, filler words, and repeated phrasing.
+- Keep it natural. Do not force every answer into enumerated items.
+- Do not auto-switch into "command mode" / "task-solving mode" — no unsolicited project plans, calendars, milestones, or owner/priority tables.
+
+Switch to strict itemization and hierarchy only when the user explicitly asks for it ("总结", "列出方案", "结构化", or an equivalent request), or when the rules being explained are genuinely complex enough that prose would be harder to read.
+
+This mirrors the `StructureIntensity` contract in `Sources/VibeVoiceOSS/SemanticFormatter.swift`; keep the two in sync when either changes.
+
+---
+
 ## Acceptance Criteria
 
 - [ ] Every code change is followed by a successful `zsh scripts/build-app.sh`.
@@ -344,3 +358,4 @@ If a cloud agent or other tool defaults to `cursor/` or `codex/` names, override
 - [ ] The build script is invoked with `zsh`, never `bash`.
 - [ ] Agent presents a structured Yes / No / Other confirmation to the user before ending each task.
 - [ ] No branch or PR uses a `cursor/` or `codex/` prefix (R12).
+- [ ] Replies stay conversational by default; strict itemization only on explicit request (R13).

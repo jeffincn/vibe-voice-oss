@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import VibeVoiceInputShared
 
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
@@ -15,6 +16,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
     case recognition
     case audio
     case translation
+    case roles
     case prompt
     case shortcuts
     case performance
@@ -27,6 +29,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .recognition: L10n.t(.paneRecognition)
         case .audio: L10n.t(.paneAudio)
         case .translation: L10n.t(.paneTranslation)
+        case .roles: "角色"
         case .prompt: L10n.t(.panePrompt)
         case .shortcuts: L10n.t(.paneShortcuts)
         case .performance: L10n.t(.panePerformance)
@@ -39,6 +42,7 @@ private enum SettingsPane: String, CaseIterable, Identifiable {
         case .recognition: "waveform"
         case .audio: "slider.horizontal.3"
         case .translation: "character.book.closed"
+        case .roles: "person.3.fill"
         case .prompt: "text.book.closed"
         case .shortcuts: "keyboard"
         case .performance: "stopwatch"
@@ -53,6 +57,7 @@ private struct SettingsForm: View {
 
     @State private var pane: SettingsPane = .general
     @State private var inputDevices = AudioInputDevices.all()
+    @State private var projectVocabularyMessage: String?
 
     var body: some View {
         let _ = settings.uiLanguageID
@@ -180,6 +185,8 @@ private struct SettingsForm: View {
             }
         case .translation:
             pillButton(L10n.t(.settingsTestTranslation)) { appState.testLanguageModelConnection() }
+        case .roles:
+            EmptyView()
         case .shortcuts:
             pillButton(L10n.t(.settingsCheckPermissions)) { appState.requestPermissions() }
         default:
@@ -212,6 +219,8 @@ private struct SettingsForm: View {
             audioSection
         case .translation:
             translationSection
+        case .roles:
+            RoleSettingsSection(settings: settings)
         case .prompt:
             promptSection
         case .shortcuts:
@@ -254,7 +263,50 @@ private struct SettingsForm: View {
                 .pickerStyle(.menu)
             }
             caption(L10n.t(.uiLanguageCaption))
+            pickerRow(L10n.t(.mixedOutputStyle)) {
+                Picker("", selection: Binding(
+                    get: { settings.mixedOutputStyle },
+                    set: { settings.mixedOutputStyle = $0 }
+                )) {
+                    Text(L10n.t(.mixedOutputDeveloper)).tag(MixedOutputStyle.developer)
+                    Text(L10n.t(.mixedOutputSmartChinese)).tag(MixedOutputStyle.smartChinese)
+                    Text(L10n.t(.mixedOutputOriginal)).tag(MixedOutputStyle.original)
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+            caption(L10n.t(.mixedOutputStyleCaption))
+            Toggle(L10n.t(.fuzzyPinyin), isOn: $settings.fuzzyPinyinEnabled)
+                .toggleStyle(.switch)
+            caption(L10n.t(.fuzzyPinyinCaption))
+            Button(L10n.t(.importProjectVocabulary)) {
+                importProjectVocabulary()
+            }
+            .buttonStyle(.bordered)
+            caption(L10n.t(.importProjectVocabularyCaption))
+            if let message = projectVocabularyMessage {
+                caption(message)
+            }
         }
+    }
+
+    private func importProjectVocabulary() {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        // Prefer the repository that contains this source tree when running from
+        // a developer checkout; otherwise scan the process working directory.
+        let candidates = [
+            URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent(),
+            root,
+        ]
+        let repo = candidates.first { url in
+            FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path)
+        } ?? root
+        let count = ProjectVocabularyImporter.importFromRepository(at: repo)
+        ExternalLexicon.shared.ensureLoaded()
+        projectVocabularyMessage = L10n.t(.importProjectVocabularyDone, "\(count)")
     }
 
     private var recognitionSection: some View {

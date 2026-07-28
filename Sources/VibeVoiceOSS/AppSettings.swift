@@ -1,4 +1,5 @@
 import Foundation
+import VibeVoiceInputShared
 
 struct TargetLanguage: Identifiable, Hashable {
     let id: String
@@ -276,6 +277,7 @@ final class AppSettings: ObservableObject {
         static let launchAtLogin = "launchAtLogin"
         static let targetLanguageID = "targetLanguageID"
         static let targetLanguageIDs = "targetLanguageIDs"
+        static let includeOriginalOutput = "includeOriginalOutput"
         static let translationModel = "translationModel"
         static let promptOptimizeEnabled = "promptOptimizeEnabled"
         static let promptTargetID = "promptTargetID"
@@ -290,10 +292,14 @@ final class AppSettings: ObservableObject {
         static let llmEndpoint = "llmEndpoint"
         static let llmApiKey = "llmApiKey"
         static let llmSystemPrompt = "llmSystemPrompt"
+        static let candidateRoleIDs = "candidateRoleIDs"
+        static let lockedRoleID = "lockedRoleID"
         static let transcodeProfileID = "transcodeProfileID"
         static let transcodeNormalize = "transcodeNormalize"
         static let transcodeMaxGainDb = "transcodeMaxGainDb"
         static let uiLanguageID = "uiLanguageID"
+        static let mixedOutputStyle = MixedOutputStyle.defaultsKey
+        static let fuzzyPinyinEnabled = PinyinFuzzyCorrector.defaultsKey
     }
 
     /// Language rules for Stage 1 IR extraction (string fields inside Prompt IR JSON).
@@ -371,6 +377,11 @@ final class AppSettings: ObservableObject {
             }
         }
     }
+    /// Whether the cleaned source transcript is included alongside translations.
+    /// This is independent from the selected translation targets.
+    @Published var includeOriginalOutput: Bool {
+        didSet { defaults.set(includeOriginalOutput, forKey: Key.includeOriginalOutput) }
+    }
     @Published var translationModel: String {
         didSet {
             let cleaned = TranslationClient.sanitizeModelName(translationModel)
@@ -401,6 +412,26 @@ final class AppSettings: ObservableObject {
     @Published var structureIntensityRaw: String {
         didSet { save(structureIntensityRaw, for: Key.structureIntensity) }
     }
+    /// How the input method renders mixed pinyin + English compositions.
+    @Published var mixedOutputStyleRaw: String {
+        didSet {
+            save(mixedOutputStyleRaw, for: Key.mixedOutputStyle)
+            // IME is a separate process; mirror into the shared suite it reads.
+            MixedOutputStyle.save(mixedOutputStyle)
+        }
+    }
+    var mixedOutputStyle: MixedOutputStyle {
+        get { MixedOutputStyle(rawValue: mixedOutputStyleRaw) ?? .developer }
+        set { mixedOutputStyleRaw = newValue.rawValue }
+    }
+    /// Cantonese-era fuzzy pinyin (n/l, nasals). Flat/retroflex is never mixed.
+    /// Default off — standard Hanyu Pinyin only unless the user opts in.
+    @Published var fuzzyPinyinEnabled: Bool {
+        didSet {
+            defaults.set(fuzzyPinyinEnabled, forKey: Key.fuzzyPinyinEnabled)
+            PinyinFuzzyCorrector.setEnabled(fuzzyPinyinEnabled)
+        }
+    }
     @Published var streamingModeRaw: String {
         didSet { save(streamingModeRaw, for: Key.streamingMode) }
     }
@@ -420,6 +451,31 @@ final class AppSettings: ObservableObject {
     /// User-provided instruction appended to every LLM post-processing system prompt.
     @Published var llmSystemPrompt: String {
         didSet { save(llmSystemPrompt, for: Key.llmSystemPrompt) }
+    }
+    @Published private(set) var roleProfiles: [RoleProfile]
+    /// Up to three roles can be offered to the resolver for automatic selection.
+    @Published var candidateRoleIDs: [String] {
+        didSet {
+            let normalized = Array(NSOrderedSet(array: candidateRoleIDs).compactMap { $0 as? String }.prefix(3))
+            if candidateRoleIDs != normalized {
+                candidateRoleIDs = normalized
+                return
+            }
+            defaults.set(candidateRoleIDs, forKey: Key.candidateRoleIDs)
+            if let lockedRoleID, !candidateRoleIDs.contains(lockedRoleID) {
+                self.lockedRoleID = nil
+            }
+        }
+    }
+    /// Nil means automatic selection should run on the next role-aware input.
+    @Published var lockedRoleID: String? {
+        didSet {
+            if let lockedRoleID {
+                defaults.set(lockedRoleID, forKey: Key.lockedRoleID)
+            } else {
+                defaults.removeObject(forKey: Key.lockedRoleID)
+            }
+        }
     }
     @Published var transcodeProfileID: String {
         didSet { save(transcodeProfileID, for: Key.transcodeProfileID) }
@@ -504,7 +560,8 @@ final class AppSettings: ObservableObject {
             structuredOutputEnabled: structuredOutputEnabled,
             hasCustomFormattingPrompt: hasCustomFormattingPrompt,
             promptOptimizeEnabled: promptOptimizeEnabled,
-            promptTargetLabel: promptTarget.label
+            promptTargetLabel: promptTarget.label,
+            roleModeEnabled: roleModeEnabled
         )
     }
 
@@ -612,6 +669,15 @@ final class AppSettings: ObservableObject {
             storedTargets ?? (resolvedTarget.translates ? [resolvedTarget.id] : [])
         )
         targetLanguageIDs = resolvedTargetIDs
+        if let storedIncludeOriginal = defaults.object(forKey: Key.includeOriginalOutput) as? Bool {
+            includeOriginalOutput = storedIncludeOriginal
+        } else {
+            // Existing installations that already selected a translation should not
+            // silently keep the old forced "original + translation" behavior.
+            let defaultIncludeOriginal = resolvedTargetIDs.isEmpty
+            includeOriginalOutput = defaultIncludeOriginal
+            defaults.set(defaultIncludeOriginal, forKey: Key.includeOriginalOutput)
+        }
         if storedTarget != resolvedTarget.id {
             defaults.set(resolvedTarget.id, forKey: Key.targetLanguageID)
         }
@@ -643,6 +709,14 @@ final class AppSettings: ObservableObject {
         }
         let storedIntensity = defaults.string(forKey: Key.structureIntensity) ?? StructureIntensity.auto.rawValue
         structureIntensityRaw = StructureIntensity(rawValue: storedIntensity)?.rawValue ?? StructureIntensity.auto.rawValue
+        let storedMixed = defaults.string(forKey: Key.mixedOutputStyle)
+            ?? MixedOutputStyle.load().rawValue
+        let resolvedMixed = MixedOutputStyle(rawValue: storedMixed) ?? .developer
+        mixedOutputStyleRaw = resolvedMixed.rawValue
+        MixedOutputStyle.save(resolvedMixed)
+        let fuzzyEnabled = PinyinFuzzyCorrector.isEnabled(defaults: defaults)
+        fuzzyPinyinEnabled = fuzzyEnabled
+        PinyinFuzzyCorrector.setEnabled(fuzzyEnabled)
         let storedStreaming = defaults.string(forKey: Key.streamingMode) ?? StreamingMode.duplexStreaming.rawValue
         streamingModeRaw = StreamingMode(rawValue: storedStreaming)?.rawValue ?? StreamingMode.duplexStreaming.rawValue
         streamingWSURL = KeychainStore.coalesceString(
@@ -713,6 +787,17 @@ final class AppSettings: ObservableObject {
             key: Key.llmSystemPrompt,
             fallback: ""
         )
+        DataStore.shared.ensureDefaultRoleProfiles()
+        let loadedRoles = DataStore.shared.loadRoleProfiles()
+        let loadedCandidateRoleIDs = Array((defaults.stringArray(forKey: Key.candidateRoleIDs) ?? [])
+            .filter { id in loadedRoles.contains(where: { $0.id == id }) }
+            .prefix(3))
+        roleProfiles = loadedRoles
+        candidateRoleIDs = loadedCandidateRoleIDs
+        let storedLockedRoleID = defaults.string(forKey: Key.lockedRoleID)
+        lockedRoleID = storedLockedRoleID.flatMap { id in
+            loadedCandidateRoleIDs.contains(id) && loadedRoles.contains(where: { $0.id == id }) ? id : nil
+        }
         let storedTranscode = defaults.string(forKey: Key.transcodeProfileID)
             ?? TranscodeProfile.asr16kMono.rawValue
         transcodeProfileID = TranscodeProfile(rawValue: storedTranscode)?.rawValue
@@ -774,7 +859,8 @@ final class AppSettings: ObservableObject {
 
     var outputLanguageSummary: String {
         guard !targetLanguages.isEmpty else { return "仅原文" }
-        return "原文 + " + targetLanguages.map(\.label).joined(separator: "、")
+        let labels = (includeOriginalOutput ? ["原文"] : []) + targetLanguages.map(\.label)
+        return labels.joined(separator: " + ")
     }
 
     var canSelectMoreTargetLanguages: Bool { targetLanguageIDs.count < 3 }
@@ -788,9 +874,24 @@ final class AppSettings: ObservableObject {
         if selected {
             guard !targetLanguageIDs.contains(language.id), targetLanguageIDs.count < 3 else { return }
             targetLanguageIDs.append(language.id)
+            // Choosing a translation is a distinct output mode. The original can
+            // still be added explicitly with the checkbox in the same menu.
+            if targetLanguageIDs.count == 1 && includeOriginalOutput {
+                includeOriginalOutput = false
+            }
         } else {
             targetLanguageIDs.removeAll { $0 == language.id }
         }
+    }
+
+    func setIncludeOriginalOutput(_ included: Bool) {
+        // Never allow an empty output selection: with no translation selected,
+        // the only meaningful result is the original transcript.
+        guard included || !targetLanguages.isEmpty else {
+            includeOriginalOutput = true
+            return
+        }
+        includeOriginalOutput = included
     }
 
     var configuration: TranscriptionConfiguration {
@@ -817,6 +918,7 @@ final class AppSettings: ObservableObject {
             targetLanguage: language.promptName,
             styleHint: language.styleHint,
             customSystemPrompt: llmSystemPrompt,
+            roleContextPrompt: effectiveRole?.contextPrompt ?? "",
             apiKey: llmApiKey,
             task: .translate
         )
@@ -848,6 +950,7 @@ final class AppSettings: ObservableObject {
             targetLanguage: effectiveTargetLanguage.promptName,
             styleHint: promptOptimizeLanguageDirective,
             customSystemPrompt: llmSystemPrompt,
+            roleContextPrompt: effectiveRole?.contextPrompt ?? "",
             apiKey: llmApiKey,
             task: .optimizePrompt,
             promptTarget: promptTarget
@@ -861,6 +964,7 @@ final class AppSettings: ObservableObject {
             targetLanguage: "",
             styleHint: "",
             customSystemPrompt: llmSystemPrompt,
+            roleContextPrompt: effectiveRole?.contextPrompt ?? "",
             apiKey: llmApiKey,
             task: .smartRoute
         )
@@ -868,6 +972,68 @@ final class AppSettings: ObservableObject {
 
     var hasSmartRoutePrompt: Bool {
         !llmSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var activeRoleCandidates: [RoleProfile] {
+        candidateRoleIDs.compactMap { id in roleProfiles.first(where: { $0.id == id }) }
+    }
+
+    var lockedRole: RoleProfile? {
+        guard let lockedRoleID else { return nil }
+        return roleProfiles.first(where: { $0.id == lockedRoleID })
+    }
+
+    var effectiveRole: RoleProfile? { lockedRole }
+
+    var roleModeEnabled: Bool { !activeRoleCandidates.isEmpty }
+
+    var roleSummary: String {
+        if let role = lockedRole { return "已锁定：\(role.name)" }
+        if activeRoleCandidates.isEmpty { return "未启用" }
+        return "自动判定（\(activeRoleCandidates.map(\.name).joined(separator: "、"))）"
+    }
+
+    func isRoleSelected(_ role: RoleProfile) -> Bool {
+        candidateRoleIDs.contains(role.id)
+    }
+
+    func canSelectMoreRoles(excluding role: RoleProfile? = nil) -> Bool {
+        candidateRoleIDs.count < 3 || (role.map(isRoleSelected) ?? false)
+    }
+
+    func setRoleSelected(_ role: RoleProfile, selected: Bool) {
+        if selected {
+            guard !candidateRoleIDs.contains(role.id), candidateRoleIDs.count < 3 else { return }
+            candidateRoleIDs.append(role.id)
+        } else {
+            candidateRoleIDs.removeAll { $0 == role.id }
+        }
+    }
+
+    func lockRole(_ role: RoleProfile?) {
+        if let role, !candidateRoleIDs.contains(role.id) {
+            setRoleSelected(role, selected: true)
+        }
+        lockedRoleID = role?.id
+    }
+
+    func saveRole(_ profile: RoleProfile) {
+        var value = profile
+        value.updatedAt = .now
+        DataStore.shared.saveRoleProfile(value)
+        roleProfiles = DataStore.shared.loadRoleProfiles()
+    }
+
+    func deleteRole(_ profile: RoleProfile) {
+        DataStore.shared.deleteRoleProfile(id: profile.id)
+        candidateRoleIDs.removeAll { $0 == profile.id }
+        if lockedRoleID == profile.id { lockedRoleID = nil }
+        roleProfiles = DataStore.shared.loadRoleProfiles()
+    }
+
+    func restoreDefaultRoles() {
+        DataStore.shared.ensureDefaultRoleProfiles()
+        roleProfiles = DataStore.shared.loadRoleProfiles()
     }
 
     /// A custom post-process instruction is actionable even when the structured-output switch is off.
@@ -881,6 +1047,7 @@ final class AppSettings: ObservableObject {
             apiKey: llmApiKey,
             mode: mode,
             customSystemPrompt: llmSystemPrompt,
+            roleContextPrompt: effectiveRole?.contextPrompt ?? "",
             outputLanguageDirective: nil,
             useEmoji: structuredEmojiEnabled
         )
