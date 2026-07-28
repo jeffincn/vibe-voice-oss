@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import VibeVoiceInputShared
+@testable import VibeVoicePinyin
 
 struct PinyinTypoCorrectorTests {
     @Test func stripsNonLatinAndLowercases() {

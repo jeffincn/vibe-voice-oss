@@ -1,5 +1,5 @@
 import Testing
-@testable import VibeVoiceInputShared
+@testable import VibeVoicePinyin
 
 @Suite("PartialPinyinCommit")
 struct PartialPinyinCommitTests {

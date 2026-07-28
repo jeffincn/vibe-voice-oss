@@ -1,7 +1,8 @@
 import AppKit
 import Carbon
 @preconcurrency import InputMethodKit
-import VibeVoiceInputShared
+import VibeVoiceShared
+import VibeVoicePinyin
 
 /// IMK controller. Key routing follows Squirrel's `SquirrelInputController`:
 /// translate macOS events → X11 keysyms + IBus modifiers, feed librime, then

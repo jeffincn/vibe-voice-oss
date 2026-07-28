@@ -2,7 +2,7 @@
 import AppKit
 import Foundation
 
-/// Builds the input-source menu PDF from `Resources/VibeTypeIcon.png`.
+/// Builds the input-source menu PDF from `Resources/InputMethod/VibeTypeIcon.png`.
 ///
 /// Menu / Text Input icons are effectively template images: opaque pixels become
 /// the system tint. A full-bleed black square therefore collapses into a solid
@@ -10,9 +10,9 @@ import Foundation
 let root = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()
     .deletingLastPathComponent()
-let sourceURL = root.appendingPathComponent("Resources/VibeTypeIcon.png")
+let sourceURL = root.appendingPathComponent("Resources/InputMethod/VibeTypeIcon.png")
 let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first
-    ?? root.appendingPathComponent("Resources/VibeTypeMenu.pdf").path)
+    ?? root.appendingPathComponent("Resources/InputMethod/VibeTypeMenu.pdf").path)
 
 guard let source = NSImage(contentsOf: sourceURL),
       let cgSource = source.cgImage(forProposedRect: nil, context: nil, hints: nil) else {

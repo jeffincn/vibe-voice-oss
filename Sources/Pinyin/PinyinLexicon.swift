@@ -1,4 +1,5 @@
 import Foundation
+import VibeVoiceShared
 
 /// Entry from `pinyin_simp.dict.yaml`: text + frequency weight.
 public struct PinyinLexiconEntry: Equatable, Sendable {
@@ -84,6 +85,7 @@ public final class PinyinLexicon: @unchecked Sendable {
                 .appendingPathComponent("RimeData/pinyin_simp.dict.yaml")
         var built = url.flatMap { Self.parse(url: $0) } ?? [:]
         Self.mergePhraseOverlay(&built, bundle: bundle)
+        Self.mergeSharedCorrectionOverlay(&built)
         lock.lock()
         index = built
         ready = !built.isEmpty
@@ -95,16 +97,27 @@ public final class PinyinLexicon: @unchecked Sendable {
     }
 
     /// Synchronous load for tests / tooling.
-    public func loadSynchronously(from url: URL, phraseOverlayURL: URL? = nil) {
+    public func loadSynchronously(
+        from url: URL,
+        phraseOverlayURL: URL? = nil,
+        includeSharedCorrections: Bool = true
+    ) {
         var built = Self.parse(url: url) ?? [:]
         if let phraseOverlayURL {
             Self.mergePhraseOverlay(&built, url: phraseOverlayURL)
         } else {
+            // Repo: Resources/InputMethod/{RimeData,Lexicon}
+            // Bundle: Contents/Resources/{RimeData,Lexicon}
+            // `url` points at a file inside RimeData, so climb to the parent of
+            // RimeData (where Lexicon sits as a sibling).
             let defaultOverlay = url
-                .deletingLastPathComponent() // RimeData
-                .deletingLastPathComponent() // Resources
+                .deletingLastPathComponent() // filename → RimeData/
+                .deletingLastPathComponent() // → Resources[/InputMethod]/
                 .appendingPathComponent("Lexicon/common-phrases.tsv")
             Self.mergePhraseOverlay(&built, url: defaultOverlay)
+        }
+        if includeSharedCorrections {
+            Self.mergeSharedCorrectionOverlay(&built)
         }
         lock.lock()
         index = built
@@ -221,6 +234,29 @@ public final class PinyinLexicon: @unchecked Sendable {
         }
         if added > 0 {
             ReasoningDiagnostics.log("PinyinLexicon phrase overlay +\(added) from \(url.lastPathComponent)")
+        }
+    }
+
+    /// Merge user/project shared corrections (includes `source` provenance on disk).
+    static func mergeSharedCorrectionOverlay(_ index: inout [String: [PinyinLexiconEntry]]) {
+        let rows = SharedCorrectionLexicon.shared.pinyinPhraseOverlay()
+        guard !rows.isEmpty else { return }
+        var added = 0
+        for row in rows {
+            var list = index[row.code] ?? []
+            if let existing = list.firstIndex(where: { $0.text == row.text }) {
+                if row.weight > list[existing].weight {
+                    list[existing] = PinyinLexiconEntry(text: row.text, weight: row.weight)
+                }
+            } else {
+                list.append(PinyinLexiconEntry(text: row.text, weight: row.weight))
+                added += 1
+            }
+            list.sort { $0.weight > $1.weight }
+            index[row.code] = list
+        }
+        if added > 0 {
+            ReasoningDiagnostics.log("PinyinLexicon shared-corrections overlay +\(added)")
         }
     }
 }

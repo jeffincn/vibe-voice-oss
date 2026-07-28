@@ -2,7 +2,7 @@ import AppKit
 import Combine
 import Foundation
 import ServiceManagement
-import VibeVoiceInputShared
+import VibeVoiceShared
 
 @MainActor
 final class AppState: ObservableObject {
@@ -894,7 +894,10 @@ final class AppState: ObservableObject {
                     }
                 }
             }
-            let roleContext = resolvedRole?.contextPrompt ?? ""
+            let roleContext = SharedCorrectionLexicon.appendingCorrectionContext(
+                to: resolvedRole?.contextPrompt ?? "",
+                block: SharedCorrectionLexicon.shared.correctionPromptBlock()
+            )
             let translationConfiguration = Self.applyingRole(snapshot.translationConfiguration, context: roleContext)
             let promptOptimizeConfiguration = Self.applyingRole(snapshot.promptOptimizeConfiguration, context: roleContext)
             let smartRouteConfiguration = Self.applyingRole(snapshot.smartRouteConfiguration, context: roleContext)
