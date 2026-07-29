@@ -3,6 +3,17 @@ import Foundation
 struct RimeCandidate: Equatable, Sendable {
     let text: String
     let comment: String?
+    /// Optional engine weight/source metadata used by a candidate ranker.
+    /// Older bridge builds may omit both values and remain fully compatible.
+    let rawWeight: Double?
+    let source: String?
+
+    init(text: String, comment: String?, rawWeight: Double? = nil, source: String? = nil) {
+        self.text = text
+        self.comment = comment
+        self.rawWeight = rawWeight
+        self.source = source
+    }
 }
 
 struct RimeSnapshot: Equatable, Sendable {
@@ -50,7 +61,13 @@ protocol RimeEngine: AnyObject {
     func backspace() -> RimeKeyOutcome
     @discardableResult
     func turnPage(forward: Bool) -> RimeKeyOutcome
-    func selectCandidate(at index: Int) -> String?
+    @discardableResult
+    func selectCandidate(at index: Int) -> RimeKeyOutcome
+    /// Absolute index into `allCandidates()`, for the expanded panel.
+    @discardableResult
+    func selectAbsoluteCandidate(at index: Int) -> RimeKeyOutcome
+    /// Full candidate list for the current composition (across pages).
+    func allCandidates() -> [RimeCandidate]
     func commitBestCandidate() -> String?
     func reset()
 }
@@ -115,7 +132,9 @@ final class LibrimeEngine: RimeEngine {
         let candidates = rawCandidates.map {
             RimeCandidate(
                 text: $0["text"] ?? "",
-                comment: $0["comment"].flatMap { $0.isEmpty ? nil : $0 }
+                comment: $0["comment"].flatMap { $0.isEmpty ? nil : $0 },
+                rawWeight: $0["weight"].flatMap(Double.init),
+                source: $0["source"].flatMap { $0.isEmpty ? nil : $0 }
             )
         }
         let rawIndex = (value["highlightedIndex"] as? NSNumber)?.intValue ?? 0
@@ -151,14 +170,55 @@ final class LibrimeEngine: RimeEngine {
         ))
     }
 
-    func selectCandidate(at index: Int) -> String? {
-        bridge.selectCandidate(at: index)
+    @discardableResult
+    func selectCandidate(at index: Int) -> RimeKeyOutcome {
+        outcome(from: bridge.selectCandidate(at: index))
+    }
+
+    @discardableResult
+    func selectAbsoluteCandidate(at index: Int) -> RimeKeyOutcome {
+        outcome(from: bridge.selectAbsoluteCandidate(at: index))
+    }
+
+    func allCandidates() -> [RimeCandidate] {
+        let raw = bridge.allCandidates() as? [[String: String]] ?? []
+        let parsed = raw.compactMap { row -> RimeCandidate? in
+            let text = row["text"] ?? ""
+            guard !text.isEmpty else { return nil }
+            return RimeCandidate(
+                text: text,
+                comment: row["comment"].flatMap { $0.isEmpty ? nil : $0 }
+            )
+        }
+        if !parsed.isEmpty { return parsed }
+        return collectCandidatesByPaging()
+    }
+
+    /// Walks every menu page when the absolute iterator is unavailable. Restores
+    /// the page the user was on so expanding the sheet does not jump the bar.
+    private func collectCandidatesByPaging() -> [RimeCandidate] {
+        let startPage = snapshot.pageNumber
+        while snapshot.pageNumber > 0 {
+            _ = turnPage(forward: false)
+        }
+        var collected: [RimeCandidate] = []
+        var guardCount = 0
+        while guardCount < 40 {
+            collected.append(contentsOf: snapshot.candidates)
+            guardCount += 1
+            if snapshot.isLastPage { break }
+            _ = turnPage(forward: true)
+        }
+        while snapshot.pageNumber < startPage {
+            _ = turnPage(forward: true)
+        }
+        return collected
     }
 
     func commitBestCandidate() -> String? {
         let current = snapshot
         if current.candidates.indices.contains(current.highlightedIndex) {
-            return selectCandidate(at: current.highlightedIndex)
+            return selectCandidate(at: current.highlightedIndex).commit
         }
         return bridge.commitComposition()
     }
@@ -202,7 +262,21 @@ enum RimeEngineFactory {
         let degradedReason: String?
     }
 
+    /// Which of the three storage arrangements the keyboard ended up on. The
+    /// keyboard behaves visibly differently on each, so a bug report is not
+    /// actionable without knowing which one produced it.
+    enum KeyboardEngineTier: String, Sendable {
+        /// The schema the containing app deployed, read from the App Group.
+        case sharedContainer
+        /// librime deployed into the extension's own sandbox because the App
+        /// Group was unreachable. Full dictionary, but learning is not shared.
+        case localSandbox
+        /// The ten-word fallback lexicon.
+        case prototype
+    }
+
     static func makeForKeyboard() -> KeyboardEngine {
+        let started = Date()
         do {
             let deployment = try containerDirectory(named: deploymentFolder)
             let engine = try make(
@@ -210,13 +284,69 @@ enum RimeEngineFactory {
                 stagingDirectory: deployment.appendingPathComponent("build", isDirectory: true),
                 performMaintenance: false
             )
+            log(tier: .sharedContainer, since: started, reason: nil)
             return KeyboardEngine(engine: engine, degradedReason: nil)
-        } catch {
-            return KeyboardEngine(
-                engine: PrototypeRimeEngine(),
-                degradedReason: error.localizedDescription
-            )
+        } catch let sharedContainerError {
+            // Personal Team provisioning can display the App Group capability
+            // in Xcode while omitting the entitlement from the installed
+            // extension. The schemas are still bundled in RimeData, so deploy
+            // them into the keyboard's own sandbox instead of falling all the
+            // way back to the tiny prototype lexicon.
+            do {
+                let localRoot = try keyboardLocalRimeDirectory()
+                let engine = try make(
+                    userDataDirectory: localRoot.appendingPathComponent(keyboardFolder, isDirectory: true),
+                    stagingDirectory: localRoot.appendingPathComponent("build", isDirectory: true),
+                    performMaintenance: true
+                )
+                log(
+                    tier: .localSandbox,
+                    since: started,
+                    reason: sharedContainerError.localizedDescription
+                )
+                return KeyboardEngine(engine: engine, degradedReason: nil)
+            } catch {
+                let reason = "\(sharedContainerError.localizedDescription) / \(error.localizedDescription)"
+                log(tier: .prototype, since: started, reason: reason)
+                return KeyboardEngine(
+                    engine: PrototypeRimeEngine(),
+                    degradedReason: reason
+                )
+            }
         }
+    }
+
+    private static func log(tier: KeyboardEngineTier, since: Date, reason: String?) {
+        var fields = [
+            "tier": tier.rawValue,
+            "schema": selectedSchema.rawValue,
+            "ms": String(Int(Date().timeIntervalSince(since) * 1000)),
+        ]
+        // The reason a tier was skipped is the whole diagnosis, and it is the
+        // one thing the on-screen badge is too small to carry.
+        if let reason { fields["reason"] = reason }
+        MobileLog.emit(
+            .rime,
+            "keyboard.engine",
+            level: tier == .sharedContainer ? .info : .error,
+            fields
+        )
+    }
+
+    private static func keyboardLocalRimeDirectory() throws -> URL {
+        guard let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else {
+            throw RimeEngineError.appGroupUnavailable
+        }
+        let directory = applicationSupport.appendingPathComponent("Rime", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        )
+        return directory
     }
 
     /// - Parameter fullCheck: re-verifies every dictionary. Only worth the cost
@@ -348,16 +478,26 @@ final class PrototypeRimeEngine: RimeEngine {
         .ignored(snapshot)
     }
 
-    func selectCandidate(at index: Int) -> String? {
+    func selectCandidate(at index: Int) -> RimeKeyOutcome {
         let current = snapshot
-        guard current.candidates.indices.contains(index) else { return nil }
+        guard current.candidates.indices.contains(index) else {
+            return .ignored(current)
+        }
         let text = current.candidates[index].text
         reset()
-        return text
+        return RimeKeyOutcome(commit: text, handled: true, snapshot: snapshot)
+    }
+
+    func selectAbsoluteCandidate(at index: Int) -> RimeKeyOutcome {
+        selectCandidate(at: index)
+    }
+
+    func allCandidates() -> [RimeCandidate] {
+        snapshot.candidates
     }
 
     func commitBestCandidate() -> String? {
-        selectCandidate(at: snapshot.highlightedIndex)
+        selectCandidate(at: snapshot.highlightedIndex).commit
     }
 
     func reset() {

@@ -52,10 +52,27 @@ actor MobileASRService: MobileASRServing {
             download: true,
             useBackgroundDownloadSession: true
         )
-        let kit = try await WhisperKit(configuration)
-        whisperKit = kit
-        loadedModel = model
-        return MobileL10n.t(.asrModelWarmed, model)
+        // A cold prepare downloads and compiles; a warm one does not. Only the
+        // elapsed time separates "the model is slow" from "the model is being
+        // fetched again", and on a device those look identical from the UI.
+        let started = Date()
+        do {
+            let kit = try await WhisperKit(configuration)
+            whisperKit = kit
+            loadedModel = model
+            MobileLog.info(.model, "prepare.succeeded", [
+                "model": model,
+                "ms": String(Int(Date().timeIntervalSince(started) * 1000)),
+            ])
+            return MobileL10n.t(.asrModelWarmed, model)
+        } catch {
+            MobileLog.error(.model, "prepare.failed", [
+                "model": model,
+                "ms": String(Int(Date().timeIntervalSince(started) * 1000)),
+                "error": error.localizedDescription,
+            ])
+            throw error
+        }
     }
 
     func transcribe(samples: [Float], model: String, mode: VoiceOutputMode) async throws -> String {
@@ -75,6 +92,7 @@ actor MobileASRService: MobileASRServing {
             detectLanguage: true,
             withoutTimestamps: true
         )
+        let started = Date()
         let results = try await whisperKit.transcribe(
             audioArray: samples,
             decodeOptions: options
@@ -83,10 +101,25 @@ actor MobileASRService: MobileASRServing {
             .map(\.text)
             .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let processed = rawText.isEmpty ? "" : VoiceTextProcessor.process(rawText, mode: mode)
+        MobileLog.emit(
+            .model,
+            "transcribe.finished",
+            level: rawText.isEmpty ? .error : .info,
+            [
+                "model": model,
+                "mode": mode.rawValue,
+                // 16 kHz mono, so this doubles as the recording length.
+                "audioMs": String(samples.count / 16),
+                "ms": String(Int(Date().timeIntervalSince(started) * 1000)),
+                "raw": MobileLog.fingerprint(rawText),
+                "processed": MobileLog.fingerprint(processed),
+            ]
+        )
         guard !rawText.isEmpty else {
             throw MobileASRError.emptyTranscript
         }
-        return VoiceTextProcessor.process(rawText, mode: mode)
+        return processed
     }
 
     func releaseMemory() async {

@@ -63,8 +63,10 @@ final class MobileL10nTests: XCTestCase {
     func testOutputModeLabelsFollowTheLanguage() {
         MobileL10n.language = .english
         XCTAssertEqual(VoiceOutputMode.translate.label, "Translate")
-        XCTAssertEqual(KeyboardLanguage.english.toggleLabel, "EN")
+        XCTAssertEqual(KeyboardLanguage.english.toggleLabel, "中/英")
         MobileL10n.language = .zhHans
         XCTAssertEqual(VoiceOutputMode.translate.label, "翻译")
+        XCTAssertEqual(KeyboardLanguage.chinese.toggleLabel, "中/英")
+        XCTAssertEqual(KeyboardLanguage.chinese.modeBadge, "拼音输入")
     }
 }

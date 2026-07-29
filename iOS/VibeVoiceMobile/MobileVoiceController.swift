@@ -24,9 +24,35 @@ final class MobileVoiceController: ObservableObject {
             case let .failed(message): MobileL10n.t(.phaseFailed, message)
             }
         }
+
+        /// Does not move with the device language, unlike `label`, so a log
+        /// stays greppable whoever recorded it.
+        var name: String {
+            switch self {
+            case .idle: "idle"
+            case .requestingPermission: "requestingPermission"
+            case .recording: "recording"
+            case .processing: "processing"
+            case .preparingModel: "preparingModel"
+            case .ready: "ready"
+            case .failed: "failed"
+            }
+        }
     }
 
-    @Published private(set) var phase: Phase = .idle
+    @Published private(set) var phase: Phase = .idle {
+        didSet {
+            guard phase != oldValue else { return }
+            var fields = ["from": oldValue.name, "to": phase.name]
+            if case let .failed(message) = phase { fields["message"] = message }
+            MobileLog.emit(
+                .voice,
+                "phase.changed",
+                level: phase.name == "failed" ? .error : .info,
+                fields
+            )
+        }
+    }
     @Published private(set) var level: Float = 0
     @Published private(set) var transcript = ""
     @Published private(set) var modelStatus = MobileL10n.t(.modelNotPrepared)

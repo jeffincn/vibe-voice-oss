@@ -9,7 +9,9 @@
 namespace {
 
 constexpr NSInteger kVVRimeErrorUnavailable = 1;
-constexpr NSInteger kVVRimeErrorMaintenance = 2;
+// 2 was a maintenance failure. librime cannot report one distinguishably, so
+// the condition is no longer raised; see the deployment step below. The gap is
+// deliberate, to keep these codes meaning the same thing in logs already taken.
 constexpr NSInteger kVVRimeErrorSession = 3;
 constexpr NSInteger kVVRimeErrorSchema = 4;
 
@@ -123,13 +125,17 @@ NSString *TakeCommit(RimeApi *api, RimeSessionId session) {
     }
 
     if (performMaintenance && api->start_maintenance) {
-        if (!api->start_maintenance(fullCheck ? True : False)) {
-            if (error) {
-                *error = VVRimeError(kVVRimeErrorMaintenance, @"Rime 词库部署启动失败。");
-            }
-            return nil;
-        }
-        if (api->join_maintenance_thread) {
+        // start_maintenance answers "did I schedule any work", not "did I
+        // succeed". With full_check off librime runs detect_modifications
+        // first and returns False when the build output is already newer than
+        // every source file — the steady state after one successful deployment.
+        // So there is only a maintenance thread to join when it returns True,
+        // and a False is not something to report: it cannot be told apart from
+        // an installation_update failure, and whether the workspace is usable
+        // is settled below by opening a session and selecting the schema, which
+        // is what the caller actually needs.
+        if (api->start_maintenance(fullCheck ? True : False) &&
+            api->join_maintenance_thread) {
             api->join_maintenance_thread();
         }
     }
@@ -219,15 +225,73 @@ NSString *TakeCommit(RimeApi *api, RimeSessionId session) {
                                              commit:TakeCommit(api, self.session)];
 }
 
-- (nullable NSString *)selectCandidateAtIndex:(NSInteger)index {
+- (VVRimeKeyResult *)selectCandidateAtIndex:(NSInteger)index {
+    RimeApi *api = CurrentAPI();
+    if (!self.session || index < 0 || !api) {
+        return [[VVRimeKeyResult alloc] initWithHandled:NO commit:nil];
+    }
+    // The snapshot exposes menu.candidates — the current page only. Absolute
+    // select_candidate indexes a different list and rejects most page-local
+    // taps (index 0 often works by coincidence on page 0; index 1+ fails).
+    Bool ok = False;
+    if (api->select_candidate_on_current_page) {
+        ok = api->select_candidate_on_current_page(
+            self.session, static_cast<size_t>(index));
+    } else if (api->select_candidate) {
+        ok = api->select_candidate(self.session, static_cast<size_t>(index));
+    }
+    if (!ok) {
+        return [[VVRimeKeyResult alloc] initWithHandled:NO commit:nil];
+    }
+    // Commit may be nil when only part of the preedit was consumed — still a
+    // successful selection; the caller must refresh the composition.
+    return [[VVRimeKeyResult alloc] initWithHandled:YES
+                                             commit:TakeCommit(api, self.session)];
+}
+
+- (VVRimeKeyResult *)selectAbsoluteCandidateAtIndex:(NSInteger)index {
     RimeApi *api = CurrentAPI();
     if (!self.session || index < 0 || !api || !api->select_candidate) {
-        return nil;
+        return [[VVRimeKeyResult alloc] initWithHandled:NO commit:nil];
     }
     if (!api->select_candidate(self.session, static_cast<size_t>(index))) {
-        return nil;
+        return [[VVRimeKeyResult alloc] initWithHandled:NO commit:nil];
     }
-    return TakeCommit(api, self.session);
+    return [[VVRimeKeyResult alloc] initWithHandled:YES
+                                             commit:TakeCommit(api, self.session)];
+}
+
+- (NSArray<NSDictionary<NSString *, NSString *> *> *)allCandidates {
+    RimeApi *api = CurrentAPI();
+    if (!self.session || !api || !api->candidate_list_begin ||
+        !api->candidate_list_next || !api->candidate_list_end) {
+        return @[];
+    }
+    // Cap protects the keyboard extension: a long composition against a large
+    // lexicon can theoretically yield thousands of entries, and the panel only
+    // needs enough to scroll through.
+    constexpr int kMaxCandidates = 120;
+    RimeCandidateListIterator iterator;
+    memset(&iterator, 0, sizeof(iterator));
+    if (!api->candidate_list_begin(self.session, &iterator)) {
+        return @[];
+    }
+    NSMutableArray<NSDictionary<NSString *, NSString *> *> *candidates =
+        [NSMutableArray arrayWithCapacity:32];
+    do {
+        NSString *text = iterator.candidate.text
+            ? [NSString stringWithUTF8String:iterator.candidate.text]
+            : @"";
+        NSString *comment = iterator.candidate.comment
+            ? [NSString stringWithUTF8String:iterator.candidate.comment]
+            : @"";
+        [candidates addObject:@{@"text": text ?: @"", @"comment": comment ?: @""}];
+        if ((int)candidates.count >= kMaxCandidates) {
+            break;
+        }
+    } while (api->candidate_list_next(&iterator));
+    api->candidate_list_end(&iterator);
+    return candidates;
 }
 
 - (nullable NSString *)commitComposition {

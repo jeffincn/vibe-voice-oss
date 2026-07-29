@@ -13,6 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// already removed it from the composition, so the host must insert it now.
 @property(nonatomic, readonly, nullable, copy) NSString *commit;
 
+- (instancetype)initWithHandled:(BOOL)handled commit:(nullable NSString *)commit;
+
 @end
 
 /// Minimal Objective-C++ boundary around librime's versioned C API.
@@ -42,7 +44,16 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary<NSString *, id> *)snapshot;
 
 - (VVRimeKeyResult *)processKeyCode:(NSInteger)keyCode;
-- (nullable NSString *)selectCandidateAtIndex:(NSInteger)index;
+/// Index is into the current page (the same list `snapshot` returns), not the
+/// global candidate list. A successful selection may still produce a nil commit
+/// when librime only consumes part of the composition.
+- (VVRimeKeyResult *)selectCandidateAtIndex:(NSInteger)index;
+/// Absolute index into the full candidate list (see `allCandidates`).
+- (VVRimeKeyResult *)selectAbsoluteCandidateAtIndex:(NSInteger)index;
+/// Every candidate currently offered for the composition, across pages.
+/// Empty when not composing. Capped so a pathological lexicon cannot balloon
+/// the keyboard extension's memory.
+- (NSArray<NSDictionary<NSString *, NSString *> *> *)allCandidates;
 - (nullable NSString *)commitComposition;
 - (void)clearComposition;
 

@@ -21,8 +21,8 @@ enum KeyboardPlane: Equatable {
 }
 
 /// A key in one of the three character rows. The utility row is built directly
-/// by the view controller, because its keys need individual widths, a context
-/// menu, and the touch handling the system globe key requires.
+/// by the view controller so it can match system Mandarin proportions
+/// (123 / emoji / space / return) without crowding language chrome into the grid.
 enum KeyboardKey: Equatable {
     /// Text the key produces. In Chinese mode it is offered to librime first so
     /// the punctuator can turn it into its full-width form.

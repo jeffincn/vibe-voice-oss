@@ -102,17 +102,45 @@ final class VoiceBridgeStore {
     private static let fileName = "voice-bridge.v2.json"
 
     private let fileURL: URL
+    private let usesFileCoordinator: Bool
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
     init(directory: URL? = nil) {
+        let sharedContainerAvailable = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: Self.appGroupID
+        ) != nil
+        // Free Personal Team profiles may omit App Group entitlements. In that
+        // case NSFileCoordinator can trigger filecoordinationd/XPC failures in
+        // a keyboard extension, so use its private container without trying to
+        // coordinate a file that cannot be shared anyway.
+        usesFileCoordinator = directory != nil || sharedContainerAvailable
         let base = directory ?? Self.defaultDirectory()
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         fileURL = base.appendingPathComponent(Self.fileName, isDirectory: false)
         Self.purgeLegacyPlaintextState()
+
+        // Losing the shared container is the failure that looks like nothing:
+        // both processes keep working, each against its own copy of the state,
+        // and dictation simply never arrives. Say so once, at the only moment
+        // the answer is known.
+        guard directory == nil else { return }
+        MobileLog.emit(
+            .bridge,
+            "store.opened",
+            level: sharedContainerAvailable ? .info : .error,
+            [
+                "appGroup": String(sharedContainerAvailable),
+                "coordinated": String(usesFileCoordinator),
+                "detail": sharedContainerAvailable
+                    ? "shared container"
+                    : "app group entitlement missing; this process is isolated",
+            ]
+        )
     }
 
     func load() -> VoiceBridgeState {
+        guard usesFileCoordinator else { return decodeState(at: fileURL) ?? .idle }
         var state = VoiceBridgeState.idle
         var coordinationError: NSError?
         NSFileCoordinator().coordinate(
@@ -194,6 +222,16 @@ final class VoiceBridgeStore {
 
     @discardableResult
     private func mutate(_ transform: (inout VoiceBridgeState) -> Void) -> VoiceBridgeState {
+        guard usesFileCoordinator else {
+            var state = decodeState(at: fileURL) ?? .idle
+            let original = state
+            transform(&state)
+            guard state != original else { return state }
+            state.updatedAt = Date()
+            writeState(state, to: fileURL)
+            log(original, state)
+            return state
+        }
         var result = VoiceBridgeState.idle
         var changed = false
         var coordinationError: NSError?
@@ -211,13 +249,36 @@ final class VoiceBridgeStore {
             }
             state.updatedAt = Date()
             writeState(state, to: url)
+            log(original, state)
             result = state
             changed = true
+        }
+        // A coordination failure means this write never reached the file the
+        // other process reads, which is indistinguishable from "nothing
+        // happened" unless it is reported.
+        if let coordinationError {
+            MobileLog.error(.bridge, "write.uncoordinated", [
+                "error": coordinationError.domain + "/\(coordinationError.code)",
+            ])
         }
         if changed {
             VoiceBridgeSignal.postChange()
         }
         return result
+    }
+
+    /// Records a state transition. The transcript itself never enters the log;
+    /// its fingerprint is enough to match what the app produced against what
+    /// the keyboard inserted.
+    private func log(_ before: VoiceBridgeState, _ after: VoiceBridgeState) {
+        MobileLog.info(.bridge, "state.changed", [
+            "from": before.status.rawValue,
+            "to": after.status.rawValue,
+            "mode": after.mode.rawValue,
+            "request": after.requestID.uuidString.prefix(8).lowercased(),
+            "target": after.targetDocumentID?.uuidString.prefix(8).lowercased() ?? "none",
+            "text": MobileLog.fingerprint(after.text),
+        ])
     }
 
     private func decodeState(at url: URL) -> VoiceBridgeState? {
@@ -247,7 +308,8 @@ final class VoiceBridgeStore {
     /// Deletes the plaintext transcript that older builds left in App Group
     /// `UserDefaults`, where it outlived the insertion that consumed it.
     private static func purgeLegacyPlaintextState() {
-        guard let defaults = UserDefaults(suiteName: appGroupID),
+        guard FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID) != nil,
+              let defaults = UserDefaults(suiteName: appGroupID),
               defaults.object(forKey: legacyDefaultsKey) != nil else { return }
         defaults.removeObject(forKey: legacyDefaultsKey)
     }

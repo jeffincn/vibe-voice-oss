@@ -5,6 +5,7 @@ ROOT="${0:A:h:h}"
 IOS_ROOT="$ROOT/iOS"
 PROJECT="$IOS_ROOT/VibeVoiceMobile.xcodeproj"
 SCHEME="VibeVoiceMobile"
+APP_ID="app.vibevoice.oss.ios"
 # The device gate is only meaningful against the real model, so unlike the
 # simulator matrix it always runs the integration scheme as well.
 INTEGRATION_SCHEME="VibeVoiceMobileIntegration"
@@ -14,8 +15,11 @@ TASK_CACHE_ROOT="${TMPDIR%/}/vibevoice-ios-0.7.0"
 DERIVED_ROOT="$TASK_CACHE_ROOT/DerivedData/PhysicalDevice"
 RESULT_ROOT="$TASK_CACHE_ROOT/DeviceTestResults"
 PACKAGE_ROOT="$TASK_CACHE_ROOT/SourcePackages"
-DEVICE_JSON=$(mktemp /tmp/vibevoice-device-list.XXXXXX.json)
-trap 'rm -f "$DEVICE_JSON"' EXIT
+# Trailing X's only; see scripts/ios-diagnostics.sh for what BSD mktemp does
+# with a suffix after them.
+SCRATCH_DIR=$(mktemp -d)
+trap 'rm -rf "$SCRATCH_DIR"' EXIT
+DEVICE_JSON="$SCRATCH_DIR/devices.json"
 
 if ! command -v xcodegen >/dev/null 2>&1; then
     print "error: XcodeGen is required. Install it with: brew install xcodegen" >&2
@@ -58,26 +62,14 @@ if [[ "$device_state" == "unavailable" ]]; then
     exit 5
 fi
 
-identity=$(security find-identity -v -p codesigning \
-    | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' \
-    | head -n 1)
-if [[ -z "$identity" ]]; then
-    print "error: no Apple Development signing identity was found." >&2
-    exit 6
-fi
-team_id=$(security find-certificate -c "$identity" -p \
-    | openssl x509 -noout -subject \
-    | sed -n 's/.*OU=\([^,]*\).*/\1/p')
-if [[ -z "$team_id" ]]; then
-    print "error: could not read Team ID from $identity." >&2
-    exit 7
-fi
+source "$ROOT/scripts/ios-signing.zsh"
+vibevoice_resolve_signing "$APP_ID"
+team_id="$VIBEVOICE_SIGN_TEAM"
 
 mkdir -p "$DERIVED_ROOT" "$RESULT_ROOT" "$PACKAGE_ROOT"
 xcodegen generate --spec "$IOS_ROOT/project.yml" --project "$IOS_ROOT"
 result_bundle="$RESULT_ROOT/${device_name//[^[:alnum:]]/_}-iOS${device_os}-$(date +%Y%m%d-%H%M%S).xcresult"
 
-print "SIGNING $identity — Team $team_id"
 xcodebuild test \
     -project "$PROJECT" \
     -scheme "$SCHEME" \

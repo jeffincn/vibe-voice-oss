@@ -45,18 +45,28 @@ enum MobileL10n {
         case keyCapsLock
         case keySwitchKeyboard
         case keyToggleLanguage
+        case keyLanguageFace
+        case keyClear
         case keyNumbersPlane
         case keySymbolsPlane
+        case candidateExpand
+        case candidateCollapse
+        case candidatePanelTitle
+        case candidateDismissKeyboard
         case keyLettersPlane
 
         // MARK: Candidates
         case candidatePreviousPage
         case candidateNextPage
         case candidateAccessibility // %1$d index, %2$@ text
+        case keyboardModePinyin
+        case keyboardModeEnglish
 
         // MARK: Keyboard status
         case pinyinDegradedBadge
         case pinyinDegradedStatus // %@ reason
+        case keyboardRestrictedStatus
+        case keyboardSecureFieldStatus
         case resultReadyElsewhere
         case resultInserted
         case voiceKeyTitle // %@ mode
@@ -145,6 +155,31 @@ enum MobileL10n {
         case homePrivacyClearButton
         case homePrivacyClearBody
 
+        // MARK: Diagnostics
+        case diagnosticsTitle
+        case diagnosticsSubtitle
+        case diagnosticsChannelTitle
+        case diagnosticsChannelPlaceholder
+        case diagnosticsChannelHelp
+        case diagnosticsSwitchesTitle
+        case diagnosticsSwitchesHelp
+        case diagnosticsVerbose
+        case diagnosticsVerifyInsertion
+        case diagnosticsEnvironmentTitle
+        case diagnosticsEnvironmentHelp
+        case diagnosticsStorage
+        case diagnosticsAppGroup
+        case diagnosticsReachable
+        case diagnosticsMissing
+        case diagnosticsKeyboardSeen
+        case diagnosticsNever
+        case diagnosticsEventsTitle
+        case diagnosticsEmpty
+        case diagnosticsRefresh
+        case diagnosticsCopy
+        case diagnosticsCopied
+        case diagnosticsClear
+
         // MARK: Input playground
         case playgroundTitle
         case playgroundSubtitle
@@ -211,16 +246,26 @@ enum MobileL10n {
         .keyCapsLock: "大写锁定",
         .keySwitchKeyboard: "切换键盘",
         .keyToggleLanguage: "中英切换",
+        .keyLanguageFace: "中/英",
+        .keyClear: "清空",
         .keyNumbersPlane: "数字与符号",
         .keySymbolsPlane: "更多符号",
+        .candidateExpand: "更多候选",
+        .candidateCollapse: "收起候选",
+        .candidatePanelTitle: "候选词",
+        .candidateDismissKeyboard: "收起键盘",
         .keyLettersPlane: "字母",
 
         .candidatePreviousPage: "上一页候选",
         .candidateNextPage: "下一页候选",
         .candidateAccessibility: "候选 %1$d：%2$@",
+        .keyboardModePinyin: "拼音输入",
+        .keyboardModeEnglish: "英文输入",
 
         .pinyinDegradedBadge: "⚠️ 拼音降级",
         .pinyinDegradedStatus: "拼音降级：%@",
+        .keyboardRestrictedStatus: "基础模式：未允许完全访问",
+        .keyboardSecureFieldStatus: "安全输入：仅保留基础输入",
         .resultReadyElsewhere: "结果已就绪，回到原输入框或点麦克风插入",
         .resultInserted: "已插入",
         .voiceKeyTitle: "🎙 %@",
@@ -303,6 +348,30 @@ enum MobileL10n {
         .homePrivacyClearButton: "清除共享数据与拼音学习记录",
         .homePrivacyClearBody: "清除后键盘会重新从零学习，已部署的词库不受影响。",
 
+        .diagnosticsTitle: "诊断",
+        .diagnosticsSubtitle: "记录键盘与主应用两侧的运行事件，用于真机排查",
+        .diagnosticsChannelTitle: "当前渠道",
+        .diagnosticsChannelPlaceholder: "例如 WeChat、Safari、备忘录",
+        .diagnosticsChannelHelp: "iOS 不会把宿主应用的身份告诉键盘扩展，所以切换到要测试的应用之前，请先在这里手动填上它的名字。之后记录的每条事件都会带上这个标记。",
+        .diagnosticsSwitchesTitle: "采集开关",
+        .diagnosticsSwitchesHelp: "详细事件包含每次按键，量较大，排查完请关闭。插入校验会在每次插入后回读一次输入框，用于确认文字真的进入了宿主应用；这是定位“某个 App 里丢字”的唯一手段，代价是每次插入多一次跨进程往返。",
+        .diagnosticsVerbose: "详细事件",
+        .diagnosticsVerifyInsertion: "插入校验",
+        .diagnosticsEnvironmentTitle: "运行环境",
+        .diagnosticsEnvironmentHelp: "若共享容器不可用，键盘与主应用会各写各的状态，语音结果永远传不过去。若键盘从未写入，说明键盘尚未启用，或它拿不到共享容器。",
+        .diagnosticsStorage: "日志位置",
+        .diagnosticsAppGroup: "共享容器",
+        .diagnosticsReachable: "可用",
+        .diagnosticsMissing: "不可用",
+        .diagnosticsKeyboardSeen: "键盘最近写入",
+        .diagnosticsNever: "从未",
+        .diagnosticsEventsTitle: "事件",
+        .diagnosticsEmpty: "暂无事件",
+        .diagnosticsRefresh: "刷新",
+        .diagnosticsCopy: "复制",
+        .diagnosticsCopied: "已复制",
+        .diagnosticsClear: "清除",
+
         .playgroundTitle: "Input Playground",
         .playgroundSubtitle: "在类似 iMessage 的窗口里测试键盘与语音输入",
         .playgroundConversationName: "Vibe Voice 测试对话",
@@ -326,16 +395,26 @@ enum MobileL10n {
         .keyCapsLock: "caps lock",
         .keySwitchKeyboard: "next keyboard",
         .keyToggleLanguage: "Chinese or English",
+        .keyLanguageFace: "中/英",
+        .keyClear: "Clear",
         .keyNumbersPlane: "numbers and symbols",
         .keySymbolsPlane: "more symbols",
+        .candidateExpand: "More candidates",
+        .candidateCollapse: "Collapse candidates",
+        .candidatePanelTitle: "Candidates",
+        .candidateDismissKeyboard: "Hide Keyboard",
         .keyLettersPlane: "letters",
 
         .candidatePreviousPage: "previous candidates",
         .candidateNextPage: "more candidates",
         .candidateAccessibility: "Candidate %1$d: %2$@",
+        .keyboardModePinyin: "Pinyin",
+        .keyboardModeEnglish: "English",
 
         .pinyinDegradedBadge: "⚠️ limited pinyin",
         .pinyinDegradedStatus: "Limited pinyin: %@",
+        .keyboardRestrictedStatus: "Basic mode: Full Access is off",
+        .keyboardSecureFieldStatus: "Secure field: basic input only",
         .resultReadyElsewhere: "Result ready. Return to the original field or tap the mic to insert.",
         .resultInserted: "Inserted",
         .voiceKeyTitle: "🎙 %@",
@@ -417,6 +496,30 @@ enum MobileL10n {
         .homePrivacyBody: "Transcription runs entirely on this device; no audio or text is uploaded. Results are written to the keyboard's shared container and deleted as soon as they are inserted. The keyboard's pinyin learning data stays in that container and is readable only on this device.",
         .homePrivacyClearButton: "Clear shared data and pinyin learning",
         .homePrivacyClearBody: "The keyboard starts learning from scratch afterwards. The deployed dictionary is unaffected.",
+
+        .diagnosticsTitle: "Diagnostics",
+        .diagnosticsSubtitle: "Runtime events from both the keyboard and the app, for debugging on a device",
+        .diagnosticsChannelTitle: "Current channel",
+        .diagnosticsChannelPlaceholder: "e.g. WeChat, Safari, Notes",
+        .diagnosticsChannelHelp: "iOS never tells a keyboard extension which app it is typing into, so name the app here before switching to it. Every event recorded afterwards carries the label.",
+        .diagnosticsSwitchesTitle: "Collection",
+        .diagnosticsSwitchesHelp: "Verbose events include every keystroke; turn them off when you are done. Insertion checking re-reads the field after each insertion to confirm the text reached the host app. It is the only way to pin down text going missing in one app and not another, and it costs an extra round trip per insertion.",
+        .diagnosticsVerbose: "Verbose events",
+        .diagnosticsVerifyInsertion: "Check insertions",
+        .diagnosticsEnvironmentTitle: "Environment",
+        .diagnosticsEnvironmentHelp: "Without the shared container the keyboard and the app each keep their own state and a transcript can never cross between them. If the keyboard has never written here, it is either not enabled or cannot reach the container.",
+        .diagnosticsStorage: "Log location",
+        .diagnosticsAppGroup: "Shared container",
+        .diagnosticsReachable: "Reachable",
+        .diagnosticsMissing: "Unavailable",
+        .diagnosticsKeyboardSeen: "Keyboard last wrote",
+        .diagnosticsNever: "Never",
+        .diagnosticsEventsTitle: "Events",
+        .diagnosticsEmpty: "No events yet",
+        .diagnosticsRefresh: "Refresh",
+        .diagnosticsCopy: "Copy",
+        .diagnosticsCopied: "Copied",
+        .diagnosticsClear: "Clear",
 
         .playgroundTitle: "Input Playground",
         .playgroundSubtitle: "Test keyboard and voice input in an iMessage-style window",

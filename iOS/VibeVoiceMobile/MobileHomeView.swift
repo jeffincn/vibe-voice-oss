@@ -22,6 +22,7 @@ struct MobileHomeView: View {
                     bridgeCard
                     modelCard
                     privacyCard
+                    diagnosticsCard
                 }
                 .padding()
             }
@@ -247,6 +248,37 @@ struct MobileHomeView: View {
         .cardStyle()
     }
 
+    private var diagnosticsCard: some View {
+        NavigationLink {
+            DiagnosticsView()
+        } label: {
+            HStack(spacing: 12) {
+                Label {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(MobileL10n.t(.diagnosticsTitle))
+                            .font(.headline)
+                        Text(MobileL10n.t(.diagnosticsSubtitle))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                } icon: {
+                    Image(systemName: "stethoscope")
+                        .font(.title2)
+                        .foregroundStyle(.tint)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("diagnostics.open")
+        .cardStyle()
+    }
+
     private func clearSharedData() {
         voiceController.reset()
         bridge.reset()
@@ -276,10 +308,23 @@ struct MobileHomeView: View {
         rimeStatus = MobileL10n.t(.preparing)
         Task {
             let message = await Task.detached(priority: .userInitiated) {
+                let started = Date()
                 do {
                     _ = try RimeEngineFactory.prepareForMainApp(fullCheck: fullCheck)
+                    MobileLog.info(.rime, "app.deployed", [
+                        "schema": RimeEngineFactory.selectedSchema.rawValue,
+                        "fullCheck": String(fullCheck),
+                        "ms": String(Int(Date().timeIntervalSince(started) * 1000)),
+                    ])
                     return MobileL10n.t(.rimeReady)
                 } catch {
+                    // The keyboard reads what this step produces, so a failure
+                    // here is the upstream cause of a degraded keyboard.
+                    MobileLog.error(.rime, "app.deployFailed", [
+                        "schema": RimeEngineFactory.selectedSchema.rawValue,
+                        "fullCheck": String(fullCheck),
+                        "error": error.localizedDescription,
+                    ])
                     return MobileL10n.t(.rimeFailed, error.localizedDescription)
                 }
             }.value

@@ -1,0 +1,10 @@
+{
+  "modelID": "vibe-candidate-ranker",
+  "version": "0.1.0",
+  "format": "coreml",
+  "input": "features[128]",
+  "output": "score[1]",
+  "minOS": "17.0",
+  "parameters": 128,
+  "purpose": "Full-preedit and candidate Core ML reranking; never generates text"
+}

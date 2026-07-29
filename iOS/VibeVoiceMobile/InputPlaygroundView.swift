@@ -6,9 +6,13 @@ import SwiftUI
 /// easy to observe during simulator and device testing.
 struct InputPlaygroundView: View {
     @ObservedObject var voiceController: MobileVoiceController
-    @FocusState private var inputFocused: Bool
+    @State private var inputFocused = false
     @State private var draft = ""
     @State private var messages: [PlaygroundMessage] = []
+    @State private var isRefining = false
+    @State private var refinementError: String?
+    @State private var isReasoning = false
+    @State private var reasoningError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +49,9 @@ struct InputPlaygroundView: View {
         }
         .onAppear {
             inputFocused = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .playgroundSendDraft)) { _ in
+            sendDraft()
         }
     }
 
@@ -130,16 +137,11 @@ struct InputPlaygroundView: View {
                 )
                 .accessibilityIdentifier("playground.voice")
 
-                TextField(MobileL10n.t(.playgroundPlaceholder), text: $draft, axis: .vertical)
-                    .lineLimit(1...4)
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
+                ChineseInputTextView(text: $draft, isFirstResponder: $inputFocused,
+                                     placeholder: MobileL10n.t(.playgroundPlaceholder))
                     .background(Color(uiColor: .secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .focused($inputFocused)
                     .accessibilityIdentifier("playground.input")
-                    .onSubmit(sendDraft)
 
                 Button(action: sendDraft) {
                     Image(systemName: "arrow.up.circle.fill")
@@ -150,6 +152,59 @@ struct InputPlaygroundView: View {
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityLabel(MobileL10n.t(.playgroundSend))
                 .accessibilityIdentifier("playground.send")
+            }
+            HStack(spacing: 6) {
+                Image(systemName: "character.cursor.ibeam")
+                Text("中文拼音模式 · 可用地球键切换 Vibe Voice")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+                Button {
+                    isRefining = true
+                    refinementError = nil
+                    Task {
+                        do {
+                            draft = try await SystemTextComposer.refine(draft)
+                        } catch {
+                            refinementError = error.localizedDescription
+                        }
+                        isRefining = false
+                    }
+                } label: {
+                    Label("整句增强", systemImage: "sparkles")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isRefining || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("playground.refine")
+                if isRefining { ProgressView().controlSize(.small) }
+                if let refinementError {
+                    Text(refinementError).font(.caption2).foregroundStyle(.secondary)
+                }
+                Button {
+                    isReasoning = true
+                    reasoningError = nil
+                    Task {
+                        do {
+                            let result = try await SystemTextComposer.inferHiddenContext(draft)
+                            messages.append(PlaygroundMessage(text: result, isOutgoing: false))
+                        } catch {
+                            reasoningError = error.localizedDescription
+                        }
+                        isReasoning = false
+                    }
+                } label: {
+                    Label("模拟推理", systemImage: "brain.head.profile")
+                }
+                .buttonStyle(.bordered)
+                .disabled(isReasoning || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("playground.reasoning")
+                if isReasoning { ProgressView().controlSize(.small) }
+                if let reasoningError {
+                    Text(reasoningError).font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
             }
         }
         .padding(.horizontal, 12)
@@ -186,6 +241,65 @@ struct InputPlaygroundView: View {
         draft = ""
         inputFocused = true
     }
+}
+
+/// UIKit-backed editor that asks iOS for the last-used Simplified Chinese
+/// input mode. This prevents the playground from silently opening in English
+/// QWERTY; the globe key remains the user-controlled way to select Vibe Voice.
+private struct ChineseInputTextView: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isFirstResponder: Bool
+    let placeholder: String
+
+    func makeUIView(context: Context) -> ChineseTextView {
+        let view = ChineseTextView()
+        view.delegate = context.coordinator
+        view.font = .preferredFont(forTextStyle: .body)
+        view.textColor = .label
+        view.backgroundColor = .clear
+        view.isScrollEnabled = false
+        view.textContainer.lineBreakMode = .byWordWrapping
+        view.textContainer.maximumNumberOfLines = 4
+        view.textContainer.lineFragmentPadding = 0
+        view.text = text
+        view.accessibilityIdentifier = "playground.input"
+        view.accessibilityLabel = placeholder
+        return view
+    }
+
+    func updateUIView(_ uiView: ChineseTextView, context: Context) {
+        if uiView.text != text { uiView.text = text }
+        if isFirstResponder, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
+        if !isFirstResponder, uiView.isFirstResponder { uiView.resignFirstResponder() }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: ChineseInputTextView
+        init(_ parent: ChineseInputTextView) { self.parent = parent }
+        func textViewDidChange(_ textView: UITextView) { parent.text = textView.text }
+        func textViewDidBeginEditing(_ textView: UITextView) { parent.isFirstResponder = true }
+        func textViewDidEndEditing(_ textView: UITextView) { parent.isFirstResponder = false }
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange,
+                      replacementText replacement: String) -> Bool {
+            if replacement == "\n" { parent.send() ; return false }
+            return true
+        }
+    }
+
+    private func send() { NotificationCenter.default.post(name: .playgroundSendDraft, object: nil) }
+}
+
+private final class ChineseTextView: UITextView {
+    override var textInputMode: UITextInputMode? {
+        UITextInputMode.activeInputModes.first(where: { $0.primaryLanguage?.hasPrefix("zh-Hans") == true })
+            ?? super.textInputMode
+    }
+}
+
+private extension Notification.Name {
+    static let playgroundSendDraft = Notification.Name("VibeVoice.playground.sendDraft")
 }
 
 private struct PlaygroundMessage: Identifiable, Equatable {

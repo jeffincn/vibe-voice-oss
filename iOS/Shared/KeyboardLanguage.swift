@@ -4,10 +4,18 @@ enum KeyboardLanguage: String, Codable, CaseIterable, Sendable {
     case chinese
     case english
 
+    /// Face of the language key. Always the bilingual legend — the key toggles
+    /// rather than displaying the current language, which is what the badge does.
     var toggleLabel: String {
+        MobileL10n.t(.keyLanguageFace)
+    }
+
+    /// Spelled out for the badge beside the composition, where there is room for
+    /// a word and the one-character key label would read as decoration.
+    var modeBadge: String {
         switch self {
-        case .chinese: MobileL10n.t(.languageChinese)
-        case .english: MobileL10n.t(.languageEnglish)
+        case .chinese: MobileL10n.t(.keyboardModePinyin)
+        case .english: MobileL10n.t(.keyboardModeEnglish)
         }
     }
 
