@@ -5,10 +5,9 @@ final class KeyboardViewController: UIInputViewController {
     /// so a slow timer backs it up. It replaces the 0.4s poll this controller
     /// used to run for as long as the keyboard was on screen.
     private static let bridgeBackstopInterval: TimeInterval = 2
-    /// Total height above the home-indicator inset. Taller than the stubby
-    /// builds, but the extra room goes to chrome and breathing space — not to
-    /// stretching keycaps into tall rectangles.
-    private static let contentHeight: CGFloat = 392
+    /// Tight fit above the home-indicator inset: chrome + three letter rows +
+    /// utility row. Extra slack under the keys was what made the dock look empty.
+    private static let contentHeight: CGFloat = 318
     private static let compositionRowHeight: CGFloat = 38
     private static let candidateRowHeight: CGFloat = 54
     /// Near-square on a phone-width QWERTY row (~40pt wide keys). Fill-equally
@@ -61,25 +60,6 @@ final class KeyboardViewController: UIInputViewController {
     }()
 
     private let preeditLabel = UILabel()
-    private let modeBadgeLabel = UILabel()
-    /// A label cannot be given padding, so the pill is a container around one.
-    private lazy var modeBadge: UIView = {
-        let pill = UIView()
-        modeBadgeLabel.font = .preferredFont(forTextStyle: .caption2)
-        modeBadgeLabel.textColor = Self.accent
-        modeBadgeLabel.translatesAutoresizingMaskIntoConstraints = false
-        pill.addSubview(modeBadgeLabel)
-        pill.backgroundColor = Self.accent.withAlphaComponent(0.12)
-        pill.layer.cornerRadius = 9
-        pill.layer.cornerCurve = .continuous
-        NSLayoutConstraint.activate([
-            modeBadgeLabel.topAnchor.constraint(equalTo: pill.topAnchor, constant: 2),
-            modeBadgeLabel.bottomAnchor.constraint(equalTo: pill.bottomAnchor, constant: -2),
-            modeBadgeLabel.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 7),
-            modeBadgeLabel.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -7),
-        ])
-        return pill
-    }()
     private let candidateStack = UIStackView()
     private let candidateScroll = UIScrollView()
     private let expandCandidatesButton = UIButton(type: .system)
@@ -291,14 +271,6 @@ final class KeyboardViewController: UIInputViewController {
         statusLabel.textAlignment = .right
         statusLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        modeBadge.isUserInteractionEnabled = true
-        modeBadge.accessibilityTraits.insert(.button)
-        modeBadge.accessibilityHint = MobileL10n.t(.keyToggleLanguage)
-        modeBadge.addGestureRecognizer(UITapGestureRecognizer(
-            target: self,
-            action: #selector(toggleLanguageFromChrome)
-        ))
-
         styleVoiceButton()
         voiceButton.widthAnchor.constraint(equalToConstant: 36).isActive = true
         voiceButton.addAction(UIAction { [weak self] _ in self?.requestVoice() }, for: .touchUpInside)
@@ -311,7 +283,6 @@ final class KeyboardViewController: UIInputViewController {
         compositionRow.alignment = .center
         [
             preeditLabel,
-            modeBadge,
             UIView(),
             statusLabel,
             clearButton,
@@ -345,16 +316,10 @@ final class KeyboardViewController: UIInputViewController {
         keysZone.addArrangedSubview(keyRowsStack)
         keysZone.addArrangedSubview(utilityRow)
 
-        // Leftover height after square keys + chrome stays as slack under the
-        // keys, so raising contentHeight never elongates the caps again.
-        let slack = UIView()
-        slack.setContentHuggingPriority(.defaultLow, for: .vertical)
-        slack.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-
         keyboardRoot.axis = .vertical
         keyboardRoot.spacing = 6
         keyboardRoot.translatesAutoresizingMaskIntoConstraints = false
-        [chrome, keysZone, slack].forEach(keyboardRoot.addArrangedSubview)
+        [chrome, keysZone].forEach(keyboardRoot.addArrangedSubview)
         view.addSubview(keyboardRoot)
 
         expandedPanel.isHidden = true
@@ -507,7 +472,7 @@ final class KeyboardViewController: UIInputViewController {
 
         // System Mandarin keyboard bottom row: 123 | emoji | space | return.
         // No globe (system draws one under the extension) and no 中/英 key
-        // (language toggles from the mode badge / space long-press).
+        // (language toggles from a long-press on space).
         applyChrome(to: planeButton, role: .function, title: plane.alternateLabel, image: nil)
         planeButton.widthAnchor.constraint(equalToConstant: 46).isActive = true
         planeButton.addAction(UIAction { [weak self] _ in
@@ -659,21 +624,29 @@ final class KeyboardViewController: UIInputViewController {
         let output = shift.isRaised ? text.uppercased() : text
         defer { consumeOneShotShift() }
 
-        if language == .chinese, output.count == 1, let character = output.first, character.isASCII {
-            if character.isNumber, selectCandidateByDigit(character) {
-                return
-            }
-            // An uppercase letter is an acronym or a name, not a continuation of
-            // a pinyin syllable. Feeding it to librime would instead trip
-            // ascii_composer's mode switch.
-            if !character.isUppercase {
-                apply(engine.process(character: character), fallback: output)
-                return
-            }
+        guard language == .chinese,
+              output.count == 1,
+              let character = output.first,
+              character.isASCII else {
+            commitPendingComposition()
+            insertIntoDocument(output)
+            return
+        }
+
+        if character.isNumber, selectCandidateByDigit(character) {
+            return
+        }
+
+        // Only lowercase letters extend composition — same rule as the system
+        // Mandarin keyboard. Punctuation, digits, symbols, and uppercase commit
+        // immediately so they never linger as a named preedit.
+        if character.isLetter, !character.isUppercase {
+            apply(engine.process(character: character), fallback: output)
+            return
         }
 
         commitPendingComposition()
-        insertIntoDocument(output)
+        insertIntoDocument(ChinesePunctuation.mapped(character))
     }
 
     /// Digits pick from the visible candidate page while composing. librime can
@@ -948,10 +921,8 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Shown instead of the composition when there is nothing being typed, so a
     /// degraded Rime session stays visible rather than looking like a keyboard
-    /// that has forgotten the language.
-    ///
-    /// Otherwise blank: the badge beside it already names the mode, and repeating
-    /// it here would make the warning look like one more piece of chrome.
+    /// that has forgotten the language. Otherwise blank — the spacebar already
+    /// shows 拼 / ABC for the current mode.
     private var idlePreeditText: String {
         if rimeDegradedReason != nil, language == .chinese {
             return MobileL10n.t(.pinyinDegradedBadge)
@@ -966,7 +937,6 @@ final class KeyboardViewController: UIInputViewController {
             rankedCandidateIndices = []
         }
         preeditLabel.text = snapshot.isComposing ? snapshot.preedit : idlePreeditText
-        modeBadgeLabel.text = language.modeBadge
         candidateStack.arrangedSubviews.forEach {
             candidateStack.removeArrangedSubview($0)
             $0.removeFromSuperview()
@@ -992,7 +962,6 @@ final class KeyboardViewController: UIInputViewController {
         let composing = snapshot.isComposing
         let idleText = idlePreeditText
         preeditLabel.isHidden = composing ? false : idleText.isEmpty
-        modeBadge.isHidden = false
         expandCandidatesButton.isHidden = !composing
         expandCandidatesButton.isEnabled = composing
         clearButton.isHidden = !composing

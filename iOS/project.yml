@@ -7,7 +7,7 @@ options:
 settings:
   base:
     MARKETING_VERSION: 0.7.0
-    CURRENT_PROJECT_VERSION: 75
+    CURRENT_PROJECT_VERSION: 76
     SWIFT_VERSION: 5.0
     # Under Swift 5 these are warnings, but they are the only thing that can
     # find an actor boundary crossed by the audio capture thread.

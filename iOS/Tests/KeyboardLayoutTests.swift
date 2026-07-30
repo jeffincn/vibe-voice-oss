@@ -75,4 +75,17 @@ final class KeyboardLayoutTests: XCTestCase {
         XCTAssertTrue(KeyboardShift.on.isRaised)
         XCTAssertTrue(KeyboardShift.locked.isRaised)
     }
+
+    func testChinesePunctuationMapsCommonMarks() {
+        XCTAssertEqual(ChinesePunctuation.mapped(","), "，")
+        XCTAssertEqual(ChinesePunctuation.mapped("."), "。")
+        XCTAssertEqual(ChinesePunctuation.mapped("?"), "？")
+        XCTAssertEqual(ChinesePunctuation.mapped("!"), "！")
+        XCTAssertEqual(ChinesePunctuation.mapped(":"), "：")
+        XCTAssertEqual(ChinesePunctuation.mapped(";"), "；")
+        XCTAssertEqual(ChinesePunctuation.mapped("("), "（")
+        XCTAssertEqual(ChinesePunctuation.mapped(")"), "）")
+        XCTAssertEqual(ChinesePunctuation.mapped("-"), "-")
+        XCTAssertEqual(ChinesePunctuation.mapped("1"), "1")
+    }
 }

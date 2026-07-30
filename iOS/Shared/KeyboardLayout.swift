@@ -24,12 +24,43 @@ enum KeyboardPlane: Equatable {
 /// by the view controller so it can match system Mandarin proportions
 /// (123 / emoji / space / return) without crowding language chrome into the grid.
 enum KeyboardKey: Equatable {
-    /// Text the key produces. In Chinese mode it is offered to librime first so
-    /// the punctuator can turn it into its full-width form.
+    /// Text the key produces. Letters go to librime; punctuation is mapped by
+    /// `ChinesePunctuation` and inserted directly so it never sits in preedit.
     case character(String)
     case shift
     case plane(KeyboardPlane)
     case backspace
+}
+
+/// Full-width forms for Chinese mode, kept in sync with `vibe_pinyin.schema.yaml`
+/// `punctuator.half_shape`. The keyboard applies these itself instead of feeding
+/// punctuation into librime — otherwise symbols linger in the composition bar.
+enum ChinesePunctuation {
+    static func mapped(_ character: Character) -> String {
+        switch character {
+        case "'": return "‘"
+        case "\"": return "“"
+        case ",": return "，"
+        case ".": return "。"
+        case "!": return "！"
+        case "?": return "？"
+        case ":": return "："
+        case ";": return "；"
+        case "(": return "（"
+        case ")": return "）"
+        case "<": return "《"
+        case ">": return "》"
+        case "[": return "【"
+        case "]": return "】"
+        case "\\": return "、"
+        case "^": return "……"
+        case "_": return "——"
+        case "~": return "～"
+        case "`": return "·"
+        case "$", "¥": return "￥"
+        default: return String(character)
+        }
+    }
 }
 
 enum KeyboardShift: Equatable {
