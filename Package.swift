@@ -2,6 +2,18 @@
 import PackageDescription
 import Foundation
 
+/// Monorepo layout:
+/// - Sources/Voice            → menu-bar voice dictation app (VibeVoiceOSS)
+/// - Sources/InputMethod      → IMK pinyin input method (VibeVoiceInputMethod)
+/// - Sources/Shared           → cross-product bridge (voice ↔ IMK)
+/// - Sources/Pinyin           → pinyin engine, lexicon, candidate ranking
+/// - Sources/Rime             → librime C adapter
+/// - Sources/ObjCExceptionCatcher
+///
+/// Resources:
+/// - Resources/Voice          → app Info.plist, entitlements, icon
+/// - Resources/InputMethod    → RimeData, Lexicon, CandidateRanker, VibeType assets
+
 let homebrewRimePrefix = "/opt/homebrew/opt/librime"
 var rimeCSettings: [CSetting] = []
 var rimeLinkerSettings: [LinkerSetting] = []
@@ -24,10 +36,20 @@ let package = Package(
         .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.0.0"),
     ],
     targets: [
-        .target(name: "VibeVoiceInputShared", path: "Sources/VibeVoiceInputShared"),
+        // Cross-product: voice ↔ IMK request bridge (file + Darwin notification).
+        .target(
+            name: "VibeVoiceShared",
+            path: "Sources/Shared"
+        ),
+        // Pinyin engine shared by the IMK server (and Voice settings that tune it).
+        .target(
+            name: "VibeVoicePinyin",
+            dependencies: ["VibeVoiceShared"],
+            path: "Sources/Pinyin"
+        ),
         .target(
             name: "VibeVoiceRime",
-            path: "Sources/VibeVoiceRime",
+            path: "Sources/Rime",
             publicHeadersPath: "include",
             cSettings: rimeCSettings,
             linkerSettings: rimeLinkerSettings
@@ -40,23 +62,32 @@ let package = Package(
         .executableTarget(
             name: "VibeVoiceOSS",
             dependencies: [
-                "VibeVoiceInputShared",
+                "VibeVoiceShared",
+                "VibeVoicePinyin",
                 "ObjCExceptionCatcher",
                 .product(name: "ArgmaxOSS", package: "argmax-oss-swift"),
                 .product(name: "MLXASR", package: "mlx-swift-asr"),
                 .product(name: "WhisperKit", package: "argmax-oss-swift"),
             ],
-            path: "Sources/VibeVoiceOSS"
+            path: "Sources/Voice"
         ),
         .executableTarget(
             name: "VibeVoiceInputMethod",
-            dependencies: ["VibeVoiceInputShared", "VibeVoiceRime"],
-            path: "Sources/VibeVoiceInputMethod",
+            dependencies: ["VibeVoiceShared", "VibeVoicePinyin", "VibeVoiceRime"],
+            path: "Sources/InputMethod",
             exclude: ["InputMethodInfo.plist", "en.lproj", "zh-Hans.lproj"]
         ),
         .testTarget(
-            name: "VibeVoiceOSSTests",
-            dependencies: ["VibeVoiceOSS", "VibeVoiceInputShared", "VibeVoiceRime"]
-        )
+            name: "VoiceTests",
+            dependencies: ["VibeVoiceOSS"]
+        ),
+        .testTarget(
+            name: "PinyinTests",
+            dependencies: ["VibeVoicePinyin", "VibeVoiceRime"]
+        ),
+        .testTarget(
+            name: "SharedTests",
+            dependencies: ["VibeVoiceShared"]
+        ),
     ]
 )

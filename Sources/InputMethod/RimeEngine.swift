@@ -1,5 +1,5 @@
 import Foundation
-import VibeVoiceInputShared
+import VibeVoicePinyin
 import VibeVoiceRime
 
 struct RimeSnapshot: Equatable {

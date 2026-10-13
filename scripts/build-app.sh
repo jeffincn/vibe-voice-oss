@@ -28,7 +28,7 @@ trap 'rm -rf "$STAGING_DIR"' EXIT
 cd "$ROOT"
 swift build -c release --disable-automatic-resolution --product "$EXECUTABLE_NAME"
 swift build -c release --disable-automatic-resolution --product "$INPUT_METHOD_EXECUTABLE"
-swift "$ROOT/scripts/generate-icon.swift" "$ROOT/Resources/${ICON_NAME}.icns"
+swift "$ROOT/scripts/generate-icon.swift" "$ROOT/Resources/Voice/${ICON_NAME}.icns"
 
 # Compile MLX Metal shaders into default.metallib (required by MLX GPU runtime).
 METALLIB="$ROOT/.build/release/default.metallib"
@@ -72,10 +72,10 @@ cp "$ROOT/.build/release/${EXECUTABLE_NAME}" "$STAGED_APP/Contents/MacOS/${EXECU
 MLX_BUNDLE="$STAGED_APP/Contents/Resources/mlx-swift_Cmlx.bundle"
 mkdir -p "$MLX_BUNDLE"
 cp "$METALLIB" "$MLX_BUNDLE/default.metallib"
-cp "$ROOT/Resources/Info.plist" "$STAGED_APP/Contents/Info.plist"
-cp "$ROOT/Resources/${ICON_NAME}.icns" "$STAGED_APP/Contents/Resources/${ICON_NAME}.icns"
-if [[ -d "$ROOT/Resources/Lexicon" ]]; then
-    ditto "$ROOT/Resources/Lexicon" "$STAGED_APP/Contents/Resources/Lexicon"
+cp "$ROOT/Resources/Voice/Info.plist" "$STAGED_APP/Contents/Info.plist"
+cp "$ROOT/Resources/Voice/${ICON_NAME}.icns" "$STAGED_APP/Contents/Resources/${ICON_NAME}.icns"
+if [[ -d "$ROOT/Resources/InputMethod/Lexicon" ]]; then
+    ditto "$ROOT/Resources/InputMethod/Lexicon" "$STAGED_APP/Contents/Resources/Lexicon"
 fi
 
 # Bundle the InputMethodKit server inside the app and also install it at the
@@ -84,29 +84,29 @@ fi
 IMK_STAGED="$STAGED_APP/Contents/Library/Input Methods/$INPUT_METHOD_BUNDLE_NAME"
 mkdir -p "$IMK_STAGED/Contents/MacOS" "$IMK_STAGED/Contents/Resources"
 cp "$ROOT/.build/release/${INPUT_METHOD_EXECUTABLE}" "$IMK_STAGED/Contents/MacOS/${INPUT_METHOD_EXECUTABLE}"
-cp "$ROOT/Sources/VibeVoiceInputMethod/InputMethodInfo.plist" "$IMK_STAGED/Contents/Info.plist"
+cp "$ROOT/Sources/InputMethod/InputMethodInfo.plist" "$IMK_STAGED/Contents/Info.plist"
 printf 'APPL????' > "$IMK_STAGED/Contents/PkgInfo"
-cp "$ROOT/Resources/${ICON_NAME}.icns" "$IMK_STAGED/Contents/Resources/VibeVoice.icns"
+cp "$ROOT/Resources/Voice/${ICON_NAME}.icns" "$IMK_STAGED/Contents/Resources/VibeVoice.icns"
 # Menu-bar / input-source list icons must be template PDFs. A full-color .icns
 # is what made Vibe Type look out of place next to ABC / Squirrel / Apple Pinyin.
-swift "$ROOT/scripts/generate-input-method-menu-icon.swift" "$ROOT/Resources/VibeTypeMenu.pdf"
-cp "$ROOT/Resources/VibeTypeMenu.pdf" "$IMK_STAGED/Contents/Resources/VibeTypeMenu.pdf"
+swift "$ROOT/scripts/generate-input-method-menu-icon.swift" "$ROOT/Resources/InputMethod/VibeTypeMenu.pdf"
+cp "$ROOT/Resources/InputMethod/VibeTypeMenu.pdf" "$IMK_STAGED/Contents/Resources/VibeTypeMenu.pdf"
 # Without these the input source list falls back to showing the raw mode identifier.
-for lproj in "$ROOT/Sources/VibeVoiceInputMethod"/*.lproj(N); do
+for lproj in "$ROOT/Sources/InputMethod"/*.lproj(N); do
     ditto "$lproj" "$IMK_STAGED/Contents/Resources/${lproj:t}"
 done
-if [[ -d "$ROOT/Resources/RimeData" ]]; then
-    ditto "$ROOT/Resources/RimeData" "$IMK_STAGED/Contents/Resources/RimeData"
+if [[ -d "$ROOT/Resources/InputMethod/RimeData" ]]; then
+    ditto "$ROOT/Resources/InputMethod/RimeData" "$IMK_STAGED/Contents/Resources/RimeData"
 fi
-if [[ -d "$ROOT/Resources/Lexicon" ]]; then
-    ditto "$ROOT/Resources/Lexicon" "$IMK_STAGED/Contents/Resources/Lexicon"
+if [[ -d "$ROOT/Resources/InputMethod/Lexicon" ]]; then
+    ditto "$ROOT/Resources/InputMethod/Lexicon" "$IMK_STAGED/Contents/Resources/Lexicon"
 fi
 # The Core ML candidate reranker. Without it the input method still works and
 # falls back to Rime's own order, so a missing model is a warning, not a stop.
-if [[ -d "$ROOT/Resources/CandidateRanker/VibeCandidateRanker.mlmodelc" ]]; then
+if [[ -d "$ROOT/Resources/InputMethod/CandidateRanker/VibeCandidateRanker.mlmodelc" ]]; then
     # Only the compiled model is loadable at runtime; the .mlmodel spec and the
     # manifest stay in the repo rather than inside a sealed bundle.
-    ditto "$ROOT/Resources/CandidateRanker/VibeCandidateRanker.mlmodelc" \
+    ditto "$ROOT/Resources/InputMethod/CandidateRanker/VibeCandidateRanker.mlmodelc" \
         "$IMK_STAGED/Contents/Resources/CandidateRanker/VibeCandidateRanker.mlmodelc"
 else
     echo "warning: VibeCandidateRanker.mlmodelc missing; candidates will use Rime order only" >&2
@@ -178,7 +178,7 @@ fi
 # everything; the metallib is sealed as a resource.
 SIGN_ARGS=(--force --timestamp=none)
 IMK_SIGN_ARGS=(--force --timestamp=none --options runtime)
-ENTITLEMENTS="$ROOT/Resources/${EXECUTABLE_NAME}.entitlements"
+ENTITLEMENTS="$ROOT/Resources/Voice/${EXECUTABLE_NAME}.entitlements"
 if [[ -z "${VIBE_VOICE_SKIP_HARDENED_RUNTIME:-}" ]]; then
     # The hardened runtime stops other processes from injecting code into the app
     # or reading the memory that holds decrypted API keys, and is a prerequisite

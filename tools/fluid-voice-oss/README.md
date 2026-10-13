@@ -7,4 +7,4 @@ pnpm install
 pnpm dev
 ```
 
-This package is not required to build the macOS app under `Sources/VibeVoiceOSS`.
+This package is not required to build the macOS app under `Sources/Voice`.

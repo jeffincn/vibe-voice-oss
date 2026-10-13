@@ -1,5 +1,6 @@
 import Foundation
-import VibeVoiceInputShared
+import VibeVoicePinyin
+import VibeVoiceShared
 
 struct TargetLanguage: Identifiable, Hashable {
     let id: String
@@ -904,9 +905,24 @@ final class AppSettings: ObservableObject {
             endpoint: endpoint,
             model: model,
             language: language,
-            prompt: prompt,
+            prompt: asrPromptWithSharedCorrections,
             apiKey: apiKey,
             hfEndpoint: hfEndpoint
+        )
+    }
+
+    /// User hotspot plus shared correction canonical terms (source-tagged on disk).
+    var asrPromptWithSharedCorrections: String {
+        let base = Self.sanitizedASRPrompt(prompt)
+        let terms = SharedCorrectionLexicon.shared.canonicalTerms()
+        return SharedCorrectionLexicon.mergingASRPrompt(base, terms: terms)
+    }
+
+    /// Role context plus shared alias→canonical correction block for LLM post-process.
+    var roleContextWithSharedCorrections: String {
+        SharedCorrectionLexicon.appendingCorrectionContext(
+            to: effectiveRole?.contextPrompt ?? "",
+            block: SharedCorrectionLexicon.shared.correctionPromptBlock()
         )
     }
 
@@ -918,7 +934,7 @@ final class AppSettings: ObservableObject {
             targetLanguage: language.promptName,
             styleHint: language.styleHint,
             customSystemPrompt: llmSystemPrompt,
-            roleContextPrompt: effectiveRole?.contextPrompt ?? "",
+            roleContextPrompt: roleContextWithSharedCorrections,
             apiKey: llmApiKey,
             task: .translate
         )
@@ -950,7 +966,7 @@ final class AppSettings: ObservableObject {
             targetLanguage: effectiveTargetLanguage.promptName,
             styleHint: promptOptimizeLanguageDirective,
             customSystemPrompt: llmSystemPrompt,
-            roleContextPrompt: effectiveRole?.contextPrompt ?? "",
+            roleContextPrompt: roleContextWithSharedCorrections,
             apiKey: llmApiKey,
             task: .optimizePrompt,
             promptTarget: promptTarget
@@ -964,7 +980,7 @@ final class AppSettings: ObservableObject {
             targetLanguage: "",
             styleHint: "",
             customSystemPrompt: llmSystemPrompt,
-            roleContextPrompt: effectiveRole?.contextPrompt ?? "",
+            roleContextPrompt: roleContextWithSharedCorrections,
             apiKey: llmApiKey,
             task: .smartRoute
         )
@@ -1047,7 +1063,7 @@ final class AppSettings: ObservableObject {
             apiKey: llmApiKey,
             mode: mode,
             customSystemPrompt: llmSystemPrompt,
-            roleContextPrompt: effectiveRole?.contextPrompt ?? "",
+            roleContextPrompt: roleContextWithSharedCorrections,
             outputLanguageDirective: nil,
             useEmoji: structuredEmojiEnabled
         )

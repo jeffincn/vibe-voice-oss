@@ -13,7 +13,7 @@ struct RimeBridgeTests {
               vv_rime_available() != 0 else { return }
         let shared = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Resources/RimeData", isDirectory: true)
+            .appendingPathComponent("Resources/InputMethod/RimeData", isDirectory: true)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("vibevoice-rime-\(UUID().uuidString)")
         let user = root.appendingPathComponent("User", isDirectory: true)
         let staging = root.appendingPathComponent("Build", isDirectory: true)
@@ -57,7 +57,7 @@ struct RimeBridgeTests {
               vv_rime_available() != 0 else { return }
         let shared = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Resources/RimeData", isDirectory: true)
+            .appendingPathComponent("Resources/InputMethod/RimeData", isDirectory: true)
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("vibevoice-rime-shift-\(UUID().uuidString)")
         let user = root.appendingPathComponent("User", isDirectory: true)
         let staging = root.appendingPathComponent("Build", isDirectory: true)

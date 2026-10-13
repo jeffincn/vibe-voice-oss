@@ -191,7 +191,7 @@ pred, _ = forward(X)
 print("train accuracy", float(np.mean((pred > 0.5) == (y > 0.5))))
 
 root = Path(__file__).resolve().parents[1]
-output = root / "Resources/CandidateRanker/VibeCandidateRanker.mlmodel"
+output = root / "Resources/InputMethod/CandidateRanker/VibeCandidateRanker.mlmodel"
 builder = NeuralNetworkBuilder(
     input_features=[("features", datatypes.Array(FEATURE_COUNT))],
     output_features=[("score", datatypes.Array(1))],

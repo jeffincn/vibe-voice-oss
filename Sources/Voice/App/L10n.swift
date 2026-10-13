@@ -165,6 +165,7 @@ enum L10n {
         case importProjectVocabulary
         case importProjectVocabularyCaption
         case importProjectVocabularyDone
+        case sharedCorrectionLexiconStatus
         case settingsASRMode
         case settingsEngine
         case settingsModel
@@ -586,8 +587,9 @@ enum L10n {
         .fuzzyPinyin: "模糊拼音（可选）",
         .fuzzyPinyinCaption: "默认关闭，按标准拼音区分平翘舌。开启后仅容错 n/l 与前后鼻音（in/ing 等），不会再混淆 z/zh、c/ch、s/sh。",
         .importProjectVocabulary: "导入当前仓库词汇",
-        .importProjectVocabularyCaption: "从本机打开的 git 仓库抽取类名、函数名和分支名，供输入法保护英文专有名词。",
-        .importProjectVocabularyDone: "已导入 %@ 条项目词汇",
+        .importProjectVocabularyCaption: "从本机打开的 git 仓库抽取类名、函数名和分支名，写入共享纠正词库（带「来源」标记），同时服务拼音选词与语音 ASR/整理纠错。可手工编辑 TSV 的 aliases 列补充误辨。",
+        .importProjectVocabularyDone: "已导入 %@ 条项目词汇（来源：项目导入）",
+        .sharedCorrectionLexiconStatus: "共享纠正词库 %@ 条 · %@",
         .settingsASRMode: "ASR 模式",
         .settingsEngine: "识别引擎",
         .settingsModel: "模型",
@@ -956,8 +958,9 @@ enum L10n {
         .fuzzyPinyin: "Fuzzy pinyin (optional)",
         .fuzzyPinyinCaption: "Off by default — standard Hanyu Pinyin keeps z/zh, c/ch, s/sh distinct. When on, only n/l and nasal finals (in/ing…) are tolerated.",
         .importProjectVocabulary: "Import project vocabulary",
-        .importProjectVocabularyCaption: "Scan the open git repository for class, function, and branch names so the IME can protect them as proper nouns.",
-        .importProjectVocabularyDone: "Imported %@ project terms",
+        .importProjectVocabularyCaption: "Scan the open git repository for class, function, and branch names into the shared correction lexicon (with a source tag) for both pinyin and voice ASR/cleanup. Edit the TSV aliases column to add misrecognition variants.",
+        .importProjectVocabularyDone: "Imported %@ project terms (source: project)",
+        .sharedCorrectionLexiconStatus: "Shared correction lexicon: %@ entries · %@",
         .settingsASRMode: "ASR mode",
         .settingsEngine: "Engine",
         .settingsModel: "Model",
@@ -1317,8 +1320,9 @@ enum L10n {
         .fuzzyPinyin: "曖昧拼音（任意）",
         .fuzzyPinyinCaption: "既定はオフ。標準拼音どおり平舌/翹舌を区別します。オン時も n/l と前後鼻音のみで、z/zh・c/ch・s/sh は混ぜません。",
         .importProjectVocabulary: "プロジェクト語彙を取り込む",
-        .importProjectVocabularyCaption: "開いている git リポジトリからクラス名、関数名、ブランチ名を抽出し、IME が固有名詞として保護します。",
-        .importProjectVocabularyDone: "%@ 件のプロジェクト語彙を取り込みました",
+        .importProjectVocabularyCaption: "開いている git リポジトリからクラス名、関数名、ブランチ名を共有訂正語彙（出典付き）へ書き込み、拼音と音声 ASR/整理の両方で使います。TSV の aliases 列で誤認識を追加できます。",
+        .importProjectVocabularyDone: "%@ 件のプロジェクト語彙を取り込みました（出典：プロジェクト）",
+        .sharedCorrectionLexiconStatus: "共有訂正語彙 %@ 件 · %@",
         .settingsASRMode: "ASR モード",
         .settingsEngine: "エンジン",
         .settingsModel: "モデル",

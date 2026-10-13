@@ -1,16 +1,16 @@
 import Foundation
+import VibeVoiceShared
 
 /// Extracts CamelCase / snake_case symbols from a git working tree and writes
-/// them into the user-level project lexicon consumed by `ExternalLexicon`.
+/// them into the shared correction lexicon (`source=project`).
 public enum ProjectVocabularyImporter {
     public static func defaultOutputURL() -> URL {
-        ExternalLexicon.projectLexiconURL()
+        SharedCorrectionLexicon.shared.storageURL
     }
 
     /// Scan `root` for Swift/TS/Python-ish identifiers and product-looking names.
     @discardableResult
     public static func importFromRepository(at root: URL, output: URL? = nil) -> Int {
-        let out = output ?? defaultOutputURL()
         var map: [String: String] = [:]
 
         let fileManager = FileManager.default
@@ -60,19 +60,38 @@ public enum ProjectVocabularyImporter {
         }
 
         guard !map.isEmpty else { return 0 }
-        let dir = out.deletingLastPathComponent()
-        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        var lines = ["# code\tdisplay\tkind  (auto-generated project vocabulary)"]
-        for (code, display) in map.sorted(by: { $0.key < $1.key }) {
-            lines.append("\(code)\t\(display)\tproject")
+
+        let incoming = map.map { code, display in
+            SharedCorrectionEntry(
+                canonical: display,
+                pinyinCode: code,
+                aliases: [],
+                kind: .proper,
+                weight: SharedCorrectionKind.proper.defaultWeight,
+                source: .project
+            )
         }
-        let payload = lines.joined(separator: "\n") + "\n"
-        do {
-            try payload.write(to: out, atomically: true, encoding: .utf8)
-            return map.count
-        } catch {
-            return 0
+
+        // When a custom output URL is supplied (tests), write a standalone file;
+        // otherwise upsert into the live shared lexicon.
+        if let output, output != SharedCorrectionLexicon.shared.storageURL {
+            let dir = output.deletingLastPathComponent()
+            try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+            let payload = SharedCorrectionLexicon.serialize(incoming)
+            do {
+                try payload.write(to: output, atomically: true, encoding: .utf8)
+                return incoming.count
+            } catch {
+                return 0
+            }
         }
+
+        let lexicon = SharedCorrectionLexicon.shared
+        // Replace previous project-sourced rows, keep user/migrated aliases.
+        let kept = lexicon.allEntries().filter { $0.source != .project }
+        let merged = kept + incoming
+        guard lexicon.replaceAll(merged) else { return 0 }
+        return incoming.count
     }
 
     static func extractSymbols(from text: String) -> [String] {
